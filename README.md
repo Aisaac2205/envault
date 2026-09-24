@@ -103,8 +103,8 @@ The monorepo uses **pnpm workspaces** without Turborepo or Nx. Active workspace:
 ### Install
 
 ```bash
-git clone https://github.com/Aisaac2205/vaultly-dumps
-cd vaultly-control
+git clone https://github.com/Aisaac2205/envault
+cd envault
 pnpm install
 ```
 
