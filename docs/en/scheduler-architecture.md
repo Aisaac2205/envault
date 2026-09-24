@@ -2,7 +2,7 @@
 
 > 🇪🇸 Versión en español: [../es/scheduler-architecture.md](../es/scheduler-architecture.md)
 
-## Current decision: `@nestjs/schedule` (single-replica)
+## Current decision: `@nestjs/schedule` + Postgres advisory locks
 
 ### What does the scheduler do?
 
@@ -56,40 +56,32 @@ Every trigger updates the `CronjobEntity`:
 
 ---
 
-## Known limitation: single-replica
+## Multi-replica safety: Postgres advisory locks
 
-The current scheduler runs **in the same process** as the API. That implies:
+`@nestjs/schedule`'s `SchedulerRegistry` still ticks independently **in every process** — that part hasn't changed. What changed is that each tick no longer assumes it's the only one running: before doing any work, it takes a Postgres session-level advisory lock scoped to that specific job, and skips the run entirely if another replica already holds it.
 
-- If the pod restarts, cronjobs are automatically reloaded from DB on boot (`OnApplicationBootstrap`).
-- If you scale to **more than one replica**, **every pod runs every cronjob** → duplicate backups.
+- `CronjobsService.executeCronjob()` hashes the cronjob id into a lock id (`stableHash()`) and calls `SELECT pg_try_advisory_lock($1)` on a dedicated `QueryRunner` before touching the job. If the lock isn't acquired, it logs `skipped — lock held by another replica` and returns immediately — no duplicate backup.
+- The same pattern guards `MaintenanceService.sweepManualRetention()` (a fixed lock id, since only one sweep should run cluster-wide) and restore execution ownership in `RestoreExecutionOwnershipService` (locked per target connection, via `pg_try_advisory_lock(hashtextextended($1, 0))`).
+- The lock is always released in a `finally` block (`pg_advisory_unlock`), even when the guarded work throws.
+- Lifecycle is covered by a shared test suite, `apps/api/src/modules/scheduler-locks/scheduler-locks.spec.ts`, run against both the cronjob and maintenance call sites to keep the acquire → work → release → error-handling contract consistent wherever the pattern is used.
 
-This limitation is consciously accepted for the current phase of the project (single replica).
+There is no separate `SchedulerLocksService` class — this is a repeated, deliberately-tested SQL pattern (raw `pg_try_advisory_lock` / `pg_advisory_unlock` via TypeORM's `DataSource`/`QueryRunner`), not a shared abstraction. If a third call site needs the same guarantee, copy the pattern and add it to the shared spec.
+
+**Net effect**: you can run more than one API replica today without duplicate scheduled backups, duplicate retention sweeps, or two replicas restoring into the same connection at once.
 
 ---
 
-## Future migration: BullMQ + Redis
+## Still on the roadmap: BullMQ + Redis
 
-When horizontal scaling becomes necessary, the migration looks like:
-
-### Why BullMQ?
-
-- Tasks enter a **Redis queue** — only one worker processes them.
-- `BullMQ` provides "at-least-once" guarantees with distributed locks.
-- It supports retries, delays, and state visibility via a UI (`bull-board`).
-
-### Scope of the change
-
-The public contract (`CronjobsController`, `CronjobsRepository`, `CronjobEntity`) **does not change**. Only the internal dispatch layer of `CronjobsService` changes:
+Advisory locks solve *duplicate execution*, not *queue semantics*. They don't give you retries, delayed jobs, backoff, or a visibility UI (`bull-board`). If those become necessary, the migration path is still:
 
 ```
 CURRENT
-CronjobsService → SchedulerRegistry → CronJob → BackupService.createBackup()
+CronjobsService → SchedulerRegistry → CronJob → (advisory lock) → BackupService.createBackup()
 
 FUTURE
-CronjobsService → BullMQ Queue → Worker → BackupService.createBackup()
+CronjobsService → BullMQ Queue → Worker → (advisory lock, if still needed) → BackupService.createBackup()
 ```
-
-### Migration steps
 
 1. Add Redis to the infrastructure stack (Docker Compose + K8s).
 2. Install `@nestjs/bullmq` and `bullmq`.
@@ -98,25 +90,18 @@ CronjobsService → BullMQ Queue → Worker → BackupService.createBackup()
 5. Drop `@nestjs/schedule` and `cron` if no other module uses them.
 6. Keep the `cronjobs` table intact — `cronExpression` becomes the BullMQ repeatable job pattern.
 
-### New infrastructure required
-
-```yaml
-# Kubernetes — add to the namespace
-- Redis Deployment + Service (or Redis Cluster for HA)
-- Secret: REDIS_URL
-```
-
-```typescript
-// Future definition sketch (do not implement yet)
-BullModule.registerQueue({ name: 'backups' })
-BullModule.forRoot({ connection: { host, port } })
-```
+The public contract (`CronjobsController`, `CronjobsRepository`, `CronjobEntity`) would not change; only `CronjobsService`'s internal dispatch layer would.
 
 ---
 
-## Design decision
+## Design decisions
 
-> **Date**: 2026-05-06  
-> **Context**: The project is not deployed yet. There is no multi-replica infrastructure nor Redis.  
-> **Decision**: Use `@nestjs/schedule` to avoid adding Redis as a premature dependency.  
+> **Date**: 2026-05-06
+> **Context**: The project was not deployed yet. There was no multi-replica infrastructure nor Redis.
+> **Decision**: Use `@nestjs/schedule` to avoid adding Redis as a premature dependency.
 > **Trigger to revisit**: When duplicate backups appear in production, or when scaling the API to more than one pod becomes planned.
+
+> **Date**: 2026-09-24
+> **Context**: Multi-replica deployment moved from hypothetical to planned; duplicate execution needed a fix before Redis was justified.
+> **Decision**: Add Postgres advisory locks (`pg_try_advisory_lock` / `pg_advisory_unlock`) around scheduled cronjob execution, the manual retention sweep, and restore execution ownership — no new infrastructure, reuses the existing control-plane database.
+> **Trigger to revisit**: When queue semantics (retries, delays, worker visibility) are needed, not just duplicate-execution safety — that's still the BullMQ + Redis migration above.

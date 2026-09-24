@@ -2,7 +2,7 @@
 
 > 🇬🇧 English version: [../en/scheduler-architecture.md](../en/scheduler-architecture.md)
 
-## Decisión actual: `@nestjs/schedule` (single-replica)
+## Decisión actual: `@nestjs/schedule` + advisory locks de Postgres
 
 ### ¿Qué hace el scheduler?
 
@@ -56,40 +56,32 @@ Cada disparo actualiza la entidad `CronjobEntity`:
 
 ---
 
-## Limitación conocida: single-replica
+## Seguridad multi-réplica: advisory locks de Postgres
 
-El scheduler actual corre **en el mismo proceso** que la API. Esto implica:
+`SchedulerRegistry` de `@nestjs/schedule` sigue haciendo tick de forma independiente **en cada proceso** — eso no cambió. Lo que cambió es que cada tick ya no asume ser el único corriendo: antes de hacer cualquier trabajo, toma un advisory lock de sesión de Postgres específico para ese job, y se salta la ejecución por completo si otra réplica ya lo tiene.
 
-- Si el pod reinicia, los cronjobs se recargan automáticamente desde DB al levantar (`OnApplicationBootstrap`).
-- Si se escala a **más de una réplica**, **cada pod ejecuta todos los cronjobs** → backups duplicados.
+- `CronjobsService.executeCronjob()` hashea el id del cronjob a un lock id (`stableHash()`) y ejecuta `SELECT pg_try_advisory_lock($1)` en un `QueryRunner` dedicado antes de tocar el job. Si no consigue el lock, registra `skipped — lock held by another replica` y retorna de inmediato — sin backup duplicado.
+- El mismo patrón protege `MaintenanceService.sweepManualRetention()` (con un lock id fijo, porque solo un sweep debe correr en todo el clúster) y la titularidad de ejecución de restauraciones en `RestoreExecutionOwnershipService` (con lock por conexión destino, vía `pg_try_advisory_lock(hashtextextended($1, 0))`).
+- El lock siempre se libera en un bloque `finally` (`pg_advisory_unlock`), incluso si el trabajo protegido lanza una excepción.
+- El ciclo de vida está cubierto por una suite de tests compartida, `apps/api/src/modules/scheduler-locks/scheduler-locks.spec.ts`, corrida contra el cronjob y el sweep de mantenimiento para mantener consistente el contrato adquirir → trabajar → liberar → manejo de errores en todos los puntos donde se usa.
 
-Esta limitación es aceptada conscientemente para la fase actual del proyecto (una sola réplica).
+No existe una clase `SchedulerLocksService` separada — es un patrón SQL repetido y deliberadamente testeado (`pg_try_advisory_lock` / `pg_advisory_unlock` crudo vía `DataSource`/`QueryRunner` de TypeORM), no una abstracción compartida. Si un tercer punto necesita la misma garantía, copiá el patrón y sumalo al spec compartido.
+
+**Efecto neto**: hoy podés correr más de una réplica de la API sin backups programados duplicados, sin sweeps de retención duplicados, y sin que dos réplicas restauren sobre la misma conexión al mismo tiempo.
 
 ---
 
-## Migración futura: BullMQ + Redis
+## Todavía en el roadmap: BullMQ + Redis
 
-Cuando se requiera escalar horizontalmente, la migración implica:
-
-### ¿Por qué BullMQ?
-
-- Las tareas entran a una **cola Redis** — solo un worker las procesa.
-- `BullMQ` garantiza "at-least-once" con locks distribuidos.
-- Soporta reintentos, delays, y visibilidad del estado desde una UI (`bull-board`).
-
-### Alcance del cambio
-
-El contrato público (`CronjobsController`, `CronjobsRepository`, `CronjobEntity`) **no cambia**. Solo cambia la capa de despacho interna de `CronjobsService`:
+Los advisory locks resuelven la *ejecución duplicada*, no la *semántica de cola*. No dan reintentos, delays, backoff, ni una UI de visibilidad (`bull-board`). Si eso se vuelve necesario, el camino de migración sigue siendo:
 
 ```
 ACTUAL
-CronjobsService → SchedulerRegistry → CronJob → BackupService.createBackup()
+CronjobsService → SchedulerRegistry → CronJob → (advisory lock) → BackupService.createBackup()
 
 FUTURO
-CronjobsService → BullMQ Queue → Worker → BackupService.createBackup()
+CronjobsService → BullMQ Queue → Worker → (advisory lock, si sigue haciendo falta) → BackupService.createBackup()
 ```
-
-### Pasos de migración
 
 1. Agregar Redis al stack de infraestructura (Docker Compose + K8s).
 2. Instalar `@nestjs/bullmq` y `bullmq`.
@@ -98,25 +90,18 @@ CronjobsService → BullMQ Queue → Worker → BackupService.createBackup()
 5. Eliminar `@nestjs/schedule` y `cron` si ya no se usan en otros módulos.
 6. Mantener la tabla `cronjobs` intacta — `cronExpression` se convierte en el patrón del job repetible de BullMQ.
 
-### Nueva infraestructura requerida
-
-```yaml
-# Kubernetes — agregar al namespace
-- Redis Deployment + Service (o Redis Cluster para HA)
-- Secret: REDIS_URL
-```
-
-```typescript
-// Ejemplo de definición futura (no implementar aún)
-BullModule.registerQueue({ name: 'backups' })
-BullModule.forRoot({ connection: { host, port } })
-```
+El contrato público (`CronjobsController`, `CronjobsRepository`, `CronjobEntity`) no cambiaría; solo la capa de despacho interna de `CronjobsService`.
 
 ---
 
-## Decisión de diseño
+## Decisiones de diseño
 
-> **Fecha**: 2026-05-06  
-> **Contexto**: El proyecto no está deployado aún. No existe infraestructura multi-réplica ni Redis.  
-> **Decisión**: Usar `@nestjs/schedule` para evitar agregar Redis como dependencia prematura.  
+> **Fecha**: 2026-05-06
+> **Contexto**: El proyecto no estaba deployado aún. No existía infraestructura multi-réplica ni Redis.
+> **Decisión**: Usar `@nestjs/schedule` para evitar agregar Redis como dependencia prematura.
 > **Trigger para revisar**: Cuando se detecten backups duplicados en producción o se planifique escalar la API a más de un pod.
+
+> **Fecha**: 2026-09-24
+> **Contexto**: El despliegue multi-réplica pasó de hipotético a planificado; la ejecución duplicada necesitaba una solución antes de que Redis se justificara.
+> **Decisión**: Agregar advisory locks de Postgres (`pg_try_advisory_lock` / `pg_advisory_unlock`) alrededor de la ejecución de cronjobs, el sweep de retención manual y la titularidad de ejecución de restauraciones — sin infraestructura nueva, reusa la base de datos del control plane que ya existe.
+> **Trigger para revisar**: Cuando se necesite semántica de cola (reintentos, delays, visibilidad de workers), no solo seguridad ante ejecución duplicada — eso sigue siendo la migración a BullMQ + Redis de arriba.
