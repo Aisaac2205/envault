@@ -1,0 +1,42 @@
+---
+import type { Locale } from '../../i18n/types';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'es' } = Astro.props;
+const isEn = locale === 'en';
+
+const title = isEn
+  ? 'Complete Traceability & Centralized Control'
+  : 'Trazabilidad Total y Control Centralizado';
+
+const subtitle = isEn
+  ? 'Real-time monitoring of every backup job, immutable audit trails, and restore drills ensuring zero data loss across all database clusters.'
+  : 'Monitoreo en tiempo real del estado de cada backup, logs de auditoría inmutables y simulaciones de restauración para garantizar cero pérdida de datos en todos tus clusters.';
+
+---
+
+<section id="architecture" class="py-24 px-6 max-w-7xl mx-auto font-sans" aria-labelledby="architecture-heading">
+  <div class="text-center max-w-3xl mx-auto mb-16">
+    <h2 id="architecture-heading" class="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-white mb-4">
+      {title}
+    </h2>
+    <p class="text-base text-zinc-400 leading-relaxed">
+      {subtitle}
+    </p>
+  </div>
+
+  {/* Dashboard screenshot, no chrome */}
+  <div class="relative rounded-2xl border border-white/10 overflow-hidden shadow-2xl mb-12">
+    <img
+      src="/dash.png"
+      alt={isEn ? "EnVault Management Live Dashboard with Traceability" : "Panel de Control en Vivo de EnVault Management con Trazabilidad"}
+      width="1600"
+      height="900"
+      class="w-full h-auto object-contain"
+      loading="lazy"
+    />
+  </div>
+</section>

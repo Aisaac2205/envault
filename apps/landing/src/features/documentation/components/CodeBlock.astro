@@ -1,0 +1,35 @@
+---
+import { Copy, Check } from '@phosphor-icons/react';
+import { highlight, TOKEN_CLASSES, type CodeLanguage } from '../lib/highlight';
+
+interface Props {
+  language: CodeLanguage;
+  code: string;
+  label?: string;
+  copyLabel: string;
+  copiedLabel: string;
+}
+
+const { language, code, label, copyLabel, copiedLabel } = Astro.props;
+const tokens = highlight(code, language);
+---
+
+<div class="rounded-xl border border-border bg-bg-subtle overflow-hidden" data-code-block data-code={code}>
+  <div class="flex items-center justify-end gap-2 border-b border-border px-3 py-1.5">
+    {label && <span class="mr-auto font-mono text-xs text-fg-subtle">{label}</span>}
+    <button
+      type="button"
+      data-copy-button
+      data-copy-label={copyLabel}
+      data-copied-label={copiedLabel}
+      aria-label={copyLabel}
+      class="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-elevated px-2 py-1 text-[11px] font-medium text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <span data-icon-copy aria-hidden="true"><Copy size={14} /></span>
+      <span data-icon-check aria-hidden="true" hidden><Check size={14} weight="bold" /></span>
+      <span data-copy-label-text class="hidden sm:inline">{copyLabel}</span>
+      <span class="sr-only" data-copy-status aria-live="polite"></span>
+    </button>
+  </div>
+  <pre class="overflow-x-auto p-4 font-mono text-xs sm:text-sm leading-relaxed"><code>{tokens.map((token) => <span class={TOKEN_CLASSES[token.kind]}>{token.value}</span>)}</code></pre>
+</div>

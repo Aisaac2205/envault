@@ -1,0 +1,123 @@
+---
+import type { DocBlock } from '../content/types';
+import CodeBlock from './CodeBlock.astro';
+import CodeGroup from './CodeGroup.astro';
+import DocsBlocks from './DocsBlocks.astro';
+
+interface Props {
+  blocks: DocBlock[];
+  copyLabel: string;
+  copiedLabel: string;
+}
+
+const { blocks, copyLabel, copiedLabel } = Astro.props;
+
+const calloutClasses = {
+  info: 'border-border bg-bg-elevated text-fg-muted',
+  warning: 'border-warn/30 bg-warn/[0.06] text-fg-muted',
+};
+---
+
+{
+  blocks.map((block) => (
+    <Fragment>
+      {block.type === 'paragraph' && (
+        <p class="text-sm sm:text-base text-fg-muted leading-relaxed">{block.text}</p>
+      )}
+
+      {block.type === 'subheading' && (
+        <h3 class="text-base sm:text-lg font-semibold text-fg pt-2">{block.text}</h3>
+      )}
+
+      {block.type === 'list' && !block.ordered && (
+        <ul class="list-disc space-y-2 pl-5 text-sm sm:text-base text-fg-muted leading-relaxed">
+          {block.items.map((item) => (
+            <li>{item}</li>
+          ))}
+        </ul>
+      )}
+
+      {block.type === 'list' && block.ordered && (
+        <ol class="list-decimal space-y-2 pl-5 text-sm sm:text-base text-fg-muted leading-relaxed">
+          {block.items.map((item) => (
+            <li>{item}</li>
+          ))}
+        </ol>
+      )}
+
+      {block.type === 'code' && (
+        <CodeBlock
+          language={block.language}
+          code={block.code}
+          label={block.label}
+          copyLabel={copyLabel}
+          copiedLabel={copiedLabel}
+        />
+      )}
+
+      {block.type === 'codeGroup' && (
+        <CodeGroup
+          label={block.label}
+          variants={block.variants}
+          copyLabel={copyLabel}
+          copiedLabel={copiedLabel}
+        />
+      )}
+
+      {block.type === 'table' && (
+        <div class="overflow-x-auto rounded-xl border border-border">
+          <table class="w-full text-left text-sm sm:text-base">
+            <thead>
+              <tr class="border-b border-border bg-bg-elevated">
+                {block.headers.map((header) => (
+                  <th class="px-4 py-2.5 font-semibold text-fg">{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row) => (
+                <tr class="border-b border-border last:border-b-0">
+                  {row.map((cell) => (
+                    <td class="px-4 py-2.5 align-top text-fg-muted">{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {block.type === 'callout' && (
+        <div class={`rounded-xl border px-4 py-3 text-sm sm:text-base leading-relaxed ${calloutClasses[block.tone]}`}>
+          {block.text}
+        </div>
+      )}
+
+      {block.type === 'logoRow' && (
+        <div class="flex flex-wrap gap-3">
+          {block.items.map((item) => (
+            <div class="flex items-center gap-2 rounded-xl border border-border bg-bg-elevated px-3 py-2">
+              <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary p-1">
+                <img src={item.src} alt={item.alt} width="16" height="16" class="size-4" />
+              </span>
+              <span class="text-sm font-medium text-fg">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {block.type === 'faq' && (
+        <dl class="space-y-6">
+          {block.items.map((item) => (
+            <div>
+              <dt class="text-base font-semibold text-fg">{item.question}</dt>
+              <dd class="mt-2 space-y-3">
+                <DocsBlocks blocks={item.answer} copyLabel={copyLabel} copiedLabel={copiedLabel} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </Fragment>
+  ))
+}

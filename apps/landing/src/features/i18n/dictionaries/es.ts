@@ -1,0 +1,117 @@
+import type { Dictionary } from '../types';
+
+export const es: Dictionary = {
+  nav: {
+    gettingStarted: 'Inicio',
+    features: 'Capacidades',
+    architecture: 'Arquitectura',
+    documentation: 'Documentación',
+    signIn: 'Iniciar Sesión',
+    signUp: 'Desplegar',
+  },
+  hero: {
+    badgeText: 'EnVault Management v2.4 · Control Plane en PostgreSQL 16+ & Locks Distribuidos',
+    badgeLink: 'Ver arquitectura',
+    headingPart1: 'Control centralizado de bases de datos',
+    headingPart2: '& backups automatizados',
+    subtitle:
+      'Registra conexiones PostgreSQL y MySQL, programa dumps automáticos sin fallos de concurrencia, restaura con verificación de integridad y monitorea jobs en vivo mediante Server-Sent Events (SSE).',
+    ctaPrimary: 'Comenzar despliegue',
+    ctaSecondary: 'Explorar Documentación',
+    canvasTitle: 'envault-management, ink-garden-ascii.canvas',
+    canvasStatus: 'ONLINE · 21ST.DEV ENGINE · 60 FPS',
+    stats: {
+      postgresVersion: 'PostgreSQL 16+',
+      targetDbs: 'PostgreSQL & MySQL',
+      storageSync: 'Cloudflare R2 & S3',
+      telemetry: 'SSE en Tiempo Real',
+    },
+  },
+  dashboard: {
+    navDashboard: 'Dashboard',
+    navConnections: 'Conexiones',
+    navDumps: 'Dumps & Backups',
+    navCronjobs: 'Cronjobs Programados',
+    navRestore: 'Restauración',
+    navAudit: 'Auditoría',
+    navSettings: 'Configuración',
+    toggleSidebar: 'Alternar barra lateral',
+    accountRole: 'Administrador',
+    headerSubtitle: 'Monitoreo de estado de conexiones, retención de almacenamiento y telemetría de jobs.',
+    periodLabel: 'Período',
+    kpiDumpsCount: 'Dumps generados',
+    kpiStorageUsed: 'Almacenamiento en R2/S3',
+    kpiRestoreSuccess: 'Tasa de éxito de restauración',
+    kpiActiveCrons: 'Cronjobs activos',
+    recentDumpsTitle: 'Actividad de dumps recientes',
+    statusSuccess: 'Completado',
+    statusFailed: 'Fallido',
+    statusRunning: 'En ejecución',
+    statusPending: 'Pendiente',
+  },
+  features: {
+    sectionBadge: 'Capacidades Industriales',
+    title: 'Infraestructura de datos resiliente para equipos de DevOps y SRE',
+    subtitle:
+      'Elimina scripts bash frágiles y crontabs sin supervisión. EnVault Management orquesta el ciclo de vida completo de tus respaldos con consistencia transaccional y control de accesos.',
+    feature1Title: 'Backups programados, seguros entre réplicas',
+    feature1Desc:
+      'Expresiones cron con soporte de zona horaria para frecuencias horaria, diaria, semanal o personalizada, con @nestjs/schedule. Cada ejecución adquiere un advisory lock de PostgreSQL antes de correr, así ninguna réplica duplica un backup.',
+    feature2Title: 'Restauración segura y Point-in-Time Recovery',
+    feature2Desc:
+      'Restaura dumps hacia bases de datos nuevas o existentes con validación previa de conectividad, comprobación de compatibilidad de esquemas y dry-run de seguridad.',
+    feature3Title: 'Telemetría de jobs en vivo vía SSE',
+    feature3Desc:
+      'Supervisa la salida de streaming de pg_dump y mysqldump en tiempo real sin saturar el backend con polling. Recibe duración y alertas instantáneas.',
+    feature4Title: 'Backups en streaming hacia Cloudflare R2',
+    feature4Desc:
+      'Streaming multipart directo hacia Cloudflare R2 (API compatible con S3), ventanas de retención configurables y auto-pruning de dumps huérfanos.',
+    feature5Title: 'Registro de auditoría inmutable y control de acceso',
+    feature5Desc:
+      'Cada backup, descarga, cambio de configuración y restauración queda registrado en un log que un trigger de PostgreSQL bloquea de ser modificado o borrado. El acceso sigue dos roles: admin y user.',
+    codeCardLabel: 'Ejemplo de programación cron',
+    codeCardConfidence: 'Lock distribuido activo',
+    cardStatusApproved: 'Completado',
+    cardIngestionSpeedLabel: 'Entrega',
+    cardRestoreRequirements: 'Compatibilidad de esquema',
+    cardStorageCoverage: 'PostgreSQL y MySQL → Cloudflare R2',
+  },
+  docs: {
+    sectionBadge: 'Despliegue Rápido',
+    title: 'Listo para correr en tu propia infraestructura',
+    subtitle:
+      'Despliega EnVault Management en minutos mediante Docker Compose o Railway. Control total sobre tus datos.',
+    tabDocker: 'Docker Compose',
+    tabApiDump: 'API: Ejecutar Dump',
+    tabApiRestore: 'API: Restaurar Base de Datos',
+    copyCode: 'Copiar código',
+    copied: '¡Copiado!',
+  },
+  footer: {
+    tagline: 'Plataforma centralizada de gestión de bases de datos, backups automatizados y restauración segura.',
+    systemsOperational: 'Todos los servicios operacionales',
+    product: 'Producto',
+    resources: 'Recursos',
+    company: 'Plataforma',
+    legal: 'Legal',
+    rightsReserved: 'Todos los derechos reservados.',
+    productLinks: {
+      backups: 'Backups & Dumps',
+      restore: 'Restauración Segura',
+      cronjobs: 'Backups Programados',
+      auditLogs: 'Registro de Auditoría',
+    },
+    resourceLinks: {
+      docs: 'Documentación Oficial',
+      apiKeys: 'Endpoints de la API REST',
+      dockerGuide: 'Guía de Docker Compose',
+      githubRepo: 'Repositorio de GitHub',
+    },
+    companyLinks: {
+      architecture: 'Arquitectura del Sistema',
+      terms: 'Términos de Servicio',
+      privacy: 'Política de Privacidad',
+      security: 'Modelo de Seguridad',
+    },
+  },
+};

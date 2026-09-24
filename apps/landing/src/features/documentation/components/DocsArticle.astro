@@ -1,0 +1,36 @@
+---
+import type { DocContent } from '../content/types';
+import DocsBlocks from './DocsBlocks.astro';
+import DocsInteractions from './DocsInteractions.astro';
+
+interface Props {
+  content: DocContent;
+}
+
+const { content } = Astro.props;
+---
+
+<DocsInteractions />
+
+<article class="space-y-14 max-w-3xl text-fg-muted">
+  <section class="space-y-3 pb-8 border-b border-border">
+    <div class="inline-flex items-center gap-2 text-sm text-fg-muted">
+      <span>Docs</span>
+      <span>/</span>
+      <span class="text-fg">{content.breadcrumbLabel}</span>
+    </div>
+    <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight text-fg">{content.heroTitle}</h1>
+    <p class="text-base sm:text-lg text-fg-muted leading-relaxed">{content.heroSubtitle}</p>
+  </section>
+
+  {
+    content.sections.map((section) => (
+      <section id={section.id} class="space-y-4 scroll-mt-24">
+        <h2 class="text-2xl font-semibold tracking-tight text-fg">{section.title}</h2>
+        <div class="space-y-4">
+          <DocsBlocks blocks={section.blocks} copyLabel={content.copyCodeLabel} copiedLabel={content.copiedLabel} />
+        </div>
+      </section>
+    ))
+  }
+</article>

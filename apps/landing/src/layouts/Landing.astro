@@ -1,0 +1,111 @@
+---
+import "../styles/global.css";
+import type { Locale } from "../features/i18n/types";
+
+interface Props {
+  title?: string;
+  description?: string;
+  locale?: Locale;
+}
+
+const {
+  locale = "es",
+  title = locale === "es"
+    ? "EnVault Management — Control Centralizado de Bases de Datos & Backups Automatizados"
+    : "EnVault Management — Centralized Database Control & Automated Dumps",
+  description = locale === "es"
+    ? "Plataforma industrial para registrar conexiones PostgreSQL y MySQL, programar backups sin fallos de concurrencia, restaurar con verificación de integridad y monitorear jobs en vivo vía SSE."
+    : "Industrial control plane to register PostgreSQL and MySQL connections, schedule automated dumps without race conditions, restore safely, and stream live telemetry via SSE.",
+} = Astro.props;
+
+const isEn = locale === "en";
+const site = Astro.site ?? new URL("http://localhost:4321");
+const canonicalUrl = new URL(Astro.url.pathname, site);
+const siteUrl = site.toString().replace(/\/$/, "");
+---
+
+<!doctype html>
+<html lang={locale} class="dark scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+
+    <!-- Canonical and Alternate Languages (i18n SEO) -->
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="alternate" hreflang="es" href={`${siteUrl}/`} />
+    <link rel="alternate" hreflang="en" href={`${siteUrl}/en`} />
+    <link rel="alternate" hreflang="x-default" href={`${siteUrl}/`} />
+
+    <!-- SEO Meta Tags -->
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#09090b" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/architecture-preview.png" />
+    <meta property="og:locale" content={isEn ? "en_US" : "es_ES"} />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalUrl} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content="/architecture-preview.png" />
+
+    <!-- Google Fonts: Geist Sans & Geist Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json" is:inline define:vars={{ title, description, siteUrl }}>
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "EnVault Management",
+            "url": siteUrl,
+            "logo": siteUrl + "/favicon.svg",
+            "description": "Centralized database management, automated backups, and point-in-time recovery control plane."
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "EnVault Management",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "All",
+            "description": description
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body class="bg-black text-white min-h-screen selection:bg-white selection:text-black font-sans antialiased overflow-x-hidden">
+    <!-- Accessibility Skip Link -->
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded-md focus:font-semibold focus:shadow-xl"
+    >
+      {isEn ? "Skip to main content" : "Saltar al contenido principal"}
+    </a>
+
+    <!-- Screen reader & search engine headline -->
+    <h1 class="sr-only">
+      {isEn ? "EnVault Management — Centralized Database Control & Automated Dumps" : "EnVault Management — Control Centralizado de Bases de Datos & Backups Automatizados"}
+    </h1>
+
+    <div class="relative min-h-screen flex flex-col justify-between">
+      <slot />
+    </div>
+  </body>
+</html>

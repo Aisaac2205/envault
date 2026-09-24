@@ -1,0 +1,117 @@
+import type { Dictionary } from '../types';
+
+export const en: Dictionary = {
+  nav: {
+    gettingStarted: 'Home',
+    features: 'Features',
+    architecture: 'Architecture',
+    documentation: 'Documentation',
+    signIn: 'Sign In',
+    signUp: 'Deploy',
+  },
+  hero: {
+    badgeText: 'EnVault Management v2.4 · PostgreSQL 16+ Control Plane & Distributed Locks',
+    badgeLink: 'View architecture',
+    headingPart1: 'Centralized database control',
+    headingPart2: '& automated backup platform',
+    subtitle:
+      'Register PostgreSQL and MySQL connections, schedule automated dumps without race conditions, perform verified point-in-time restores, and stream live job telemetry via Server-Sent Events (SSE).',
+    ctaPrimary: 'Start Deployment',
+    ctaSecondary: 'Explore Documentation',
+    canvasTitle: 'envault-management, ink-garden-ascii.canvas',
+    canvasStatus: 'ONLINE · 21ST.DEV ENGINE · 60 FPS',
+    stats: {
+      postgresVersion: 'PostgreSQL 16+',
+      targetDbs: 'PostgreSQL & MySQL',
+      storageSync: 'Cloudflare R2 & S3',
+      telemetry: 'Real-Time SSE Streaming',
+    },
+  },
+  dashboard: {
+    navDashboard: 'Dashboard',
+    navConnections: 'Connections',
+    navDumps: 'Dumps & Backups',
+    navCronjobs: 'Scheduled Cronjobs',
+    navRestore: 'Restore',
+    navAudit: 'Audit Log',
+    navSettings: 'Settings',
+    toggleSidebar: 'Toggle sidebar',
+    accountRole: 'Administrator',
+    headerSubtitle: 'Monitor connection health, storage retention policies, and real-time job execution telemetry.',
+    periodLabel: 'Period',
+    kpiDumpsCount: 'Dumps Generated',
+    kpiStorageUsed: 'R2 / S3 Storage Used',
+    kpiRestoreSuccess: 'Restore Success Rate',
+    kpiActiveCrons: 'Active Cronjobs',
+    recentDumpsTitle: 'Recent dump activity',
+    statusSuccess: 'Completed',
+    statusFailed: 'Failed',
+    statusRunning: 'Running',
+    statusPending: 'Pending',
+  },
+  features: {
+    sectionBadge: 'Industrial Capabilities',
+    title: 'Resilient database operations engineered for DevOps and SRE teams',
+    subtitle:
+      'Eliminate brittle bash scripts and unmonitored server crontabs. EnVault Management orchestrates the entire database lifecycle with transactional consistency and zero data loss.',
+    feature1Title: 'Scheduled backups, safe across replicas',
+    feature1Desc:
+      'Cron expressions with timezone support for hourly, daily, weekly, or custom schedules, powered by @nestjs/schedule. Each run acquires a PostgreSQL advisory lock before executing, so multiple replicas never duplicate a backup.',
+    feature2Title: 'Safe restore & point-in-time recovery',
+    feature2Desc:
+      'Restore dumps to new or existing databases with pre-flight connectivity verification, schema compatibility checks, and non-destructive dry runs.',
+    feature3Title: 'Live job telemetry streamed via SSE',
+    feature3Desc:
+      'Stream raw stdout and progress metrics from pg_dump and mysqldump directly to your browser without backend polling overload. Inspect duration and error logs instantly.',
+    feature4Title: 'Streaming backups to Cloudflare R2',
+    feature4Desc:
+      'Multipart streaming directly to Cloudflare R2 (S3-compatible API), configurable retention windows, and automatic pruning of orphaned dumps.',
+    feature5Title: 'Immutable audit logging & role-based access',
+    feature5Desc:
+      'Every dump trigger, download, configuration change, and restore attempt is written to a log a PostgreSQL trigger blocks from being updated or deleted. Access follows two roles: admin and user.',
+    codeCardLabel: 'Cron schedule example',
+    codeCardConfidence: 'Distributed lock acquired',
+    cardStatusApproved: 'Completed',
+    cardIngestionSpeedLabel: 'Delivery',
+    cardRestoreRequirements: 'Schema compatibility',
+    cardStorageCoverage: 'PostgreSQL & MySQL → Cloudflare R2',
+  },
+  docs: {
+    sectionBadge: 'Rapid Deployment',
+    title: 'Ready to run in your private infrastructure',
+    subtitle:
+      'Deploy EnVault Management in minutes via Docker Compose or Railway. Keep complete sovereignty over your database credentials and dumps.',
+    tabDocker: 'Docker Compose',
+    tabApiDump: 'API: Trigger Backup',
+    tabApiRestore: 'API: Restore Database',
+    copyCode: 'Copy code',
+    copied: 'Copied!',
+  },
+  footer: {
+    tagline: 'Centralized database management, automated backup pipelines, and verified disaster recovery platform.',
+    systemsOperational: 'All systems operational',
+    product: 'Product',
+    resources: 'Resources',
+    company: 'Platform',
+    legal: 'Legal',
+    rightsReserved: 'All rights reserved.',
+    productLinks: {
+      backups: 'Backups & Dumps',
+      restore: 'Safe Recovery',
+      cronjobs: 'Scheduled Backups',
+      auditLogs: 'Audit Registry',
+    },
+    resourceLinks: {
+      docs: 'Documentation',
+      apiKeys: 'REST API Endpoints',
+      dockerGuide: 'Docker Compose Guide',
+      githubRepo: 'GitHub Repository',
+    },
+    companyLinks: {
+      architecture: 'System Architecture',
+      terms: 'Terms of Service',
+      privacy: 'Privacy Policy',
+      security: 'Security Model',
+    },
+  },
+};

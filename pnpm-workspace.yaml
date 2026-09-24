@@ -14,4 +14,4 @@ overrides:
   nanoid: 3.3.18
   postcss: 8.5.26
   undici: 7.29.0
-  vite: 7.3.6
+  '@vaultly-control/web>vite': 7.3.6

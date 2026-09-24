@@ -1,0 +1,56 @@
+---
+import Landing from "../layouts/Landing.astro";
+import Footer from "../features/navigation/components/Footer.astro";
+import SiteHeader from "../features/navigation/components/SiteHeader.astro";
+
+const locale = "es";
+---
+
+<Landing locale={locale} title="Política de Privacidad — EnVault Management" description="Política de privacidad y protección de credenciales y respaldos de bases de datos en EnVault Management.">
+  <SiteHeader locale={locale} altHref="/en/privacy" />
+
+  <main id="main-content" class="max-w-4xl mx-auto px-6 pt-28 pb-16 flex-grow font-sans text-zinc-300 leading-relaxed space-y-12">
+    <header class="space-y-3 pb-8 border-b border-white/[0.08]">
+      <p class="text-xs text-zinc-500 uppercase tracking-wider font-mono">Última actualización: 24 de septiembre de 2026</p>
+      <h1 class="text-3xl sm:text-5xl font-semibold tracking-tight text-white">Política de Privacidad</h1>
+      <p class="text-base text-zinc-400">
+        Cómo protegemos tus credenciales de bases de datos, metadatos de respaldos y registros de auditoría en EnVault Management.
+      </p>
+    </header>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">1. Datos y Credenciales de Bases de Datos</h2>
+      <p class="text-sm text-zinc-400">
+        EnVault Management está diseñado con un modelo de seguridad zero-trust para entornos de producción:
+      </p>
+      <ul class="space-y-2 text-xs text-zinc-300 list-disc pl-5 font-mono">
+        <li><strong>Credenciales de Conexión</strong>: Las contraseñas y URIs de bases de datos se cifran con AES-256-GCM antes de persistirse en la base de datos de control.</li>
+        <li><strong>Metadatos de Dumps</strong>: Registramos tamaños de archivo y marcas de tiempo de ejecución.</li>
+        <li><strong>Trazabilidad y Auditoría</strong>: Almacenamos registros inmutables de operaciones (usuario, rol, IP de origen, fecha y tipo de acción realizada).</li>
+      </ul>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">2. Soberanía de los Datos</h2>
+      <p class="text-sm text-zinc-400">
+        EnVault Management no transfiere tus dumps a servidores de terceros sin tu explícita configuración. Todos los respaldos se envían directamente a tus propios buckets de Cloudflare R2 o Amazon S3 o a almacenamiento local configurado en tu infraestructura.
+      </p>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">3. Cifrado y Tráfico de Red</h2>
+      <p class="text-sm text-zinc-400">
+        Todas las conexiones entre clientes, la API NestJS y los servidores de bases de datos objetivo requieren <strong>TLS 1.3 / SSL estricto</strong>. El streaming de volcados de datos utiliza tuberías directas en memoria sin escritura temporal sin cifrar en disco.
+      </p>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">4. Retención y Políticas de Purga Automática</h2>
+      <p class="text-sm text-zinc-400">
+        Puedes configurar ventanas de retención personalizadas (por ejemplo, 7, 30 o 90 días). Los jobs de limpieza y auto-pruning eliminan automáticamente los volcados obsoletos de los buckets de almacenamiento según la política establecida.
+      </p>
+    </section>
+  </main>
+
+  <Footer locale={locale} />
+</Landing>

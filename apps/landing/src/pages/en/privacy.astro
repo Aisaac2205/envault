@@ -1,0 +1,56 @@
+---
+import Landing from "../../layouts/Landing.astro";
+import Footer from "../../features/navigation/components/Footer.astro";
+import SiteHeader from "../../features/navigation/components/SiteHeader.astro";
+
+const locale = "en";
+---
+
+<Landing locale={locale} title="Privacy Policy — EnVault Management" description="Privacy and data protection policy for database credentials and backups in EnVault Management.">
+  <SiteHeader locale={locale} altHref="/privacy" />
+
+  <main id="main-content" class="max-w-4xl mx-auto px-6 pt-28 pb-16 flex-grow font-sans text-zinc-300 leading-relaxed space-y-12">
+    <header class="space-y-3 pb-8 border-b border-white/[0.08]">
+      <p class="text-xs text-zinc-500 uppercase tracking-wider font-mono">Last updated: September 24, 2026</p>
+      <h1 class="text-3xl sm:text-5xl font-semibold tracking-tight text-white">Privacy Policy</h1>
+      <p class="text-base text-zinc-400">
+        How we protect your database connection credentials, backup metadata, and audit records in EnVault Management.
+      </p>
+    </header>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">1. Database Connection Data & Credentials</h2>
+      <p class="text-sm text-zinc-400">
+        EnVault Management operates on a zero-trust architecture designed for mission-critical infrastructure:
+      </p>
+      <ul class="space-y-2 text-xs text-zinc-300 list-disc pl-5 font-mono">
+        <li><strong>Connection Credentials</strong>: Passwords and connection URIs are encrypted using AES-256-GCM before persistence in the PostgreSQL 16 control database.</li>
+        <li><strong>Dump Metadata</strong>: We record file sizes and execution timestamps.</li>
+        <li><strong>Audit Logging</strong>: Immutable audit logs capture actor ID, role, originating IP address, timestamp, and operation payload diffs.</li>
+      </ul>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">2. Data Sovereignty</h2>
+      <p class="text-sm text-zinc-400">
+        EnVault Management does not transfer database dumps to external third parties. All backups stream directly to your configured Cloudflare R2 / AWS S3 buckets or local infrastructure volumes.
+      </p>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">3. Encryption & Network Security</h2>
+      <p class="text-sm text-zinc-400">
+        All API communication and database target connections require <strong>TLS 1.3 / strict SSL</strong>. Dump streaming occurs in-memory via buffered streaming pipelines without temporary unencrypted disk writes.
+      </p>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">4. Retention & Automated Pruning</h2>
+      <p class="text-sm text-zinc-400">
+        Configurable retention windows (e.g. 7, 30, or 90 days) allow automated background cleanup jobs to prune orphaned and expired dumps, optimizing object storage costs.
+      </p>
+    </section>
+  </main>
+
+  <Footer locale={locale} />
+</Landing>

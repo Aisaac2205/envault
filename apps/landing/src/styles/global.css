@@ -1,0 +1,280 @@
+@import "tailwindcss";
+
+/* ─── EnVault Management — Noir & Electric Blue Theme ────────────────────
+   Four background steps with perceptible gaps, deepest first:
+   subtle (recessed wells such as code bodies) < bg (page) < elevated
+   (cards, toolbars) < hover. Pure black is the recess, never the page
+   floor: a black page leaves no room to sink a surface below it. */
+
+:root {
+  /* Backgrounds — deepest to lightest */
+  --landing-bg-subtle:     #000000;
+  --landing-bg:            #09090b;
+  --landing-bg-elevated:   #18181b;
+  --landing-bg-hover:      #27272a;
+
+  /* Foregrounds */
+  --landing-fg:            #fafafa;
+  --landing-fg-muted:      #a1a1aa;
+  --landing-fg-subtle:     #8a8a93;
+
+  /* Brand Primary: off-white */
+  --primary:               #fafafa;
+  --primary-hover:         #e4e4e7;
+  --primary-fg:            #09090b;
+
+  /* Semantic status (functional only, never decorative) */
+  --status-pass:           #10b981;
+  --status-fail:           #ef4444;
+  --status-warn:           #f59e0b;
+  --status-running:        #3b82f6;
+
+  /* Borders: ultra-crisp subtle linear lines */
+  --landing-border:        rgba(255, 255, 255, 0.08);
+  --landing-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Syntax highlighting — restrained palette for the dark code blocks */
+  --code-plain:       #e4e4e7;
+  --code-comment:     #71717a;
+  --code-keyword:     #a5b4fc;
+  --code-string:      #86efac;
+  --code-number:      #fcd34d;
+  --code-property:    #7dd3fc;
+  --code-punctuation: #a1a1aa;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+/* ─── Product app tokens (dashboard preview only) ───────────────────────
+   Mirror of apps/web/src/app/globals.css. The landing page is dark; the
+   product shell rendered inside the window frame is light, so the app
+   palette is namespaced under `app-*` and never leaks into landing UI. */
+
+:root {
+  --app-bg:                oklch(0.978 0.002 85);
+  --app-surface:           oklch(1.000 0.000 0);
+  --app-surface-raised:    oklch(0.995 0.002 85);
+  --app-surface-hover:     oklch(0.930 0.004 85);
+
+  --app-sidebar:           oklch(0.950 0.003 85);
+  --app-sidebar-hover:     oklch(0.920 0.004 85);
+  --app-sidebar-active:    oklch(0.995 0.001 85);
+
+  --app-fg:                oklch(0.185 0.004 85);
+  --app-fg-muted:          oklch(0.475 0.008 85);
+  --app-fg-sidebar:        oklch(0.205 0.004 85);
+  --app-fg-sidebar-muted:  oklch(0.465 0.008 85);
+
+  --app-border:            oklch(0.890 0.004 85);
+  --app-border-strong:     oklch(0.820 0.006 85);
+  --app-border-sidebar:    oklch(0.865 0.005 85);
+
+  --app-primary:           oklch(0.185 0.004 85);
+  --app-primary-hover:     oklch(0.290 0.006 85);
+  --app-primary-fg:        oklch(0.990 0.000 0);
+
+  --app-accent-ai:         oklch(0.405 0.008 85);
+  --app-accent-ai-bg:      oklch(0.940 0.003 85);
+
+  --app-status-pass:       oklch(0.45 0.15 145);
+  --app-status-pass-bg:    oklch(0.95 0.05 145);
+  --app-status-fail:       oklch(0.45 0.20 25);
+  --app-status-fail-bg:    oklch(0.96 0.05 25);
+  --app-status-blocked:    oklch(0.55 0.18 50);
+  --app-status-blocked-bg: oklch(0.97 0.04 50);
+  --app-status-skip:       oklch(0.55 0.00 0);
+  --app-status-skip-bg:    oklch(0.94 0.00 0);
+  --app-status-running:    oklch(0.50 0.18 240);
+  --app-status-running-bg: oklch(0.95 0.05 240);
+  --app-status-warn:       oklch(0.53 0.15 80);
+  --app-status-warn-bg:    oklch(0.97 0.05 80);
+
+  --app-heatmap-l0:        oklch(0.930 0.004 85);
+  --app-heatmap-l1:        oklch(0.850 0.090 145);
+  --app-heatmap-l2:        oklch(0.700 0.150 145);
+  --app-heatmap-l3:        oklch(0.560 0.180 145);
+  --app-heatmap-l4:        oklch(0.440 0.200 145);
+
+  --qb-chart-line:    var(--app-primary);
+  --qb-chart-grid:    var(--app-border);
+  --qb-chart-pass:    oklch(0.62 0.16 145);
+  --qb-chart-fail:    oklch(0.42 0.19 25);
+  --qb-chart-skip:    oklch(0.62 0.00 0);
+  --qb-chart-warn:    var(--app-status-warn);
+  --qb-chart-compare: var(--app-fg-muted);
+}
+
+@theme inline {
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg:          var(--landing-bg);
+  --color-bg-elevated: var(--landing-bg-elevated);
+  --color-bg-hover:    var(--landing-bg-hover);
+  --color-bg-subtle:   var(--landing-bg-subtle);
+
+  --color-fg:          var(--landing-fg);
+  --color-fg-muted:    var(--landing-fg-muted);
+  --color-fg-subtle:   var(--landing-fg-subtle);
+
+  --color-primary:       var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg:    var(--primary-fg);
+
+  --color-pass:        var(--status-pass);
+  --color-fail:        var(--status-fail);
+  --color-warn:        var(--status-warn);
+  --color-running:     var(--status-running);
+
+  --color-code-plain:       var(--code-plain);
+  --color-code-comment:     var(--code-comment);
+  --color-code-keyword:     var(--code-keyword);
+  --color-code-string:      var(--code-string);
+  --color-code-number:      var(--code-number);
+  --color-code-property:    var(--code-property);
+  --color-code-punctuation: var(--code-punctuation);
+
+  --color-border:        var(--landing-border);
+  --color-border-strong: var(--landing-border-strong);
+
+  /* Product app palette — `bg-app-surface`, `text-app-muted`, … */
+  --color-app-canvas:          var(--app-bg);
+  --color-app-canvas-hover:    var(--app-surface-hover);
+  --color-app-surface:         var(--app-surface);
+  --color-app-surface-raised:  var(--app-surface-raised);
+  --color-app-surface-hover:   var(--app-surface-hover);
+
+  --color-app-sidebar:         var(--app-sidebar);
+  --color-app-sidebar-hover:   var(--app-sidebar-hover);
+  --color-app-sidebar-active:  var(--app-sidebar-active);
+
+  --color-app-default:         var(--app-fg);
+  --color-app-muted:           var(--app-fg-muted);
+  --color-app-sidebar-fg:      var(--app-fg-sidebar);
+  --color-app-sidebar-fg-muted: var(--app-fg-sidebar-muted);
+
+  --color-app-border:          var(--app-border);
+  --color-app-border-strong:   var(--app-border-strong);
+  --color-app-border-sidebar:  var(--app-border-sidebar);
+
+  --color-app-primary:         var(--app-primary);
+  --color-app-primary-hover:   var(--app-primary-hover);
+  --color-app-primary-fg:      var(--app-primary-fg);
+
+  --color-app-ai:              var(--app-accent-ai);
+  --color-app-ai-bg:           var(--app-accent-ai-bg);
+
+  --color-app-pass:            var(--app-status-pass);
+  --color-app-pass-bg:         var(--app-status-pass-bg);
+  --color-app-fail:            var(--app-status-fail);
+  --color-app-fail-bg:         var(--app-status-fail-bg);
+  --color-app-blocked:         var(--app-status-blocked);
+  --color-app-blocked-bg:      var(--app-status-blocked-bg);
+  --color-app-skip:            var(--app-status-skip);
+  --color-app-skip-bg:         var(--app-status-skip-bg);
+  --color-app-running:         var(--app-status-running);
+  --color-app-running-bg:      var(--app-status-running-bg);
+  --color-app-warn:            var(--app-status-warn);
+  --color-app-warn-bg:         var(--app-status-warn-bg);
+
+  --shadow-app-card:           0 1px 1px 0 oklch(0.185 0.004 85 / 0.025);
+  --shadow-app-pop:            0 4px 12px -2px oklch(0.12 0 0 / 0.08), 0 2px 4px -2px oklch(0.12 0 0 / 0.04);
+
+  /* @qably/ui contract, bound to the app-* mirror so the shared dashboard
+     blocks render the product palette inside the dark landing. */
+  --color-qb-canvas:          var(--app-bg);
+  --color-qb-canvas-hover:    var(--app-surface-hover);
+  --color-qb-surface:         var(--app-surface);
+  --color-qb-surface-raised:  var(--app-surface-raised);
+  --color-qb-fg:              var(--app-fg);
+  --color-qb-muted:           var(--app-fg-muted);
+  --color-qb-border:          var(--app-border);
+  --color-qb-border-strong:   var(--app-border-strong);
+  --color-qb-primary:         var(--app-primary);
+  --color-qb-primary-hover:   var(--app-primary-hover);
+  --color-qb-primary-fg:      var(--app-primary-fg);
+  --color-qb-ai:              var(--app-accent-ai);
+  --color-qb-ai-bg:           var(--app-accent-ai-bg);
+  --color-qb-pass:            var(--app-status-pass);
+  --color-qb-pass-bg:         var(--app-status-pass-bg);
+  --color-qb-fail:            var(--app-status-fail);
+  --color-qb-fail-bg:         var(--app-status-fail-bg);
+  --color-qb-blocked:         var(--app-status-blocked);
+  --color-qb-blocked-bg:      var(--app-status-blocked-bg);
+  --color-qb-skip:            var(--app-status-skip);
+  --color-qb-skip-bg:         var(--app-status-skip-bg);
+  --color-qb-running:         var(--app-status-running);
+  --color-qb-running-bg:      var(--app-status-running-bg);
+  --color-qb-warn:            var(--app-status-warn);
+  --color-qb-warn-bg:         var(--app-status-warn-bg);
+  --color-qb-heatmap-l0:      var(--app-heatmap-l0);
+  --color-qb-heatmap-l1:      var(--app-heatmap-l1);
+  --color-qb-heatmap-l2:      var(--app-heatmap-l2);
+  --color-qb-heatmap-l3:      var(--app-heatmap-l3);
+  --color-qb-heatmap-l4:      var(--app-heatmap-l4);
+  --shadow-qb-card:           var(--shadow-app-card);
+  --shadow-qb-pop:            var(--shadow-app-pop);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+  background-color: var(--landing-bg);
+  color: var(--landing-fg);
+}
+
+body {
+  margin: 0;
+  background-color: var(--landing-bg);
+  color: var(--landing-fg);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.015em;
+}
+
+::selection {
+  background-color: var(--landing-fg);
+  color: var(--landing-bg);
+}
+
+:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

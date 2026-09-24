@@ -1,0 +1,157 @@
+---
+---
+
+<script>
+  function setCopied(button: HTMLElement, copied: boolean): void {
+    const iconCopy = button.querySelector<HTMLElement>('[data-icon-copy]');
+    const iconCheck = button.querySelector<HTMLElement>('[data-icon-check]');
+    const labelText = button.querySelector<HTMLElement>('[data-copy-label-text]');
+    const status = button.querySelector<HTMLElement>('[data-copy-status]');
+    const defaultLabel = button.dataset.copyLabel ?? '';
+    const copiedLabel = button.dataset.copiedLabel ?? '';
+
+    if (iconCopy) iconCopy.hidden = copied;
+    if (iconCheck) iconCheck.hidden = !copied;
+    if (labelText) labelText.textContent = copied ? copiedLabel : defaultLabel;
+    if (status) status.textContent = copied ? copiedLabel : '';
+    button.setAttribute('aria-label', copied ? copiedLabel : defaultLabel);
+  }
+
+  function resolveCode(button: HTMLElement): string {
+    const group = button.closest<HTMLElement>('[data-code-group]');
+    if (group) {
+      const activePanel = group.querySelector<HTMLElement>('[data-group-panel]:not([hidden])');
+      return activePanel?.dataset.code ?? '';
+    }
+    const block = button.closest<HTMLElement>('[data-code-block]');
+    return block?.dataset.code ?? '';
+  }
+
+  async function handleCopy(button: HTMLElement): Promise<void> {
+    const code = resolveCode(button);
+    if (!code) return;
+
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      return;
+    }
+
+    setCopied(button, true);
+    const previousTimeout = Number(button.dataset.copyTimeout ?? '');
+    if (!Number.isNaN(previousTimeout)) window.clearTimeout(previousTimeout);
+    const timeout = window.setTimeout(() => setCopied(button, false), 2000);
+    button.dataset.copyTimeout = String(timeout);
+  }
+
+  function activateTab(group: HTMLElement, tab: HTMLElement): void {
+    const tabs = Array.from(group.querySelectorAll<HTMLElement>('[data-group-tab]'));
+    const panels = Array.from(group.querySelectorAll<HTMLElement>('[data-group-panel]'));
+
+    for (const candidate of tabs) {
+      const selected = candidate === tab;
+      candidate.setAttribute('aria-selected', String(selected));
+      candidate.tabIndex = selected ? 0 : -1;
+    }
+
+    const targetId = tab.getAttribute('aria-controls');
+    for (const panel of panels) {
+      panel.hidden = panel.id !== targetId;
+    }
+  }
+
+  const TOC_OFFSET = 96;
+
+  function initTocSpy(): void {
+    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'));
+    if (links.length === 0) return;
+
+    const sections = links
+      .map((link) => (link.dataset.tocLink ? document.getElementById(link.dataset.tocLink) : null))
+      .filter((section): section is HTMLElement => section !== null)
+      .sort((a, b) =>
+        a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+      );
+    if (sections.length === 0) return;
+
+    let activeId = '';
+
+    function setActive(id: string): void {
+      if (id === activeId) return;
+      activeId = id;
+
+      for (const link of links) {
+        const current = link.dataset.tocLink === id;
+        link.classList.toggle('text-fg', current);
+        if (current) link.setAttribute('aria-current', 'true');
+        else link.removeAttribute('aria-current');
+      }
+    }
+
+    function resolveActive(): void {
+      const doc = document.documentElement;
+      const atBottom = window.innerHeight + window.scrollY >= doc.scrollHeight - 2;
+      if (atBottom) {
+        setActive(sections[sections.length - 1].id);
+        return;
+      }
+
+      let current = sections[0];
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top - TOC_OFFSET > 1) break;
+        current = section;
+      }
+      setActive(current.id);
+    }
+
+    const observer = new IntersectionObserver(resolveActive, {
+      rootMargin: `-${TOC_OFFSET}px 0px -85% 0px`,
+    });
+    for (const section of sections) observer.observe(section);
+
+    resolveActive();
+  }
+
+  initTocSpy();
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const copyButton = target.closest<HTMLElement>('[data-copy-button]');
+    if (copyButton) {
+      void handleCopy(copyButton);
+      return;
+    }
+
+    const tab = target.closest<HTMLElement>('[data-group-tab]');
+    if (tab) {
+      const group = tab.closest<HTMLElement>('[data-code-group]');
+      if (group) activateTab(group, tab);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches('[data-group-tab]')) return;
+
+    const group = target.closest<HTMLElement>('[data-code-group]');
+    if (!group) return;
+
+    const tabs = Array.from(group.querySelectorAll<HTMLElement>('[data-group-tab]'));
+    const currentIndex = tabs.indexOf(target);
+    let nextIndex: number | null = null;
+
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = tabs.length - 1;
+
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    nextTab.focus();
+    activateTab(group, nextTab);
+  });
+</script>

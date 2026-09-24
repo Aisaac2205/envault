@@ -1,0 +1,39 @@
+{
+  "name": "@vaultly-control/landing",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "start": "astro preview --host",
+    "preview": "astro preview --host",
+    "astro": "astro",
+    "type-check": "astro sync && tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run --maxWorkers=2 --no-file-parallelism",
+    "test:ci": "vitest run --maxWorkers=2 --no-file-parallelism"
+  },
+  "dependencies": {
+    "@astrojs/react": "^6.0.5",
+    "@phosphor-icons/react": "^2.1.10",
+    "astro": "^7.2.10",
+    "clsx": "^2.1.1",
+    "motion": "^13.2.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^2.6.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
+  }
+}

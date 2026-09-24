@@ -1,0 +1,51 @@
+---
+import Landing from "../layouts/Landing.astro";
+import Footer from "../features/navigation/components/Footer.astro";
+import SiteHeader from "../features/navigation/components/SiteHeader.astro";
+
+const locale = "es";
+---
+
+<Landing locale={locale} title="Modelo de Seguridad — EnVault Management" description="Arquitectura de seguridad, cifrado de credenciales, roles RBAC y aislamiento en EnVault Management.">
+  <SiteHeader locale={locale} altHref="/en/security" />
+
+  <main id="main-content" class="max-w-4xl mx-auto px-6 pt-28 pb-16 flex-grow font-sans text-zinc-300 leading-relaxed space-y-12">
+    <header class="space-y-3 pb-8 border-b border-white/[0.08]">
+      <p class="text-xs text-zinc-500 uppercase tracking-wider font-mono">Última actualización: 24 de septiembre de 2026</p>
+      <h1 class="text-3xl sm:text-5xl font-semibold tracking-tight text-white">Modelo de Seguridad</h1>
+      <p class="text-base text-zinc-400">
+        Diseñado para proteger la infraestructura crítica de datos de tu organización con estándares bancarios.
+      </p>
+    </header>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">1. Cifrado de Credenciales y Secretos</h2>
+      <p class="text-sm text-zinc-400">
+        Cada string de conexión de base de datos se cifra simétricamente utilizando <strong>AES-256-GCM</strong> con claves maestras gestionadas mediante variables de entorno o gestores de secretos (AWS KMS, HashiCorp Vault). Las claves de descifrado nunca se envían al cliente frontend.
+      </p>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">2. Base de Datos de Control Aislada</h2>
+      <p class="text-sm text-zinc-400">
+        La base de control (PostgreSQL 16+) funciona en un esquema estrictamente tipado con TypeORM y validaciones Joi en tiempo de ejecución. Los roles de usuario diferencian entre <code>admin</code> (gestión de conexiones y credenciales) y <code>operator</code> (ejecución de volcados y lectura de telemetría).
+      </p>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">3. Locks Distribuidos contra Condiciones de Carrera</h2>
+      <p class="text-sm text-zinc-400">
+        Para clústeres multi-worker, la tabla <code>scheduler_locks</code> implementa exclusión mutua a nivel de base de datos. Ningún dump se ejecutará simultáneamente en dos réplicas, evitando sobrecargas de I/O en la base de datos de producción.
+      </p>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold text-white tracking-tight">4. Integridad Criptográfica de Respaldos</h2>
+      <p class="text-sm text-zinc-400">
+        Cada dump completado genera un hash SHA-256 inmutable durante el streaming. Al solicitar una restauración, el archivo se verifica contra dicho hash antes de ejecutar comandos sobre la base de datos destino.
+      </p>
+    </section>
+  </main>
+
+  <Footer locale={locale} />
+</Landing>

@@ -1,0 +1,38 @@
+---
+import type { DocContent } from '../content/types';
+
+interface Props {
+  content: DocContent;
+}
+
+const { content } = Astro.props;
+const sectionById = new Map(content.sections.map((section) => [section.id, section]));
+---
+
+<aside class="hidden lg:block sticky top-24 self-start border-r border-border pr-6">
+  <nav aria-label={content.tocLabel} class="space-y-7">
+    {
+      content.navGroups.map((group) => (
+        <div class="space-y-2.5">
+          <h4 class="text-sm font-semibold text-fg">{group.label}</h4>
+          <ul class="space-y-1.5 text-sm text-fg-muted">
+            {group.sectionIds.map((id) => {
+              const section = sectionById.get(id);
+              return section ? (
+                <li>
+                  <a
+                    href={`#${section.id}`}
+                    data-toc-link={section.id}
+                    class="block py-0.5 transition-colors hover:text-fg"
+                  >
+                    {section.navLabel}
+                  </a>
+                </li>
+              ) : null;
+            })}
+          </ul>
+        </div>
+      ))
+    }
+  </nav>
+</aside>

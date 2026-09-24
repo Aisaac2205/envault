@@ -1,0 +1,72 @@
+---
+import { getDictionary } from '../../i18n/get-dictionary';
+import type { Locale } from '../../i18n/types';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'es' } = Astro.props;
+const dict = getDictionary(locale);
+const footer = dict.footer;
+const isEn = locale === 'en';
+---
+
+<footer class="border-t border-white/[0.08] bg-black py-16 px-6 font-sans" aria-labelledby="footer-heading">
+  <h2 id="footer-heading" class="sr-only">Footer</h2>
+  <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10 mb-14">
+    {/* Official Brand Logo */}
+    <div class="md:col-span-1 space-y-4">
+      <a href={isEn ? '/en' : '/'} class="inline-flex items-center" aria-label="EnVault Home">
+        <img
+          src="/logo.png"
+          alt="EnVault Logo"
+          width="28"
+          height="28"
+          class="h-7 w-auto object-contain"
+        />
+      </a>
+      <p class="text-sm text-zinc-400 leading-relaxed max-w-xs font-sans">
+        {footer.tagline}
+      </p>
+    </div>
+
+    {/* Product Links */}
+    <div class="space-y-4">
+      <h3 class="text-sm font-semibold text-white">{footer.product}</h3>
+      <ul class="space-y-2.5 text-sm text-zinc-400 font-sans">
+        <li><a href={isEn ? '/en#scheduler-locks' : '/#scheduler-locks'} class="hover:text-white transition-colors">{footer.productLinks.cronjobs}</a></li>
+        <li><a href={isEn ? '/en#safe-restore' : '/#safe-restore'} class="hover:text-white transition-colors">{footer.productLinks.restore}</a></li>
+        <li><a href={isEn ? '/en#storage-r2' : '/#storage-r2'} class="hover:text-white transition-colors">{footer.productLinks.backups}</a></li>
+        <li><a href={isEn ? '/en#audit-log' : '/#audit-log'} class="hover:text-white transition-colors">{footer.productLinks.auditLogs}</a></li>
+      </ul>
+    </div>
+
+    {/* Resources Links */}
+    <div class="space-y-4">
+      <h3 class="text-sm font-semibold text-white">{footer.resources}</h3>
+      <ul class="space-y-2.5 text-sm text-zinc-400 font-sans">
+        <li><a href={isEn ? "/en/docs" : "/docs"} class="hover:text-white transition-colors">{footer.resourceLinks.docs}</a></li>
+        <li><a href={isEn ? "https://github.com/Aisaac2205/envault/blob/main/docs/en/architecture.md" : "https://github.com/Aisaac2205/envault/blob/main/docs/es/architecture.md"} target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">{footer.resourceLinks.apiKeys}</a></li>
+        <li><a href={isEn ? "https://github.com/Aisaac2205/envault/blob/main/docs/en/deployment-self-host.md" : "https://github.com/Aisaac2205/envault/blob/main/docs/es/deployment-self-host.md"} target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">{footer.resourceLinks.dockerGuide}</a></li>
+        <li><a href="https://github.com/Aisaac2205/envault" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">{footer.resourceLinks.githubRepo}</a></li>
+      </ul>
+    </div>
+
+    {/* Platform & Architecture */}
+    <div class="space-y-4">
+      <h3 class="text-sm font-semibold text-white">{footer.company}</h3>
+      <ul class="space-y-2.5 text-sm text-zinc-400 font-sans">
+        <li><a href={isEn ? '/en#architecture' : '/#architecture'} class="hover:text-white transition-colors">{footer.companyLinks.architecture}</a></li>
+        <li><a href={isEn ? "/en/terms" : "/terms"} class="hover:text-white transition-colors">{footer.companyLinks.terms}</a></li>
+        <li><a href={isEn ? "/en/privacy" : "/privacy"} class="hover:text-white transition-colors">{footer.companyLinks.privacy}</a></li>
+        <li><a href={isEn ? "/en/security" : "/security"} class="hover:text-white transition-colors">{footer.companyLinks.security}</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto pt-8 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs sm:text-sm text-zinc-500 font-sans">
+    <p>© {new Date().getFullYear()} EnVault Management. {footer.rightsReserved}</p>
+    <p class="font-mono text-xs text-zinc-600">PostgreSQL 16+ · MySQL 8+ · NestJS 11 · React 19</p>
+  </div>
+</footer>

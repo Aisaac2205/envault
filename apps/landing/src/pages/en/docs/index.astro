@@ -1,0 +1,24 @@
+---
+import Landing from "../../../layouts/Landing.astro";
+import Footer from "../../../features/navigation/components/Footer.astro";
+import SiteHeader from "../../../features/navigation/components/SiteHeader.astro";
+import DocsSidebar from "../../../features/documentation/components/DocsSidebar.astro";
+import DocsArticle from "../../../features/documentation/components/DocsArticle.astro";
+import { en as rawContent } from "../../../features/documentation/content/en";
+import { resolveDocContent } from "../../../features/documentation/lib/resolve-content";
+import { getApiBaseUrl } from "../../../lib/api-config";
+
+const locale = "en";
+const content = resolveDocContent(rawContent, getApiBaseUrl());
+---
+
+<Landing locale={locale} title={content.pageTitle} description={content.pageDescription}>
+  <SiteHeader locale={locale} altHref="/docs" />
+
+  <main id="main-content" class="max-w-7xl mx-auto px-6 pt-28 pb-12 flex-grow grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-12">
+    <DocsSidebar content={content} />
+    <DocsArticle content={content} />
+  </main>
+
+  <Footer locale={locale} />
+</Landing>

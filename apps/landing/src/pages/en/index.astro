@@ -1,0 +1,38 @@
+---
+import Landing from "../../layouts/Landing.astro";
+import Hero from "../../components/ui/saa-s-template";
+import SiteHeader from "../../features/navigation/components/SiteHeader.astro";
+import FeaturesGrid from "../../features/features-grid/components/FeaturesGrid.astro";
+import ArchitectureSection from "../../features/architecture/components/ArchitectureSection.astro";
+import { DocumentationSection } from "../../features/documentation/components/DocumentationSection";
+import CtaBanner from "../../features/navigation/components/CtaBanner.astro";
+import Footer from "../../features/navigation/components/Footer.astro";
+import { getDictionary } from "../../features/i18n/get-dictionary";
+
+const locale = "en";
+const dict = getDictionary(locale);
+---
+
+<Landing locale={locale}>
+  <SiteHeader locale={locale} />
+
+  <div id="main-content" class="flex-grow">
+    {/* Hero with 21st.dev Canvas2D Ink Garden ASCII & Dither Engine */}
+    <Hero client:load locale={locale} />
+
+    {/* Real Core Capabilities & Bento Grid */}
+    <FeaturesGrid locale={locale} />
+
+    {/* System Architecture with real topological diagram */}
+    <ArchitectureSection locale={locale} />
+
+    {/* Interactive Documentation Section with Docker & API Snippets */}
+    <DocumentationSection client:visible t={dict.docs} locale={locale} />
+
+    {/* Bottom Call to Action */}
+    <CtaBanner locale={locale} />
+  </div>
+
+  {/* Footer */}
+  <Footer locale={locale} />
+</Landing>
