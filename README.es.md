@@ -202,4 +202,5 @@ pnpm --filter @vaultly-control/web build
 
 ## Licencia
 
-[PolyForm Noncommercial License 1.0.0](LICENSE.md) — libre para cualquier uso no comercial. El uso comercial requiere una licencia separada del titular del copyright.
+* **Plataforma Core (`apps/api`, `apps/web`)**: Licenciada bajo la [PolyForm Noncommercial License 1.0.0](LICENSE.md) — libre para usar y self-hostear con fines personales o no comerciales. El uso comercial, reventa o distribución requiere una licencia comercial separada del titular del copyright.
+* **Landing Page y Marca (`apps/landing`, nombre/logos EnVault)**: **Todos los Derechos Reservados**. Código propietario exclusivo; queda prohibida su copia, clonación o despliegue/hosting público. Ver [`apps/landing/LICENSE.md`](apps/landing/LICENSE.md).

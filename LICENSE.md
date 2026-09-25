@@ -1,8 +1,42 @@
+# EnVault Licensing Architecture
+
+Copyright (c) 2026 Adán Isaac Sarceño Flores.
+
+This repository is organized as a monorepo with distinct licensing terms for different packages, directories, and assets:
+
+---
+
+## 1. Proprietary Components & Assets (All Rights Reserved)
+
+The following components are **PROPRIETARY** and all rights are strictly reserved by Adán Isaac Sarceño Flores:
+
+* **Landing Website**: Everything located in [`apps/landing/`](apps/landing/) (including code, design, styling, layout, canvas shaders/effects, and copywriting). See [`apps/landing/LICENSE.md`](apps/landing/LICENSE.md).
+* **Brand Assets & Identity**: The names "EnVault", "EnVault Management", official logos, icons, graphics, and trademarked visuals.
+
+### Prohibitions:
+* You **may not** copy, replicate, clone, or redistribute the landing page or its visual design.
+* You **may not** host, deploy, or publish `apps/landing` on any domain, server, or cloud hosting service.
+* You **may not** use the EnVault brand, logos, or identity to promote third-party products, services, or forks.
+
+---
+
+## 2. Core Tool & Platform Software (Source-Available)
+
+The core database backup and management platform located in [`apps/api/`](apps/api/) and [`apps/web/`](apps/web/) is licensed under the **PolyForm Noncommercial License 1.0.0** set forth below.
+
+### Summary:
+* ✅ **You may**: Inspect the code, fork it, run it, test it, and self-host it for personal, hobby, educational, research, or non-commercial internal evaluation purposes.
+* ❌ **You may NOT**: Sell the software, charge fees for hosting/accessing it, offer it as a paid SaaS/managed service, redistribute it commercially, or use it for any commercial purpose without a separate commercial agreement.
+
+For commercial licensing, enterprise deployment rights, or custom agreements, please contact the author via GitHub: https://github.com/Aisaac2205
+
+---
+
 # PolyForm Noncommercial License 1.0.0
 
 <https://polyformproject.org/licenses/noncommercial/1.0.0>
 
-Required Notice: Copyright Adán Isaac Sarceño Flores (Vaultly)
+Required Notice: Copyright Adán Isaac Sarceño Flores (EnVault)
 
 ## Acceptance
 
