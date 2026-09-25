@@ -1,4 +1,4 @@
-# Environment Variables — Vaultly Control
+# Environment Variables — EnVault Management
 
 > 🇪🇸 Versión en español: [../es/environment-variables.md](../es/environment-variables.md)
 
@@ -12,7 +12,7 @@ Variables are validated by `src/config/env.validation.ts`. The ones marked as **
 
 ```bash
 # ── Database (required) ────────────────────────────────────────
-DATABASE_URL=postgresql://vaultly_control:changeme@localhost:5432/vaultly_control
+DATABASE_URL=postgresql://envault_control:changeme@localhost:5432/envault_control
 
 # ── Server ─────────────────────────────────────────────────────
 NODE_ENV=development
@@ -36,7 +36,7 @@ ENCRYPTION_KEY=<64-char-hex-string>
 R2_ACCOUNT_ID=<your-cloudflare-account-id>
 R2_ACCESS_KEY_ID=<your-r2-access-key-id>
 R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
-R2_BUCKET_NAME=vaultly-control-dumps
+R2_BUCKET_NAME=envault-dumps
 R2_PUBLIC_BASE_URL=
 
 # ── Restore (optional) ─────────────────────────────────────────
@@ -48,8 +48,8 @@ RESTORE_TIMEOUT_MS=1800000
 # not accept hyphens in unquoted identifiers.
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=vaultly_control
-DB_USER=vaultly_control
+DB_NAME=envault_control
+DB_USER=envault_control
 DB_PASSWORD=changeme
 ```
 
@@ -90,12 +90,12 @@ Mandatory variables for `docker compose up` not to abort (fail-loud with `${VAR:
 
 ```bash
 # ── Database (mandatory) ───────────────────────────────────────
-DB_NAME=vaultly_control
-DB_USER=vaultly_control
+DB_NAME=envault_control
+DB_USER=envault_control
 DB_PASSWORD=  # ← REQUIRED, no default
 
 # URL used by the API to connect to the internal `db` service
-DATABASE_URL=postgresql://vaultly_control:CHANGE_ME@db:5432/vaultly_control
+DATABASE_URL=postgresql://envault_control:CHANGE_ME@db:5432/envault_control
 
 # ── Server ─────────────────────────────────────────────────────
 NODE_ENV=production
@@ -118,7 +118,7 @@ BETTER_AUTH_ADMIN_PASSWORD=<strong-password>
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=vaultly-control-dumps
+R2_BUCKET_NAME=envault-dumps
 R2_PUBLIC_BASE_URL=
 ```
 

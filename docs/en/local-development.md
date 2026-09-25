@@ -1,4 +1,4 @@
-# Local Environment — Vaultly Control
+# Local Environment — EnVault Management
 
 > 🇪🇸 Versión en español: [../es/local-development.md](../es/local-development.md)
 

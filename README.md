@@ -1,4 +1,4 @@
-# Vaultly
+# EnVault Management
 
 > 🇪🇸 Versión en español: [README.es.md](README.es.md)
 
@@ -27,7 +27,7 @@ Centralized database management platform. Register database connections, run and
 
 ## Requirements (non-negotiable)
 
-The **control database** — the one Vaultly uses to store its own state (registered connections, audit log, cronjobs, dump metadata) — **MUST be PostgreSQL 16 or higher**. This is hardcoded into the TypeORM configuration ([`apps/api/src/config/database.config.ts`](apps/api/src/config/database.config.ts)) and relies on Postgres-specific features (enum types, JSONB, defaults). Other engines are not supported and there is no plan to support them for the control DB.
+The **control database** — the one EnVault Management uses to store its own state (registered connections, audit log, cronjobs, dump metadata) — **MUST be PostgreSQL 16 or higher**. This is hardcoded into the TypeORM configuration ([`apps/api/src/config/database.config.ts`](apps/api/src/config/database.config.ts)) and relies on Postgres-specific features (enum types, JSONB, defaults). Other engines are not supported and there is no plan to support them for the control DB.
 
 The **managed databases** — the ones your DevOps users register to back up — currently support PostgreSQL and MySQL. See [docs/en/connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md) and [docs/en/connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md) for connectivity options, SSL handling, and on-prem patterns.
 
@@ -35,7 +35,7 @@ The **managed databases** — the ones your DevOps users register to back up —
 
 ## Architecture — visual reference
 
-Vaultly runs on any platform that can host Docker containers and a PostgreSQL 16+ instance — cloud PaaS, on-prem servers, air-gapped clusters, or a local workstation.
+EnVault Management runs on any platform that can host Docker containers and a PostgreSQL 16+ instance — cloud PaaS, on-prem servers, air-gapped clusters, or a local workstation.
 
 ![Architecture overview](docs/assets/architecture-preview.png)
 

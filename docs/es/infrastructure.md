@@ -1,4 +1,4 @@
-# Infraestructura — Vaultly Control
+# Infraestructura — EnVault Management
 
 > 🇬🇧 English version: [../en/infrastructure.md](../en/infrastructure.md)
 

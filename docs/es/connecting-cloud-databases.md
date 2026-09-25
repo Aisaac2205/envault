@@ -2,24 +2,24 @@
 
 > 🇬🇧 English version: [../en/connecting-cloud-databases.md](../en/connecting-cloud-databases.md)
 
-Guía para DevOps que quieren registrar una **base de datos gestionada/cloud** (Neon, AWS RDS, Supabase, Azure Database for PostgreSQL, Google Cloud SQL, Railway Postgres, etc.) como conexión en Vaultly.
+Guía para DevOps que quieren registrar una **base de datos gestionada/cloud** (Neon, AWS RDS, Supabase, Azure Database for PostgreSQL, Google Cloud SQL, Railway Postgres, etc.) como conexión en EnVault Management.
 
-> **Alcance**: cubre las **bases gestionadas que vas a backupear**, no la DB de control de Vaultly. La de control siempre tiene que ser PostgreSQL 16+ — ver la sección de requisitos del [README](../../README.es.md).
+> **Alcance**: cubre las **bases gestionadas que vas a backupear**, no la DB de control de EnVault Management. La de control siempre tiene que ser PostgreSQL 16+ — ver la sección de requisitos del [README](../../README.es.md).
 
 ---
 
-## 1. Qué hace (y qué NO hace) Vaultly hoy
+## 1. Qué hace (y qué NO hace) EnVault Management hoy
 
 Leé esto antes de gastar una hora debuggeando.
 
 | Capacidad | Estado |
 |-----------|--------|
 | Conexión TCP directa a PostgreSQL / MySQL | ✅ Nativo |
-| Handshake SSL/TLS | ⚠️ **Vía parámetros en la connection string** (`sslmode=require`, etc.) — Vaultly no valida ni pinea certificados por sí mismo |
+| Handshake SSL/TLS | ⚠️ **Vía parámetros en la connection string** (`sslmode=require`, etc.) — EnVault Management no valida ni pinea certificados por sí mismo |
 | CA personalizada / certificados de cliente | ❌ No expuesto en la UI hoy |
 | SSH tunneling | ❌ No es nativo — manejarlo externamente (ver [guía on-prem](connecting-on-premise-databases.md)) |
 | Connection pooling (pgBouncer) | ➕ Usá el endpoint pooled del proveedor directamente |
-| Validación de IP allowlist | ❌ No validado por Vaultly — se maneja en el proveedor |
+| Validación de IP allowlist | ❌ No validado por EnVault Management — se maneja en el proveedor |
 | Reintentos / backoff | ❌ Un solo intento con timeout de 5 segundos |
 
 **Bottom line**: SSL funciona si el driver de abajo respeta los parámetros de la connection string (lo hace, tanto `pg` como `mysql2`). Lo que falta es **soporte de primera clase en UI/configuración** para opciones de SSL y tunneling. Ver [architecture-roadmap.md](architecture-roadmap.md) para el diseño planificado.
@@ -32,8 +32,8 @@ Antes de registrar una conexión cloud:
 
 - [ ] Tenés host, puerto, nombre de la DB, usuario y password.
 - [ ] El usuario tiene los permisos mínimos por engine ([doc del flujo, §permisos](flow-database-management.md)).
-- [ ] La DB es alcanzable desde la red donde corre Vaultly (endpoint público, o VPC peering, o private endpoint resoluble).
-- [ ] La IP del host donde corre Vaultly está en el allowlist del proveedor (si usa uno — la mayoría sí).
+- [ ] La DB es alcanzable desde la red donde corre EnVault Management (endpoint público, o VPC peering, o private endpoint resoluble).
+- [ ] La IP del host donde corre EnVault Management está en el allowlist del proveedor (si usa uno — la mayoría sí).
 - [ ] Sabés si el proveedor obliga SSL (la mayoría modernos sí — Neon y Supabase lo obligan siempre).
 
 ---
@@ -56,7 +56,7 @@ Para conexiones pooled (recomendado para queries largas tipo `pg_dump`):
 postgresql://<user>:<password>@<endpoint>-pooler.neon.tech/<database>?sslmode=require
 ```
 
-**En la UI de Vaultly**, descomponé así:
+**En la UI de EnVault Management**, descomponé así:
 
 | Campo | Valor |
 |-------|-------|
@@ -67,9 +67,9 @@ postgresql://<user>:<password>@<endpoint>-pooler.neon.tech/<database>?sslmode=re
 | Password | `<password>` |
 | DB Type | `postgres` |
 
-**El `sslmode=require`**: la UI de Vaultly no tiene un campo para eso. **Workaround hoy**: si tu proveedor obliga SSL y rechaza conexiones sin SSL, la conexión va a fallar hasta que el manejo de SSL esté expuesto nativamente (ver roadmap). Para Neon específicamente, esto significa que las conexiones desde Vaultly **van a fallar hoy** con errores `SSL required`.
+**El `sslmode=require`**: la UI de EnVault Management no tiene un campo para eso. **Workaround hoy**: si tu proveedor obliga SSL y rechaza conexiones sin SSL, la conexión va a fallar hasta que el manejo de SSL esté expuesto nativamente (ver roadmap). Para Neon específicamente, esto significa que las conexiones desde EnVault Management **van a fallar hoy** con errores `SSL required`.
 
-> **Status honesto**: Neon, Supabase y cualquier proveedor que obligue SSL no están plenamente soportados por el code path actual de Vaultly. Workarounds: self-hostear un proxy de Postgres que termine SSL, o esperar el feature nativo. Trackear en [architecture-roadmap.md](architecture-roadmap.md).
+> **Status honesto**: Neon, Supabase y cualquier proveedor que obligue SSL no están plenamente soportados por el code path actual de EnVault Management. Workarounds: self-hostear un proxy de Postgres que termine SSL, o esperar el feature nativo. Trackear en [architecture-roadmap.md](architecture-roadmap.md).
 
 ### 3.2 AWS RDS / Aurora (Postgres o MySQL)
 
@@ -88,10 +88,10 @@ RDS es **el target más amigable hoy** porque SSL puede ser opcional u obligator
 
 **Requerimientos de red**:
 
-- El host de Vaultly tiene que estar dentro de la VPC de RDS, o usar VPC peering, o habilitás public accessibility en la instancia RDS Y agregás la IP de egress de Vaultly al security group inbound.
+- El host de EnVault Management tiene que estar dentro de la VPC de RDS, o usar VPC peering, o habilitás public accessibility en la instancia RDS Y agregás la IP de egress de EnVault Management al security group inbound.
 - **Para producción recomendamos fuertemente VPC peering o PrivateLink**, no public accessibility. Exponer RDS al internet público es un red flag de compliance incluso con SSL.
 
-**Si tu RDS obliga SSL**: misma limitación que Neon — esperar el feature nativo o terminar SSL fuera de Vaultly.
+**Si tu RDS obliga SSL**: misma limitación que Neon — esperar el feature nativo o terminar SSL fuera de EnVault Management.
 
 ### 3.3 Supabase
 
@@ -105,9 +105,9 @@ Azure obliga SSL por default en Flexible Server. Mismo bloqueo. En Single Server
 
 ### 3.5 Google Cloud SQL
 
-Cloud SQL soporta modos SSL-required y SSL-optional. Si está en **"Allow non-SSL connections"**, Vaultly conecta bien. Si no, mismo bloqueo.
+Cloud SQL soporta modos SSL-required y SSL-optional. Si está en **"Allow non-SSL connections"**, EnVault Management conecta bien. Si no, mismo bloqueo.
 
-Para setup con IP privada: asegurate que Vaultly corra en la misma VPC o en una red peered.
+Para setup con IP privada: asegurate que EnVault Management corra en la misma VPC o en una red peered.
 
 ### 3.6 Railway Postgres (plugin)
 
@@ -121,7 +121,7 @@ El plugin de Postgres de Railway te da reference variables (`${{Postgres.PGHOST}
 | Username | `${{Postgres.PGUSER}}` |
 | Password | `${{Postgres.PGPASSWORD}}` |
 
-Para acceso externo (Vaultly hosteado fuera de Railway), usar el TCP proxy público que expone Railway — mismas credenciales, host/port distinto.
+Para acceso externo (EnVault Management hosteado fuera de Railway), usar el TCP proxy público que expone Railway — mismas credenciales, host/port distinto.
 
 ---
 
@@ -133,9 +133,9 @@ Para acceso externo (Vaultly hosteado fuera de Railway), usar el TCP proxy públ
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │   ┌──────────┐  HTTPS   ┌─────────┐  TCP   ┌──────────────────┐  │
-│   │ Vaultly  │ ────────▶│Proveedor│ ──────▶│ Managed DB (pub) │  │
+│   │ EnVault Management  │ ────────▶│Proveedor│ ──────▶│ Managed DB (pub) │  │
 │   │          │          │   API   │        │ con allowlist de │  │
-│   │          │ ◀────────│         │ ◀──────│ la IP de Vaultly │  │
+│   │          │ ◀────────│         │ ◀──────│ la IP de EnVault Management │  │
 │   └──────────┘          └─────────┘        └──────────────────┘  │
 │                                                                  │
 │  ✅ El setup más rápido                                          │
@@ -149,14 +149,14 @@ Para acceso externo (Vaultly hosteado fuera de Railway), usar el TCP proxy públ
 │                                                                  │
 │   ┌────────────────── VPC / VNet ──────────────────┐             │
 │   │  ┌──────────┐                ┌──────────────┐  │             │
-│   │  │ Vaultly  │ ─── subnet ───▶│  Managed DB  │  │             │
+│   │  │ EnVault Management  │ ─── subnet ───▶│  Managed DB  │  │             │
 │   │  │          │     privada   │  (IP privada)│  │             │
 │   │  └──────────┘                └──────────────┘  │             │
 │   └────────────────────────────────────────────────┘             │
 │                                                                  │
 │  ✅ Sin exposición pública                                       │
 │  ✅ Menor latencia, menos saltos                                 │
-│  ⚠️  Requiere que Vaultly corra en la cuenta cloud               │
+│  ⚠️  Requiere que EnVault Management corra en la cuenta cloud               │
 └──────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────┐
@@ -164,7 +164,7 @@ Para acceso externo (Vaultly hosteado fuera de Railway), usar el TCP proxy públ
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │   ┌── VPC A ──┐                              ┌── VPC B ──┐       │
-│   │ Vaultly   │ ◀──── peering / PL ────────▶│ Managed DB│       │
+│   │ EnVault Management   │ ◀──── peering / PL ────────▶│ Managed DB│       │
 │   └───────────┘                              └───────────┘       │
 │                                                                  │
 │  ✅ Grado producción para orgs multi-cuenta                      │
@@ -176,28 +176,28 @@ Para acceso externo (Vaultly hosteado fuera de Railway), usar el TCP proxy públ
 
 ## 5. Testear la conexión antes de guardar
 
-Vaultly tiene `POST /connections/test-raw` que prueba la conexión con timeout de 5 segundos. Desde la UI, el botón "Test Connection" lo invoca.
+EnVault Management tiene `POST /connections/test-raw` que prueba la conexión con timeout de 5 segundos. Desde la UI, el botón "Test Connection" lo invoca.
 
 Si el test falla, el mensaje viene directo del driver. Comunes:
 
 | Error del driver | Causa real | Fix |
 |------------------|------------|-----|
-| `connection timeout` después de 5s | Red inalcanzable, host mal, security group bloqueando | Probar con `pg_isready -h <host> -p <port>` desde el host de Vaultly. Chequear firewall/SG. |
+| `connection timeout` después de 5s | Red inalcanzable, host mal, security group bloqueando | Probar con `pg_isready -h <host> -p <port>` desde el host de EnVault Management. Chequear firewall/SG. |
 | `password authentication failed` | User/password mal, o el usuario no existe | Verificar el password conectando con `psql` o `mysql` desde la misma máquina. |
-| `SSL connection is required` | El proveedor obliga SSL, Vaultly no pasa `sslmode=require` | **Bloqueado hoy** — ver §3.1 / roadmap. |
+| `SSL connection is required` | El proveedor obliga SSL, EnVault Management no pasa `sslmode=require` | **Bloqueado hoy** — ver §3.1 / roadmap. |
 | `database "X" does not exist` | Typo, o el usuario no tiene `CONNECT` | `\l` en psql para listar DBs visibles. |
 | `role "X" cannot login` | El usuario existe pero `NOLOGIN` | `ALTER ROLE X LOGIN;` |
-| `no pg_hba.conf entry for host` | La auth basada en host rechaza la IP | Agregar la IP de egress de Vaultly al allowlist. |
+| `no pg_hba.conf entry for host` | La auth basada en host rechaza la IP | Agregar la IP de egress de EnVault Management al allowlist. |
 
 ---
 
 ## 6. Tips operativos
 
-- **Usá un usuario dedicado por conexión de Vaultly.** No el master/admin. Concedé solo los permisos mínimos. Si la credencial se filtra, el blast radius queda acotado.
-- **Rotá passwords periódicamente.** Hoy Vaultly los guarda en plaintext en la DB de control ([security-model.md, §4](security-model.md)) — la rotación es tu defensa en profundidad.
+- **Usá un usuario dedicado por conexión de EnVault Management.** No el master/admin. Concedé solo los permisos mínimos. Si la credencial se filtra, el blast radius queda acotado.
+- **Rotá passwords periódicamente.** Hoy EnVault Management los guarda en plaintext en la DB de control ([security-model.md, §4](security-model.md)) — la rotación es tu defensa en profundidad.
 - **Nombrá las conexiones descriptivamente.** `prod-billing-postgres` es mejor que `db1`. Los nombres aparecen en audit logs e historial.
-- **Pineá la versión del engine**, cuando puedas. `pg_dump` tiene que ser ≥ la versión del server origen. Si tu managed DB es Postgres 16 y el container de Vaultly trae `pg_dump` 15, los dumps van a fallar con un error de versión.
-- **Monitoreá costos de egress.** El tráfico cross-region o cross-AZ desde tu managed DB al host de Vaultly se cobra en la mayoría de los proveedores. Co-locá cuando puedas.
+- **Pineá la versión del engine**, cuando puedas. `pg_dump` tiene que ser ≥ la versión del server origen. Si tu managed DB es Postgres 16 y el container de EnVault Management trae `pg_dump` 15, los dumps van a fallar con un error de versión.
+- **Monitoreá costos de egress.** El tráfico cross-region o cross-AZ desde tu managed DB al host de EnVault Management se cobra en la mayoría de los proveedores. Co-locá cuando puedas.
 
 ---
 

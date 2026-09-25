@@ -1,4 +1,4 @@
-# Vaultly
+# EnVault Management
 
 > 🇬🇧 English version: [README.md](README.md)
 
@@ -27,7 +27,7 @@ Plataforma de gestión centralizada de bases de datos. Permite administrar conex
 
 ## Arquitectura — referencia visual
 
-Vaultly corre en cualquier plataforma que pueda hostear contenedores Docker y una instancia de PostgreSQL 16+ — PaaS en la nube, servidores on-prem, clusters air-gapped, o una workstation local.
+EnVault Management corre en cualquier plataforma que pueda hostear contenedores Docker y una instancia de PostgreSQL 16+ — PaaS en la nube, servidores on-prem, clusters air-gapped, o una workstation local.
 
 ![Vista general de la arquitectura](docs/assets/architecture-preview.png)
 
@@ -78,8 +78,8 @@ El monorepo usa **pnpm workspaces** sin Turborepo ni Nx. Workspace activo: `apps
 ### Instalación
 
 ```bash
-git clone https://github.com/Aisaac2205/vaultly-dumps
-cd vaultly-control
+git clone https://github.com/Aisaac2205/envault
+cd envault
 pnpm install
 ```
 

@@ -1,4 +1,4 @@
-# Conventions — Vaultly Control
+# Conventions — EnVault Management
 
 > 🇪🇸 Versión en español: [../es/conventions.md](../es/conventions.md)
 

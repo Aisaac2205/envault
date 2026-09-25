@@ -74,9 +74,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("Cerrar Sesión")).toBeInTheDocument();
   });
 
-  it("renders Vaultly branding", () => {
+  it("renders EnVault Management branding", () => {
     renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
-    expect(screen.getByAltText("Vaultly")).toBeInTheDocument();
+    expect(screen.getByAltText("EnVault Management")).toBeInTheDocument();
   });
 });
 
@@ -156,7 +156,7 @@ describe("SidebarContent", () => {
         <SidebarContent user={mockUser} onLogout={mockLogout} />
       </SidebarRoot>,
     );
-    expect(screen.getByAltText("Vaultly")).toBeInTheDocument();
+    expect(screen.getByAltText("EnVault Management")).toBeInTheDocument();
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Administrador")).toBeInTheDocument();
   });
@@ -298,7 +298,7 @@ describe("Sidebar — collapsible icon mode", () => {
     // All labels should be visible
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Dumps")).toBeInTheDocument();
-    expect(screen.getByAltText("Vaultly")).toBeInTheDocument();
+    expect(screen.getByAltText("EnVault Management")).toBeInTheDocument();
     expect(screen.getByText("Administrador")).toBeInTheDocument();
   });
 
@@ -382,7 +382,7 @@ describe("Sidebar — collapsible offcanvas (mobile sheet)", () => {
 
     // Labels are always visible in offcanvas mode (collapsed computation is false)
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByAltText("Vaultly")).toBeInTheDocument();
+    expect(screen.getByAltText("EnVault Management")).toBeInTheDocument();
     expect(screen.getByText("Administrador")).toBeInTheDocument();
   });
 });

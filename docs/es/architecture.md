@@ -1,4 +1,4 @@
-# Arquitectura — Vaultly Control
+# Arquitectura — EnVault Management
 
 > 🇬🇧 English version: [../en/architecture.md](../en/architecture.md)
 

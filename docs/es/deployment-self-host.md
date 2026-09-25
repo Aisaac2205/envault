@@ -2,7 +2,7 @@
 
 > 🇬🇧 English version: [../en/deployment-self-host.md](../en/deployment-self-host.md)
 
-Este es el **contrato de deploy plataforma-agnóstico** de Vaultly. Te dice exactamente qué necesita la app para correr, sin importar dónde la corras (Kubernetes, Nomad, Docker Swarm, ECS, `docker run` en un VPS, etc.).
+Este es el **contrato de deploy plataforma-agnóstico** de EnVault Management. Te dice exactamente qué necesita la app para correr, sin importar dónde la corras (Kubernetes, Nomad, Docker Swarm, ECS, `docker run` en un VPS, etc.).
 
 **Este doc NO incluye**:
 - Manifests de Kubernetes, Helm charts, o bases de Kustomize (escribilos vos desde el contrato de abajo)
@@ -15,7 +15,7 @@ Si querés un template de PaaS gestionada, usá [deployment-railway.md](deployme
 
 ## 1. Las dos imágenes
 
-Vaultly se distribuye como dos imágenes Docker:
+EnVault Management se distribuye como dos imágenes Docker:
 
 | Imagen | Built desde | Propósito | Escucha en |
 |--------|-------------|-----------|------------|
@@ -26,8 +26,8 @@ Buildealas vos desde el repo, o pulleá desde tu registry cuando tu CI las publi
 
 ```bash
 # Build local para testing
-docker build -t vaultly-api:local -f apps/api/Dockerfile .
-docker build -t vaultly-web:local -f apps/web/Dockerfile .
+docker build -t envault-api:local -f apps/api/Dockerfile .
+docker build -t envault-web:local -f apps/web/Dockerfile .
 ```
 
 Ambos Dockerfiles esperan la **raíz del monorepo** como contexto de build (leen `pnpm-workspace.yaml` y `pnpm-lock.yaml`).
@@ -131,7 +131,7 @@ Para la DB de control, usá la estrategia de volumen de tu plataforma: PVC en K8
 | API | sí | HTTPS | El Web le pega; si Web y API van al mismo dominio, ruteá `/api/*` a la API |
 | DB de control | no | — | Solo interna, nunca exponerla públicamente |
 
-Recomendado: poner ambos detrás del mismo hostname (`vaultly.example.com` para Web, `vaultly.example.com/api` para API) para evitar gimnasia de CORS. Si los splittéas (`app.` y `api.`), seteá `CORS_ORIGIN` en la API al dominio exacto del Web.
+Recomendado: poner ambos detrás del mismo hostname (`envault.example.com` para Web, `envault.example.com/api` para API) para evitar gimnasia de CORS. Si los splittéas (`app.` y `api.`), seteá `CORS_ORIGIN` en la API al dominio exacto del Web.
 
 ### Egress
 
@@ -175,14 +175,14 @@ La API corre migrations al startup con `migrationsRun: true`. Implicancias:
 
 > **Better Auth corre dentro de la API — no se necesita ningún servicio de auth externo.** Los usuarios y sesiones se almacenan en la misma instancia de PostgreSQL. Sin Keycloak, sin deploy de auth separado.
 
-Abajo está el set **más chico posible** de manifests para correr Vaultly en K8s. Es intencionalmente mínimo y **no incluye** ingress, TLS, gestión de secretos, volúmenes persistentes, ni ningún hardening de producción. Tratalo como un punto de partida para verificar el contrato, no como algo para deployar tal cual.
+Abajo está el set **más chico posible** de manifests para correr EnVault Management en K8s. Es intencionalmente mínimo y **no incluye** ingress, TLS, gestión de secretos, volúmenes persistentes, ni ningún hardening de producción. Tratalo como un punto de partida para verificar el contrato, no como algo para deployar tal cual.
 
 ```yaml
 # api-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vaultly-api
+  name: envault-api
 spec:
   replicas: 1  # DEBE ser 1 — ver §7
   strategy:
@@ -192,20 +192,20 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: vaultly-api
+      app: envault-api
   template:
     metadata:
       labels:
-        app: vaultly-api
+        app: envault-api
     spec:
       containers:
         - name: api
-          image: ghcr.io/your-org/vaultly-api:0.1.0
+          image: ghcr.io/your-org/envault-api:0.1.0
           ports:
             - containerPort: 3000
           envFrom:
             - secretRef:
-                name: vaultly-api-secrets
+                name: envault-api-secrets
           resources:
             requests:
               cpu: 100m
@@ -230,10 +230,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vaultly-api
+  name: envault-api
 spec:
   selector:
-    app: vaultly-api
+    app: envault-api
   ports:
     - port: 3000
       targetPort: 3000

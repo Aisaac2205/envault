@@ -43,8 +43,8 @@ Modos de falla comunes en instalación, configuración y operación, con diagnó
 
 Versión corta:
 ```bash
-docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=vaultly_tmp -p 5433:5432 -d postgres:16-alpine
-DATABASE_URL=postgresql://postgres:tmp@localhost:5433/vaultly_tmp \
+docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=envault_tmp -p 5433:5432 -d postgres:16-alpine
+DATABASE_URL=postgresql://postgres:tmp@localhost:5433/envault_tmp \
   pnpm --filter @vaultly-control/api migration:generate src/database/migrations/InitialSchema
 # Renombrar a 1700000000000-InitialSchema.ts para que corra primero
 ```
@@ -98,18 +98,18 @@ Alternativa: correrlo desde WSL2 donde los symlinks funcionan nativos.
 
 **Síntoma**: El test de conexión devuelve `{ "success": false, "error": "password authentication failed for user 'X'" }`.
 
-**Diagnóstico desde el host de Vaultly**:
+**Diagnóstico desde el host de EnVault Management**:
 ```bash
 PGPASSWORD='<password>' psql -h <host> -p <port> -U <user> -d <database> -c '\conninfo'
 ```
 
-Si funciona desde CLI pero falla en Vaultly, la diferencia está en las credenciales que tipeaste. Si también falla desde CLI, el password está mal o el usuario no existe en la DB.
+Si funciona desde CLI pero falla en EnVault Management, la diferencia está en las credenciales que tipeaste. Si también falla desde CLI, el password está mal o el usuario no existe en la DB.
 
 ### 2.2 Error SSL required
 
 **Síntoma**: El test devuelve `error: SSL/TLS required` o `the server does not support SSL, but SSL was required`.
 
-**Causa**: La DB gestionada obliga SSL (Neon, Supabase, Azure Flexible Server, RDS con `force_ssl=1`). Vaultly no expone el parámetro `sslmode` en la UI hoy.
+**Causa**: La DB gestionada obliga SSL (Neon, Supabase, Azure Flexible Server, RDS con `force_ssl=1`). EnVault Management no expone el parámetro `sslmode` en la UI hoy.
 
 **Workarounds**:
 1. **Apagar la obligatoriedad de SSL en el proveedor** (solo en RDS con parameter group changes, Azure Single Server, Cloud SQL con non-SSL permitido). **No recomendado para producción**.
@@ -122,7 +122,7 @@ Detalles por proveedor: [connecting-cloud-databases.md §3](connecting-cloud-dat
 
 **Síntoma**: El test se cuelga 5 segundos y devuelve `latencyMs: 5000+, error: connection timeout`.
 
-**Diagnóstico desde el host de Vaultly**:
+**Diagnóstico desde el host de EnVault Management**:
 ```bash
 nc -zv <host> <port>             # confirmar alcanzabilidad TCP
 ping <host>                       # confirmar que el hostname resuelve
@@ -130,20 +130,20 @@ traceroute <host>                 # confirmar que el camino no está bloqueado
 ```
 
 **Causas comunes**:
-- El allowlist del proveedor no incluye la IP de egress del host de Vaultly.
-- Security group / firewall rule bloqueando inbound desde la IP de Vaultly.
-- La DB está detrás de una VPN/red privada y Vaultly no (ver [connecting-on-premise-databases.md](connecting-on-premise-databases.md)).
+- El allowlist del proveedor no incluye la IP de egress del host de EnVault Management.
+- Security group / firewall rule bloqueando inbound desde la IP de EnVault Management.
+- La DB está detrás de una VPN/red privada y EnVault Management no (ver [connecting-on-premise-databases.md](connecting-on-premise-databases.md)).
 - Puerto mal (ej: `5433` cuando la DB escucha en `5432`).
 
 ### 2.4 pg_hba.conf no entry
 
 **Síntoma**: `no pg_hba.conf entry for host "X.X.X.X", user "Y", database "Z"`.
 
-**Causa**: El archivo de host-based auth de PostgreSQL rechaza la IP origen. Común en Postgres self-hosted sin líneas `host` para la subred de Vaultly.
+**Causa**: El archivo de host-based auth de PostgreSQL rechaza la IP origen. Común en Postgres self-hosted sin líneas `host` para la subred de EnVault Management.
 
 **Fix del lado de la DB** (`pg_hba.conf`):
 ```
-host    <database>    <user>    <vaultly-cidr>    md5
+host    <database>    <user>    <envault-cidr>    md5
 ```
 
 Después `SELECT pg_reload_conf();` o reiniciar Postgres.
@@ -158,14 +158,14 @@ Después `SELECT pg_reload_conf();` o reiniciar Postgres.
 
 **Causas posibles**:
 - La DB tiene tablas muy grandes y `pg_dump` está laburando genuinamente — chequear logs de la API por progreso, monitorear tamaño del bucket de R2.
-- Caída de red entre Vaultly y la DB origen droppeó la conexión silenciosamente (sin retry hoy).
+- Caída de red entre EnVault Management y la DB origen droppeó la conexión silenciosamente (sin retry hoy).
 - Upload a R2 estancado (raro — `@aws-sdk/lib-storage` maneja multipart bien).
 
 **Diagnóstico**:
 ```bash
-# En el container/host de la API de Vaultly:
+# En el container/host de la API de EnVault Management:
 ps aux | grep pg_dump            # ¿el proceso de dump sigue vivo?
-docker stats vaultly-api          # uso de CPU/memoria/red
+docker stats envault-api          # uso de CPU/memoria/red
 # Chequear bucket R2: ¿se están subiendo nuevas parts?
 ```
 
@@ -175,7 +175,7 @@ docker stats vaultly-api          # uso de CPU/memoria/red
 
 **Síntoma**: El backup falla con `pg_dump: error: server version: 16.x; pg_dump version: 15.x; aborting because of server version mismatch`.
 
-**Causa**: El container de la API de Vaultly trae una versión específica de `pg_dump`. `pg_dump` tiene que ser **≥** la versión del server origen. Si tu DB gestionada se actualizó a Postgres 17 y el container de Vaultly trae `pg_dump` 16, los dumps se rompen.
+**Causa**: El container de la API de EnVault Management trae una versión específica de `pg_dump`. `pg_dump` tiene que ser **≥** la versión del server origen. Si tu DB gestionada se actualizó a Postgres 17 y el container de EnVault Management trae `pg_dump` 16, los dumps se rompen.
 
 **Fix**: Actualizar [`apps/api/Dockerfile`](../../apps/api/Dockerfile) para instalar una versión más nueva de `postgresql-client`. Buscar el build arg `POSTGRES_CLIENT_VERSION` o la línea `apt-get install postgresql-client-X`, subirla, rebuild, redeploy.
 
@@ -185,7 +185,7 @@ docker stats vaultly-api          # uso de CPU/memoria/red
 
 **Causa**: Por diseño — restaurar sobre una conexión PROD está bloqueado en la capa de service ([security-model.md §1.3](security-model.md)). Es un feature, no un bug.
 
-**Si genuinamente necesitás restaurar datos productivos**: restaurá a una conexión DEV/SQA primero, validá, y después que un DBA haga el restore real a PROD manualmente fuera de Vaultly con gestión de cambios apropiada.
+**Si genuinamente necesitás restaurar datos productivos**: restaurá a una conexión DEV/SQA primero, validá, y después que un DBA haga el restore real a PROD manualmente fuera de EnVault Management con gestión de cambios apropiada.
 
 ### 3.4 Cronjob no se dispara
 
@@ -202,7 +202,7 @@ FROM cronjobs WHERE name = '<nombre del job>';
 - `nextRunAt` está en el pasado pero `isActive: false` — activalo.
 - La API se reinició y el cronjob no se re-registró (no debería pasar — `OnApplicationBootstrap` los recarga — pero chequeá logs).
 - La expresión cron es inválida; verificá con `crontab.guru`.
-- Timezone del server vs expresión cron desalineados (cron corre en la TZ del container — `docker exec vaultly-api date`).
+- Timezone del server vs expresión cron desalineados (cron corre en la TZ del container — `docker exec envault-api date`).
 
 ### 3.5 Cronjob se dispara dos veces
 

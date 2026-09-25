@@ -2,12 +2,12 @@
 
 > ⚠️ **STATUS: DISEÑO PROPUESTO — NO IMPLEMENTADO**
 >
-> Este documento describe la **arquitectura target** de la capa de conexiones de Vaultly. Al 2026-05-14, el código implementa **solo conexiones TCP directas**, sin soporte de primera clase para SSL, SSH tunneling, ni abstracción de drivers. Ver [architecture.md](architecture.md) para la implementación actual.
+> Este documento describe la **arquitectura target** de la capa de conexiones de EnVault Management. Al 2026-05-14, el código implementa **solo conexiones TCP directas**, sin soporte de primera clase para SSL, SSH tunneling, ni abstracción de drivers. Ver [architecture.md](architecture.md) para la implementación actual.
 >
 > El propósito de este documento es dar a usuarios DevOps y contributors una visión clara de **hacia dónde va el proyecto**, para que:
 > 1. Las decisiones de diseño que se toman hoy sean compatibles con el target.
 > 2. Los contributors sepan qué construir a continuación sin re-inventar el diseño.
-> 3. Los usuarios evaluando Vaultly puedan juzgar si la trayectoria matchea sus necesidades.
+> 3. Los usuarios evaluando EnVault Management puedan juzgar si la trayectoria matchea sus necesidades.
 
 > 🇬🇧 English version: [../en/architecture-roadmap.md](../en/architecture-roadmap.md)
 
@@ -171,7 +171,7 @@ type NetworkOptions = {
 
 Este es el **prerrequisito** para aterrizar el resto. El `connections.password` actual es plaintext hoy ([security-model.md §4](security-model.md)). Agregar más secretos (CA certs, SSH keys) sin cifrar primero amplifica la superficie de breach.
 
-Approach propuesto: AES-256-GCM con una key derivada de una env var secreta (`VAULTLY_CREDENTIAL_KEY`). Pasos de migración:
+Approach propuesto: AES-256-GCM con una key derivada de una env var secreta (`ENVAULT_CREDENTIAL_KEY`). Pasos de migración:
 1. Agregar columnas cifradas al lado de las plaintext (`password_encrypted`, etc.).
 2. Backfill en el primer read/write de cada conexión.
 3. Después que todas las filas estén migradas, dropear las columnas plaintext.
@@ -205,7 +205,7 @@ El orden importa. Cada paso construye sobre el anterior.
 
 | Item | Outcome |
 |------|---------|
-| Implementar `SshTunnelTransport` usando la librería `ssh2` | Los túneles se gestionan dentro de Vaultly |
+| Implementar `SshTunnelTransport` usando la librería `ssh2` | Los túneles se gestionan dentro de EnVault Management |
 | Agregar campos UI para config SSH | Usuarios proveen bastion host, key, etc. |
 | Agregar columna `ssh_tunnel_config` | Persiste config de túnel por conexión |
 | Documentación: actualizar [connecting-on-premise-databases.md](connecting-on-premise-databases.md) | El patrón SSH tunnel pasa de "externo" a "nativo" |
@@ -214,8 +214,8 @@ El orden importa. Cada paso construye sobre el anterior.
 
 | Item | Outcome |
 |------|---------|
-| Implementación de `MongoDriver` | Vaultly backupea colecciones de MongoDB |
-| Implementación de `MssqlDriver` | Vaultly backupea bases de SQL Server |
+| Implementación de `MongoDriver` | EnVault Management backupea colecciones de MongoDB |
+| Implementación de `MssqlDriver` | EnVault Management backupea bases de SQL Server |
 | UI: el engine picker muestra los cuatro | Usuarios pueden registrar conexiones Mongo / MSSQL |
 | Binarios `pg_dump` / `mysqldump` / `mongodump` / `sqlpackage` shippeados en el container de la API | Imagen base multi-binario |
 
@@ -235,10 +235,10 @@ El orden importa. Cada paso construye sobre el anterior.
 
 Cosas explícitamente fuera del scope de este roadmap:
 
-- **Vaultly como SaaS multi-tenant.** Vaultly es una herramienta self-hosteable. Tenancy/billing/SSO-por-tenant es otro producto distinto.
+- **EnVault Management como SaaS multi-tenant.** EnVault Management es una herramienta self-hosteable. Tenancy/billing/SSO-por-tenant es otro producto distinto.
 - **Reemplazar `pg_dump` / `mysqldump` con implementaciones custom del protocolo.** Las herramientas CLI nativas están battle-tested. Reinventarlas agrega riesgo sin beneficio.
 - **Reemplazar TypeORM.** TypeORM está bien para la DB de control. La abstracción de drivers es para acceso a DBs gestionadas, no a la DB de control.
-- **ETL genérico / movimiento de datos.** Vaultly hace dump/restore, no migración selectiva de filas. Para eso existen herramientas como `pgloader` o Airbyte.
+- **ETL genérico / movimiento de datos.** EnVault Management hace dump/restore, no migración selectiva de filas. Para eso existen herramientas como `pgloader` o Airbyte.
 
 ---
 
@@ -257,9 +257,9 @@ Los refactors de drivers son **estructurales**: requieren migrations de conexion
 
 ## 7. Evaluación honesta para evaluadores
 
-Si estás evaluando Vaultly hoy y los gaps de §1 son deal-breakers (SSL especialmente), **sé honesto con vos mismo sobre tu timeline**. El roadmap es real pero el trabajo no está hecho. Dos opciones:
+Si estás evaluando EnVault Management hoy y los gaps de §1 son deal-breakers (SSL especialmente), **sé honesto con vos mismo sobre tu timeline**. El roadmap es real pero el trabajo no está hecho. Dos opciones:
 
-1. **Usar Vaultly hoy para conexiones que no necesitan SSL/tunneling** (ej: conexiones same-VPC, ambientes dev/test).
+1. **Usar EnVault Management hoy para conexiones que no necesitan SSL/tunneling** (ej: conexiones same-VPC, ambientes dev/test).
 2. **Esperar la Fase 2** si SSL es mandatorio para tu compliance.
 
 Evitá la trampa de adoptar una herramienta porque el roadmap se ve bien — adoptala porque lo que existe hoy cumple tus necesidades, y el roadmap se alinea con dónde la querés ver.

@@ -43,8 +43,8 @@ Common failure modes during install, configuration, and operation, with concrete
 
 Short version:
 ```bash
-docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=vaultly_tmp -p 5433:5432 -d postgres:16-alpine
-DATABASE_URL=postgresql://postgres:tmp@localhost:5433/vaultly_tmp \
+docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=envault_tmp -p 5433:5432 -d postgres:16-alpine
+DATABASE_URL=postgresql://postgres:tmp@localhost:5433/envault_tmp \
   pnpm --filter @vaultly-control/api migration:generate src/database/migrations/InitialSchema
 # Rename to 1700000000000-InitialSchema.ts so it runs first
 ```
@@ -98,18 +98,18 @@ Alternative: run from WSL2 where symlinks work natively.
 
 **Symptom**: Connection test returns `{ "success": false, "error": "password authentication failed for user 'X'" }`.
 
-**Diagnosis from the Vaultly host**:
+**Diagnosis from the EnVault Management host**:
 ```bash
 PGPASSWORD='<password>' psql -h <host> -p <port> -U <user> -d <database> -c '\conninfo'
 ```
 
-If this works from CLI but fails in Vaultly, the discrepancy is in the credentials you typed. If it fails from CLI too, the password is wrong or the user doesn't exist on the DB.
+If this works from CLI but fails in EnVault Management, the discrepancy is in the credentials you typed. If it fails from CLI too, the password is wrong or the user doesn't exist on the DB.
 
 ### 2.2 SSL required error
 
 **Symptom**: Connection test returns `error: SSL/TLS required` or `the server does not support SSL, but SSL was required`.
 
-**Cause**: The managed DB enforces SSL (Neon, Supabase, Azure Flexible Server, RDS with `force_ssl=1`). Vaultly does not expose the `sslmode` parameter in the UI today.
+**Cause**: The managed DB enforces SSL (Neon, Supabase, Azure Flexible Server, RDS with `force_ssl=1`). EnVault Management does not expose the `sslmode` parameter in the UI today.
 
 **Workarounds**:
 1. **Disable SSL enforcement on the provider** (only on RDS with parameter group changes, Azure Single Server, Cloud SQL with non-SSL allowed). **Not recommended for production**.
@@ -122,7 +122,7 @@ Details per provider: [connecting-cloud-databases.md §3](connecting-cloud-datab
 
 **Symptom**: Connection test hangs for 5 seconds, then returns `latencyMs: 5000+, error: connection timeout`.
 
-**Diagnosis from the Vaultly host**:
+**Diagnosis from the EnVault Management host**:
 ```bash
 nc -zv <host> <port>             # confirm TCP reachability
 ping <host>                       # confirm hostname resolves
@@ -130,20 +130,20 @@ traceroute <host>                 # confirm path is not blocked
 ```
 
 **Common causes**:
-- Provider's IP allowlist does not include the Vaultly host's egress IP.
-- Security group / firewall rule blocking inbound from Vaultly's IP.
-- DB is behind a VPN/private network and Vaultly is not (see [connecting-on-premise-databases.md](connecting-on-premise-databases.md)).
+- Provider's IP allowlist does not include the EnVault Management host's egress IP.
+- Security group / firewall rule blocking inbound from EnVault Management's IP.
+- DB is behind a VPN/private network and EnVault Management is not (see [connecting-on-premise-databases.md](connecting-on-premise-databases.md)).
 - Wrong port (e.g., using `5433` where the DB listens on `5432`).
 
 ### 2.4 pg_hba.conf no entry
 
 **Symptom**: `no pg_hba.conf entry for host "X.X.X.X", user "Y", database "Z"`.
 
-**Cause**: PostgreSQL's host-based auth file rejects the source IP. Common on self-hosted Postgres without `host` lines for the Vaultly subnet.
+**Cause**: PostgreSQL's host-based auth file rejects the source IP. Common on self-hosted Postgres without `host` lines for the EnVault Management subnet.
 
 **Fix on the DB side** (`pg_hba.conf`):
 ```
-host    <database>    <user>    <vaultly-cidr>    md5
+host    <database>    <user>    <envault-cidr>    md5
 ```
 
 Then `SELECT pg_reload_conf();` or restart Postgres.
@@ -158,14 +158,14 @@ Then `SELECT pg_reload_conf();` or restart Postgres.
 
 **Possible causes**:
 - The DB has very large tables and `pg_dump` is genuinely working — check API logs for progress, monitor R2 bucket size.
-- Network drop between Vaultly and the source DB silently dropped the connection (no retry today).
+- Network drop between EnVault Management and the source DB silently dropped the connection (no retry today).
 - R2 upload stalled (rare — `@aws-sdk/lib-storage` handles multipart well).
 
 **Diagnosis**:
 ```bash
-# In the Vaultly API container/host:
+# In the EnVault Management API container/host:
 ps aux | grep pg_dump            # is the dump process still alive?
-docker stats vaultly-api          # CPU/memory/network usage
+docker stats envault-api          # CPU/memory/network usage
 # Check R2 bucket: are new parts being uploaded?
 ```
 
@@ -175,7 +175,7 @@ docker stats vaultly-api          # CPU/memory/network usage
 
 **Symptom**: Backup fails with `pg_dump: error: server version: 16.x; pg_dump version: 15.x; aborting because of server version mismatch`.
 
-**Cause**: The Vaultly API container ships a specific `pg_dump` version. `pg_dump` must be **≥** the source server version. If your managed DB upgraded to Postgres 17 and Vaultly's container has `pg_dump` 16, dumps break.
+**Cause**: The EnVault Management API container ships a specific `pg_dump` version. `pg_dump` must be **≥** the source server version. If your managed DB upgraded to Postgres 17 and EnVault Management's container has `pg_dump` 16, dumps break.
 
 **Fix**: Update [`apps/api/Dockerfile`](../../apps/api/Dockerfile) to install a newer `postgresql-client` version. Look for the `POSTGRES_CLIENT_VERSION` build arg or the `apt-get install postgresql-client-X` line, bump it, rebuild, redeploy.
 
@@ -185,7 +185,7 @@ docker stats vaultly-api          # CPU/memory/network usage
 
 **Cause**: By design — restoring over a PROD connection is blocked at the service layer ([security-model.md §1.3](security-model.md#13-restores-can-never-touch-prod)). This is a feature, not a bug.
 
-**If you legitimately need to restore production data**: restore to a DEV/SQA connection first, validate, then have a DBA do the actual PROD restore manually outside Vaultly with proper change management.
+**If you legitimately need to restore production data**: restore to a DEV/SQA connection first, validate, then have a DBA do the actual PROD restore manually outside EnVault Management with proper change management.
 
 ### 3.4 Cronjob does not fire
 
@@ -202,7 +202,7 @@ FROM cronjobs WHERE name = '<your job name>';
 - `nextRunAt` is in the past but `isActive: false` — toggle it on.
 - API process restarted and the cronjob was not re-registered (shouldn't happen — `OnApplicationBootstrap` reloads them — but check logs).
 - Cron expression is invalid; check it with `crontab.guru`.
-- Server timezone vs cron expression mismatch (cron runs in container TZ — `docker exec vaultly-api date`).
+- Server timezone vs cron expression mismatch (cron runs in container TZ — `docker exec envault-api date`).
 
 ### 3.5 Cronjob fires twice
 

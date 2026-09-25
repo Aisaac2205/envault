@@ -226,7 +226,7 @@ export function SidebarContent({
       <SidebarHeader>
         <img
           src="/logo.png"
-          alt="Vaultly"
+          alt="EnVault Management"
           className="h-10 w-auto max-w-[40px] object-contain invert dark:invert-0 transition-[filter] duration-200"
         />
       </SidebarHeader>

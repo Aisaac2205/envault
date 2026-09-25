@@ -94,7 +94,7 @@ El CLI de TypeORM compara las entities contra el estado actual de la DB para cal
 Opción A (rápida, recomendada): un container temporal aparte:
 
 ```bash
-docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=vaultly_tmp -p 5433:5432 -d postgres:16-alpine
+docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=envault_tmp -p 5433:5432 -d postgres:16-alpine
 ```
 
 > Usamos puerto `5433` en el host para no chocar con el `db` del compose principal.
@@ -105,7 +105,7 @@ Opción B (con compose, si querés): levantá `docker compose up db` con un volu
 
 ```bash
 # Apuntamos la env a la DB temporal vacía
-$env:DATABASE_URL = "postgresql://postgres:tmp@localhost:5433/vaultly_tmp"
+$env:DATABASE_URL = "postgresql://postgres:tmp@localhost:5433/envault_tmp"
 
 # Generamos
 pnpm --filter @vaultly-control/api migration:generate src/database/migrations/InitialSchema
@@ -218,7 +218,7 @@ Esto marca la migration como aplicada sin ejecutarla. Solo aplica a entornos LEG
 
 **Pusheé una imagen con una migration que tenía un bug. ¿Sobrescribo el mismo tag o bumpeo versión?**
 
-**Bumpeás versión.** Los tags de imagen Docker deben tratarse como inmutables: una vez que `vaultly-api:0.1.0` está publicado, ese contenido debe quedar fijo para siempre. Si alguien (un compañero, CI, un cliente) ya hizo `docker pull` de ese tag, su cache local tiene la versión rota. Sobrescribir el tag en Hub NO actualiza esos caches — siguen corriendo lo viejo hasta que pidan pull explícito. Bumpeando a `0.1.1` (o `0.1.0-fix1` si querés señalizar que es un hotfix), todo entorno que lo pida baja la versión nueva, sin ambigüedad. La regla general: **una versión = un contenido inmutable, para siempre**.
+**Bumpeás versión.** Los tags de imagen Docker deben tratarse como inmutables: una vez que `envault-api:0.1.0` está publicado, ese contenido debe quedar fijo para siempre. Si alguien (un compañero, CI, un cliente) ya hizo `docker pull` de ese tag, su cache local tiene la versión rota. Sobrescribir el tag en Hub NO actualiza esos caches — siguen corriendo lo viejo hasta que pidan pull explícito. Bumpeando a `0.1.1` (o `0.1.0-fix1` si querés señalizar que es un hotfix), todo entorno que lo pida baja la versión nueva, sin ambigüedad. La regla general: **una versión = un contenido inmutable, para siempre**.
 
 **Mi container del web entra en restart loop con `exit 127` y dice `99-config.sh: not found` aunque el archivo existe. ¿Qué pasa?**
 

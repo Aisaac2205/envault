@@ -65,11 +65,11 @@ function LayoutInner({ children, user, onLogout }: LayoutProps) {
         </button>
         <img
           src="/logo.png"
-          alt="Vaultly"
+          alt="EnVault Management"
           className="h-7 w-7 object-contain invert dark:invert-0 transition-[filter] duration-200"
         />
         <span className="text-sm font-bold tracking-wide text-sidebar-text">
-          Vaultly
+          EnVault Management
         </span>
       </header>
 

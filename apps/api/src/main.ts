@@ -106,7 +106,7 @@ async function bootstrap(): Promise<void> {
 
   if (config.get<string>('NODE_ENV') === 'development') {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Vaultly Control API')
+      .setTitle('EnVault Management API')
       .setDescription('Database backup and restore management for Kubernetes environments')
       .setVersion('1.0')
       .build();
@@ -116,7 +116,7 @@ async function bootstrap(): Promise<void> {
 
   await app.listen(port);
 
-  const logger = new Logger('VaultlyControl');
+  const logger = new Logger('EnVaultManagement');
   logger.log(`Application running on port ${port}`);
 }
 

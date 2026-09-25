@@ -1,4 +1,4 @@
-# Vaultly Control — Agent Guide
+# EnVault Management — Agent Guide
 
 ## Monorepo Structure
 

@@ -71,7 +71,7 @@ export default function LoginPage() {
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2 antialiased selection:bg-black/15 selection:text-black">
       <div className="flex min-h-screen flex-col justify-between bg-white px-8 py-10 sm:px-14 md:px-18 lg:px-16 xl:px-24">
         <div className="flex items-center self-start">
-          <img src="/logo.png" alt="Vaultly" className="h-14 w-auto self-start sm:h-16 invert" />
+          <img src="/logo.png" alt="EnVault Management" className="h-14 w-auto self-start sm:h-16 invert" />
         </div>
         <FadeIn className="my-auto py-10">
           <div className="mx-auto w-full max-w-[420px]">
@@ -167,7 +167,7 @@ export default function LoginPage() {
         </FadeIn>
 
         <p className="text-xs text-[#999]">
-          &copy; {new Date().getFullYear()} Vaultly. {t("footer")}
+          &copy; {new Date().getFullYear()} EnVault Management. {t("footer")}
         </p>
       </div>
       <LoginBrandPanel />

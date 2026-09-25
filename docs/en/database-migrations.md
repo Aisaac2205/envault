@@ -94,7 +94,7 @@ The TypeORM CLI compares entities against the current DB state to compute the di
 Option A (fast, recommended): a separate temporary container:
 
 ```bash
-docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=vaultly_tmp -p 5433:5432 -d postgres:16-alpine
+docker run --rm --name tmp-pg -e POSTGRES_PASSWORD=tmp -e POSTGRES_DB=envault_tmp -p 5433:5432 -d postgres:16-alpine
 ```
 
 > We use host port `5433` to avoid colliding with the main compose `db`.
@@ -105,7 +105,7 @@ Option B (with compose): `docker compose up db` with a clean volume (`docker vol
 
 ```bash
 # Point the env at the empty temporary DB
-$env:DATABASE_URL = "postgresql://postgres:tmp@localhost:5433/vaultly_tmp"
+$env:DATABASE_URL = "postgresql://postgres:tmp@localhost:5433/envault_tmp"
 
 # Generate
 pnpm --filter @vaultly-control/api migration:generate src/database/migrations/InitialSchema
@@ -218,7 +218,7 @@ This marks the migration as applied without executing it. Only applies to LEGACY
 
 **I pushed an image with a buggy migration. Do I overwrite the same tag or bump the version?**
 
-**Bump the version.** Docker image tags must be treated as immutable: once `vaultly-api:0.1.0` is published, that content must stay fixed forever. If anyone (a teammate, CI, a customer) already ran `docker pull` of that tag, their local cache has the broken version. Overwriting the tag in the registry does NOT update those caches — they keep running the old one until they pull again. By bumping to `0.1.1` (or `0.1.0-fix1` if you want to signal it's a hotfix), every environment that pulls it gets the new version, unambiguously. The general rule: **one version = one immutable content, forever**.
+**Bump the version.** Docker image tags must be treated as immutable: once `envault-api:0.1.0` is published, that content must stay fixed forever. If anyone (a teammate, CI, a customer) already ran `docker pull` of that tag, their local cache has the broken version. Overwriting the tag in the registry does NOT update those caches — they keep running the old one until they pull again. By bumping to `0.1.1` (or `0.1.0-fix1` if you want to signal it's a hotfix), every environment that pulls it gets the new version, unambiguously. The general rule: **one version = one immutable content, forever**.
 
 **My web container is in a restart loop with `exit 127` saying `99-config.sh: not found` even though the file exists. What's going on?**
 

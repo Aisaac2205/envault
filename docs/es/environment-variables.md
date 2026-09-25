@@ -1,4 +1,4 @@
-# Variables de entorno — Vaultly Control
+# Variables de entorno — EnVault Management
 
 > 🇬🇧 English version: [../en/environment-variables.md](../en/environment-variables.md)
 
@@ -12,7 +12,7 @@ Variables validadas por `src/config/env.validation.ts`. Las marcadas como **requ
 
 ```bash
 # ── Database (required) ────────────────────────────────────────
-DATABASE_URL=postgresql://vaultly_control:changeme@localhost:5432/vaultly_control
+DATABASE_URL=postgresql://envault_control:changeme@localhost:5432/envault_control
 
 # ── Server ─────────────────────────────────────────────────────
 NODE_ENV=development
@@ -36,7 +36,7 @@ ENCRYPTION_KEY=<string-hex-de-64-chars>
 R2_ACCOUNT_ID=<your-cloudflare-account-id>
 R2_ACCESS_KEY_ID=<your-r2-access-key-id>
 R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
-R2_BUCKET_NAME=vaultly-control-dumps
+R2_BUCKET_NAME=envault-dumps
 R2_PUBLIC_BASE_URL=
 
 # ── Restore (opcional) ─────────────────────────────────────────
@@ -48,8 +48,8 @@ RESTORE_TIMEOUT_MS=1800000
 # guiones en identifiers unquoted.
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=vaultly_control
-DB_USER=vaultly_control
+DB_NAME=envault_control
+DB_USER=envault_control
 DB_PASSWORD=changeme
 ```
 
@@ -91,12 +91,12 @@ Variables obligatorias para que `docker compose up` no aborte (fail-loud con `${
 
 ```bash
 # ── Database (obligatorias) ────────────────────────────────────
-DB_NAME=vaultly_control
-DB_USER=vaultly_control
+DB_NAME=envault_control
+DB_USER=envault_control
 DB_PASSWORD=  # ← REQUERIDA, sin default
 
 # URL usada por la API para conectarse al servicio `db` interno
-DATABASE_URL=postgresql://vaultly_control:CHANGE_ME@db:5432/vaultly_control
+DATABASE_URL=postgresql://envault_control:CHANGE_ME@db:5432/envault_control
 
 # ── Server ─────────────────────────────────────────────────────
 NODE_ENV=production
@@ -119,7 +119,7 @@ BETTER_AUTH_ADMIN_PASSWORD=<password-fuerte>
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=vaultly-control-dumps
+R2_BUCKET_NAME=envault-dumps
 R2_PUBLIC_BASE_URL=
 ```
 

@@ -2,36 +2,36 @@
 
 > 🇬🇧 English version: [../en/connecting-on-premise-databases.md](../en/connecting-on-premise-databases.md)
 
-Guía para DevOps cuyas bases de datos viven en **redes privadas** — data centers corporativos, VPCs aisladas, servers on-prem, ambientes air-gapped — donde la DB no tiene un endpoint público que Vaultly pueda alcanzar directamente.
+Guía para DevOps cuyas bases de datos viven en **redes privadas** — data centers corporativos, VPCs aisladas, servers on-prem, ambientes air-gapped — donde la DB no tiene un endpoint público que EnVault Management pueda alcanzar directamente.
 
-> **Spoiler**: no existe una "URL mágica" para on-prem. Tenés que poner a Vaultly y la DB en el mismo scope de alcance de red. Este doc muestra las cuatro formas prácticas de hacerlo.
+> **Spoiler**: no existe una "URL mágica" para on-prem. Tenés que poner a EnVault Management y la DB en el mismo scope de alcance de red. Este doc muestra las cuatro formas prácticas de hacerlo.
 
 ---
 
 ## 1. El problema central
 
-Las DBs cloud resuelven la conectividad o siendo direccionables públicamente (con SSL + allowlist) o viviendo en la misma VPC que quien llama. Las DBs on-prem típicamente **no se pueden hacer direccionables públicamente** por compliance, seguridad, o "el equipo de firewall no lo aprueba". Así que Vaultly necesita meter mano en la red privada desde afuera.
+Las DBs cloud resuelven la conectividad o siendo direccionables públicamente (con SSL + allowlist) o viviendo en la misma VPC que quien llama. Las DBs on-prem típicamente **no se pueden hacer direccionables públicamente** por compliance, seguridad, o "el equipo de firewall no lo aprueba". Así que EnVault Management necesita meter mano en la red privada desde afuera.
 
 Los cuatro patrones prácticos, de más a menos común:
 
-1. **Self-hostear Vaultly dentro de la red privada** — el más limpio, sin tunneling.
-2. **VPN site-to-site** — la red de Vaultly se vuelve parte de la red corporativa.
+1. **Self-hostear EnVault Management dentro de la red privada** — el más limpio, sin tunneling.
+2. **VPN site-to-site** — la red de EnVault Management se vuelve parte de la red corporativa.
 3. **Túnel SSH vía bastion / jump host** — rápido de armar, requiere túnel externo.
 4. **Reverse proxy / SOCKS proxy** — nicho, pero funciona.
 
-Vaultly **no** trae túnel SSH o cliente VPN nativos hoy. Todos los patrones de abajo asumen que el túnel/VPN se establece **fuera** del proceso de Vaultly, a nivel OS o red. Ver [architecture-roadmap.md](architecture-roadmap.md) para el soporte nativo planificado.
+EnVault Management **no** trae túnel SSH o cliente VPN nativos hoy. Todos los patrones de abajo asumen que el túnel/VPN se establece **fuera** del proceso de EnVault Management, a nivel OS o red. Ver [architecture-roadmap.md](architecture-roadmap.md) para el soporte nativo planificado.
 
 ---
 
-## 2. Patrón A — Self-host Vaultly dentro de la red privada (recomendado)
+## 2. Patrón A — Self-host EnVault Management dentro de la red privada (recomendado)
 
-La opción más simple y limpia: deployar Vaultly **en un host que ya vive dentro de la red privada** donde están las DBs target.
+La opción más simple y limpia: deployar EnVault Management **en un host que ya vive dentro de la red privada** donde están las DBs target.
 
 ```
 ┌──────────── Red Corporativa / Privada ──────────────┐
 │                                                     │
 │   ┌──────────┐    TCP directo   ┌──────────────┐    │
-│   │ Vaultly  │ ────────────────▶│  DB on-prem  │    │
+│   │ EnVault Management  │ ────────────────▶│  DB on-prem  │    │
 │   │ container│  (IPs privadas)  │ (10.0.x.y)   │    │
 │   └──────────┘                  └──────────────┘    │
 │        ▲                                            │
@@ -47,7 +47,7 @@ La opción más simple y limpia: deployar Vaultly **en un host que ya vive dentr
 
 - Un host Linux dentro de la red que pueda `nc -zv <db-host> <db-port>` con éxito.
 - Docker instalado en ese host (o Kubernetes).
-- Un reverse proxy con terminación HTTPS (nginx, Traefik, Caddy) delante del puerto web de Vaultly.
+- Un reverse proxy con terminación HTTPS (nginx, Traefik, Caddy) delante del puerto web de EnVault Management.
 - Opcional: un WAF o gateway SSO para gatear el acceso desde la intranet corporativa.
 
 **Pros**:
@@ -57,22 +57,22 @@ La opción más simple y limpia: deployar Vaultly **en un host que ya vive dentr
 - Compliance-friendly (a los auditores les encanta).
 
 **Cons**:
-- Tenés que operar Vaultly en infra interna (parches, monitoreo, log shipping).
+- Tenés que operar EnVault Management en infra interna (parches, monitoreo, log shipping).
 - Las convivencias cloud-native (auto-deploy de Railway) requieren un pipeline CI que empuje imágenes hacia adentro.
 
-**Cuándo elegirlo**: deploys de producción, industrias reguladas (banca, salud), o cualquier escenario donde podés correr Vaultly on-prem.
+**Cuándo elegirlo**: deploys de producción, industrias reguladas (banca, salud), o cualquier escenario donde podés correr EnVault Management on-prem.
 
 ---
 
 ## 3. Patrón B — VPN site-to-site
 
-Establecés un túnel VPN permanente entre la red donde corre Vaultly (una VPC cloud, la red de tu laptop, donde sea) y la red corporativa donde viven las DBs. Vaultly ve la DB como si fuera local.
+Establecés un túnel VPN permanente entre la red donde corre EnVault Management (una VPC cloud, la red de tu laptop, donde sea) y la red corporativa donde viven las DBs. EnVault Management ve la DB como si fuera local.
 
 ```
-┌── Red Vaultly ──────┐         ┌── Red Corporativa ────┐
+┌── Red EnVault Management ──────┐         ┌── Red Corporativa ────┐
 │                     │  VPN    │                       │
 │  ┌──────────┐       │ túnel   │  ┌────────────────┐   │
-│  │ Vaultly  │ ◀═══════════════════▶ DB (10.0.x.y) │   │
+│  │ EnVault Management  │ ◀═══════════════════▶ DB (10.0.x.y) │   │
 │  └──────────┘       │  IPSec  │  └────────────────┘   │
 │                     │  /WG    │                       │
 └─────────────────────┘         └───────────────────────┘
@@ -83,9 +83,9 @@ Establecés un túnel VPN permanente entre la red donde corre Vaultly (una VPC c
 - WireGuard (más ligero, moderno, más fácil de debuggear — `wg-quick`).
 - OpenVPN (legacy pero ubicuo).
 
-**Configuración del lado de Vaultly**:
+**Configuración del lado de EnVault Management**:
 
-Al conectar desde Vaultly, usá la **IP privada** de la DB (como se ve desde dentro de la red corporativa):
+Al conectar desde EnVault Management, usá la **IP privada** de la DB (como se ve desde dentro de la red corporativa):
 
 | Campo | Valor |
 |-------|-------|
@@ -99,30 +99,30 @@ Al conectar desde Vaultly, usá la **IP privada** de la DB (como se ve desde den
 **Verificación antes de guardar la conexión**:
 
 ```bash
-# Desde el host que corre Vaultly:
+# Desde el host que corre EnVault Management:
 ping 10.42.1.50                           # confirma ruta VPN
 nc -zv 10.42.1.50 5432                    # confirma alcanzabilidad TCP
 psql -h 10.42.1.50 -U backup_user -d corp # confirma credenciales
 ```
 
 **Pros**:
-- Long-lived, estable, transparente para Vaultly.
+- Long-lived, estable, transparente para EnVault Management.
 - Múltiples DBs alcanzables por un solo túnel.
 - Gestionado centralmente por el equipo de red.
 
 **Cons**:
 - Requiere coordinación con el equipo de red corporativa.
-- Las caídas son invisibles para Vaultly hasta que falla un intento de conexión.
+- Las caídas son invisibles para EnVault Management hasta que falla un intento de conexión.
 
 ---
 
 ## 4. Patrón C — Túnel SSH vía bastion / jump host
 
-Establecés un túnel SSH desde el host de Vaultly a un jump host dentro de la red corporativa. El port forwarding local hace que la DB remota aparezca en `localhost:<port>` del host de Vaultly.
+Establecés un túnel SSH desde el host de EnVault Management a un jump host dentro de la red corporativa. El port forwarding local hace que la DB remota aparezca en `localhost:<port>` del host de EnVault Management.
 
 ```
-┌── Host Vaultly ──┐    ┌─ Jump Host ─┐    ┌── DB ──┐
-│ Vaultly          │    │             │    │        │
+┌── Host EnVault Management ──┐    ┌─ Jump Host ─┐    ┌── DB ──┐
+│ EnVault Management          │    │             │    │        │
 │   │              │    │             │    │        │
 │   └─▶ localhost:5432  │             │    │        │
 │       │          │    │             │    │        │
@@ -131,25 +131,25 @@ Establecés un túnel SSH desde el host de Vaultly a un jump host dentro de la r
 └──────────────────┘    └─────────────┘    └────────┘
 ```
 
-**Setup en el host de Vaultly** (fuera del proceso de Vaultly):
+**Setup en el host de EnVault Management** (fuera del proceso de EnVault Management):
 
 ```bash
 # Túnel persistente (usá autossh o un systemd unit para producción)
 ssh -L 5432:db.internal.corp:5432 \
     -N -f \
-    -i ~/.ssh/vaultly_bastion_key \
-    vaultly@bastion.corp.example.com
+    -i ~/.ssh/envault_bastion_key \
+    envault@bastion.corp.example.com
 
 # O con autossh para auto-reconexión
 autossh -M 0 -f -N \
     -o "ServerAliveInterval=30" \
     -o "ServerAliveCountMax=3" \
     -L 5432:db.internal.corp:5432 \
-    -i ~/.ssh/vaultly_bastion_key \
-    vaultly@bastion.corp.example.com
+    -i ~/.ssh/envault_bastion_key \
+    envault@bastion.corp.example.com
 ```
 
-**Para Vaultly en Docker**: el túnel tiene que terminar en el namespace de red del **host**, no dentro del container. Después en Vaultly, registrá la conexión apuntando al host:
+**Para EnVault Management en Docker**: el túnel tiene que terminar en el namespace de red del **host**, no dentro del container. Después en EnVault Management, registrá la conexión apuntando al host:
 
 | Campo | Valor |
 |-------|-------|
@@ -160,26 +160,26 @@ autossh -M 0 -f -N \
 | Password | password DB |
 | DB Type | `postgres` o `mysql` |
 
-> **Importante**: el túnel SSH cifra el salto de Vaultly al bastion. **No** cifra el salto bastion → DB. Si la red corporativa requiere cifrado end-to-end, activá SSL del lado de la DB y combiná con §3 (VPN) o esperá SSL nativo en Vaultly.
+> **Importante**: el túnel SSH cifra el salto de EnVault Management al bastion. **No** cifra el salto bastion → DB. Si la red corporativa requiere cifrado end-to-end, activá SSL del lado de la DB y combiná con §3 (VPN) o esperá SSL nativo en EnVault Management.
 
 **Ejemplo de systemd unit** (para estabilidad de producción):
 
 ```ini
-# /etc/systemd/system/vaultly-ssh-tunnel.service
+# /etc/systemd/system/envault-ssh-tunnel.service
 [Unit]
-Description=Túnel SSH de Vaultly al Postgres corporativo
+Description=Túnel SSH de EnVault Management al Postgres corporativo
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=vaultly
+User=envault
 ExecStart=/usr/bin/autossh -M 0 -N \
   -o "ServerAliveInterval=30" \
   -o "ServerAliveCountMax=3" \
   -o "ExitOnForwardFailure=yes" \
   -L 5432:db.internal.corp:5432 \
-  -i /home/vaultly/.ssh/bastion_key \
-  vaultly@bastion.corp.example.com
+  -i /home/envault/.ssh/bastion_key \
+  envault@bastion.corp.example.com
 Restart=always
 RestartSec=10
 
@@ -193,7 +193,7 @@ WantedBy=multi-user.target
 - Auditable (cada sesión SSH deja rastro).
 
 **Cons**:
-- Túnel gestionado fuera de Vaultly — si se cae, las conexiones fallan hasta que se restaure.
+- Túnel gestionado fuera de EnVault Management — si se cae, las conexiones fallan hasta que se restaure.
 - Suma complejidad operativa (un servicio más que monitorear).
 - Single point of failure a menos que corras múltiples túneles.
 
@@ -206,10 +206,10 @@ Nicho, pero vale mencionarlo. Si la red corporativa tiene postura outbound-only 
 Herramientas: `frp`, `ngrok` (con caveats de compliance), `bore`, túneles de `cloudflared`.
 
 ```
-Red Corporativa (inicia)             Red Vaultly
+Red Corporativa (inicia)             Red EnVault Management
 ┌─────────────────┐                  ┌──────────────┐
 │   DB            │                  │              │
-│   ▲             │                  │   Vaultly    │
+│   ▲             │                  │   EnVault Management    │
 │   │             │                  │      ▲       │
 │   cliente reverse tunnel           │      │       │
 │   │             │ ──── outbound ─▶ │   server     │
@@ -223,7 +223,7 @@ Red Corporativa (inicia)             Red Vaultly
 - SSH inbound está bloqueado.
 - Compliance permite el túnel outbound (muchas empresas prohíben herramientas tipo `ngrok` — chequear primero).
 
-En Vaultly, registrás el endpoint público del túnel server como host.
+En EnVault Management, registrás el endpoint público del túnel server como host.
 
 ---
 
@@ -242,7 +242,7 @@ En Vaultly, registrás el endpoint público del túnel server como host.
 
 ## 7. Checklist de troubleshooting de conectividad
 
-Antes de abrir un ticket "Vaultly no conecta", corré esto desde el host donde corre Vaultly:
+Antes de abrir un ticket "EnVault Management no conecta", corré esto desde el host donde corre EnVault Management:
 
 ```bash
 # 1. ¿Puedo resolver el hostname?
@@ -262,14 +262,14 @@ pg_isready -h db.internal.corp -p 5432
 PGPASSWORD='...' psql -h db.internal.corp -U backup_user -d corp -c '\conninfo'
 # (mysql: mysql -h ... -u ... -p ... -e 'SELECT 1')
 
-# 5. Desde dentro del container de Vaultly, ¿puedo alcanzar el host?
-docker exec vaultly-api nc -zv host.docker.internal 5432
-docker exec vaultly-api nc -zv db.internal.corp 5432
+# 5. Desde dentro del container de EnVault Management, ¿puedo alcanzar el host?
+docker exec envault-api nc -zv host.docker.internal 5432
+docker exec envault-api nc -zv db.internal.corp 5432
 ```
 
 Si los pasos 1–4 funcionan desde el host pero el paso 5 falla, el problema es Docker networking — probablemente el túnel/VPN está en el host pero el container usa una bridge network que no lo alcanza. Soluciones:
 
-- Usar `--network host` para el container de Vaultly (perdés algo de aislamiento).
+- Usar `--network host` para el container de EnVault Management (perdés algo de aislamiento).
 - Armar el túnel **dentro** del container como sidecar (requiere keys SSH montadas).
 - Correr el túnel como container separado en la misma red Docker.
 
@@ -284,7 +284,7 @@ Para una conexión on-prem productiva:
 - [ ] SSL habilitado en la capa DB (aunque el túnel cifre, defensa en profundidad)
 - [ ] Política de rotación de password documentada (90 días máx recomendado)
 - [ ] Túnel/VPN monitoreado con alertas en desconexión
-- [ ] IP de egress de Vaultly documentada y agregada al allowlist de la DB (si aplica)
+- [ ] IP de egress de EnVault Management documentada y agregada al allowlist de la DB (si aplica)
 - [ ] Backups probados end-to-end (una conexión registrada que nunca se backupea es peor que ninguna conexión)
 - [ ] Restore probado contra un target **no-prod** (los restores a PROD están bloqueados por diseño, ver [security-model.md](security-model.md))
 
@@ -294,4 +294,4 @@ Para una conexión on-prem productiva:
 
 Ver [architecture-roadmap.md](architecture-roadmap.md) para el diseño planificado.
 
-Headline: una abstracción `Transport` en el código que va a dejar que Vaultly gestione SSH tunnels y configuración SSL por conexión nativamente. Hasta entonces, tratá el tunneling como **preocupación operativa externa**, no como feature de Vaultly.
+Headline: una abstracción `Transport` en el código que va a dejar que EnVault Management gestione SSH tunnels y configuración SSL por conexión nativamente. Hasta entonces, tratá el tunneling como **preocupación operativa externa**, no como feature de EnVault Management.

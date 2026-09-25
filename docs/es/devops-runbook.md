@@ -2,7 +2,7 @@
 
 > 🇬🇧 English version: [../en/devops-runbook.md](../en/devops-runbook.md)
 
-Guía operativa para correr Vaultly en producción. Cubre qué monitorear, qué backupear, cómo rotar, cómo responder a incidentes comunes. Inclinada hacia "hacé esto el día uno, te vas a agradecer el día noventa".
+Guía operativa para correr EnVault Management en producción. Cubre qué monitorear, qué backupear, cómo rotar, cómo responder a incidentes comunes. Inclinada hacia "hacé esto el día uno, te vas a agradecer el día noventa".
 
 ---
 
@@ -12,16 +12,16 @@ Antes de pasar a producción, confirmá:
 
 ### Infraestructura
 
-- [ ] La API y Web de Vaultly corren en una sola réplica cada una (multi-réplica rompe el scheduler — ver [scheduler-architecture.md](scheduler-architecture.md))
+- [ ] La API y Web de EnVault Management corren en una sola réplica cada una (multi-réplica rompe el scheduler — ver [scheduler-architecture.md](scheduler-architecture.md))
 - [ ] La DB PostgreSQL de control es **dedicada** (no compartida con otras apps)
-- [ ] La DB de control tiene backups automáticos configurados (Vaultly NO se backupea a sí mismo)
+- [ ] La DB de control tiene backups automáticos configurados (EnVault Management NO se backupea a sí mismo)
 - [ ] HTTPS está terminado delante del service web (Railway lo hace solo; para self-host, usar Caddy/nginx/Traefik)
 - [ ] `CORS_ORIGIN` está seteado al dominio exacto del frontend (sin wildcards)
 - [ ] `NODE_ENV=production` está seteado en el service de la API
 
 ### Secretos
 
-- [ ] Las credenciales de R2 son **dedicadas** para Vaultly (no compartidas con otras apps)
+- [ ] Las credenciales de R2 son **dedicadas** para EnVault Management (no compartidas con otras apps)
 - [ ] El bucket R2 tiene **versionado habilitado** (defensa contra borrado accidental)
 - [ ] `BETTER_AUTH_SECRET` está en un secrets manager, no en `.env`
 - [ ] No hay archivos `.env` commiteados (`git log --all --full-history -- '*.env'` debería estar vacío)
@@ -48,7 +48,7 @@ Antes de pasar a producción, confirmá:
 
 | Métrica | Threshold | Por qué |
 |---------|-----------|---------|
-| Status de `/health` de la API | No-200 por > 2 min | Vaultly está caído |
+| Status de `/health` de la API | No-200 por > 2 min | EnVault Management está caído |
 | Cantidad de conexiones de la DB de control | > 80% de `max_connections` | Leak de conexiones o issue de escala |
 | Tasa de errores 4xx de R2 | Sostenida > 5 min | Credenciales revocadas, bucket mal configurado |
 | Tasa de fallo de backup jobs | > 20% en la última hora | Patrón de fallas, no un caso aislado |
@@ -70,7 +70,7 @@ Antes de pasar a producción, confirmá:
 - Conexiones activas por environment
 - Últimas entradas del audit log con filtro por usuario
 
-Para stacks de Prometheus/Grafana, Vaultly **no** expone `/metrics` actualmente. Trackeá en la capa de infra (stats del container, pg_stat_*).
+Para stacks de Prometheus/Grafana, EnVault Management **no** expone `/metrics` actualmente. Trackeá en la capa de infra (stats del container, pg_stat_*).
 
 ---
 
@@ -78,9 +78,9 @@ Para stacks de Prometheus/Grafana, Vaultly **no** expone `/metrics` actualmente.
 
 ### 3.1 Agregar una nueva conexión a DB gestionada
 
-1. Verificar conectividad desde el host de Vaultly (`nc -zv <host> <port>`) — ver [troubleshooting §2](troubleshooting.md).
+1. Verificar conectividad desde el host de EnVault Management (`nc -zv <host> <port>`) — ver [troubleshooting §2](troubleshooting.md).
 2. Crear un usuario DB dedicado con permisos mínimos ([flow-database-management.md §permisos](flow-database-management.md)).
-3. Registrar la conexión desde la UI de Vaultly.
+3. Registrar la conexión desde la UI de EnVault Management.
 4. Testear la conexión desde la UI.
 5. Disparar un backup manual; verificar que aparezca en R2 y en el historial.
 6. Configurar el schedule del cronjob.
@@ -90,22 +90,22 @@ Para stacks de Prometheus/Grafana, Vaultly **no** expone `/metrics` actualmente.
 Hoy no hay rotación built-in. Procedimiento manual:
 
 1. En la DB origen, crear un usuario nuevo con los mismos permisos que el viejo.
-2. En Vaultly: registrar una conexión NUEVA con las credenciales nuevas (no edites la PROD existente — los edits a PROD están bloqueados por diseño).
+2. En EnVault Management: registrar una conexión NUEVA con las credenciales nuevas (no edites la PROD existente — los edits a PROD están bloqueados por diseño).
 3. Migrar los cronjobs para apuntar a la conexión nueva (desde la UI).
 4. Correr un backup de verificación.
 5. Una vez estable, dejar la vieja en su lugar (soft-delete si es no-PROD; las PROD no se pueden borrar).
 6. En la DB origen, droppear el usuario viejo.
 
-### 3.3 Rotar el password de la DB propia de Vaultly
+### 3.3 Rotar el password de la DB propia de EnVault Management
 
-1. En la DB de control: `ALTER USER vaultly_control WITH PASSWORD 'nuevo-password-fuerte';`
+1. En la DB de control: `ALTER USER envault_control WITH PASSWORD 'nuevo-password-fuerte';`
 2. Actualizar `DATABASE_URL` en la config del service de la API.
 3. Redeploy (rolling restart está bien, una sola réplica).
 4. Confirmar que `/health` devuelve 200.
 
 ### 3.4 Rotar credenciales de R2
 
-1. En Cloudflare Dashboard → R2 → Manage R2 API Tokens → crear token nuevo con scope `Object Read & Write` sobre el bucket de Vaultly.
+1. En Cloudflare Dashboard → R2 → Manage R2 API Tokens → crear token nuevo con scope `Object Read & Write` sobre el bucket de EnVault Management.
 2. Actualizar `R2_ACCESS_KEY_ID` y `R2_SECRET_ACCESS_KEY` en la config del service de la API.
 3. Redeploy.
 4. Disparar un backup manual; confirmar que llega a R2.
@@ -113,7 +113,7 @@ Hoy no hay rotación built-in. Procedimiento manual:
 
 ### 3.5 Restaurar un dump a un target no-PROD
 
-1. Desde la UI de Vaultly → Restore → elegir el dump de R2.
+1. Desde la UI de EnVault Management → Restore → elegir el dump de R2.
 2. Elegir la conexión target (debe ser DEV o SQA — PROD está bloqueado).
 3. Confirmar el prompt de type-to-confirm.
 4. Monitorear el restore job hasta `completed`.
@@ -123,22 +123,22 @@ Hoy no hay rotación built-in. Procedimiento manual:
 
 ## 4. Playbooks de respuesta a incidentes
 
-### 4.1 Vaultly está totalmente caído
+### 4.1 EnVault Management está totalmente caído
 
 **Triaje en este orden**:
 
 1. **¿El container de la API está corriendo?**
    ```bash
-   docker ps | grep vaultly-api
+   docker ps | grep envault-api
    # O en Railway: Service → Deployments → chequear status
    ```
 2. **¿Los logs dicen algo?**
    ```bash
-   docker logs --tail 200 vaultly-api
+   docker logs --tail 200 envault-api
    ```
 3. **¿La DB de control es alcanzable desde la API?**
    ```bash
-   docker exec vaultly-api pg_isready -h <DB_HOST> -p <DB_PORT>
+   docker exec envault-api pg_isready -h <DB_HOST> -p <DB_PORT>
    ```
 4. **¿Better Auth está respondiendo?**
    ```bash
@@ -177,14 +177,14 @@ Si 1 falla: reiniciar el container. Si 2 muestra que la API crasheó al arrancar
    SELECT * FROM audit_logs WHERE user_id = '<sospechoso>' ORDER BY created_at DESC LIMIT 100;
    ```
 2. Buscar patrones: intentos fallidos de modificar PROD (bien — los guards funcionaron), intentos inusuales de restore-desde-PROD, creación masiva de conexiones.
-3. Si se comprometió una sesión: revocarla vía la API admin de Better Auth, o rotar `BETTER_AUTH_SECRET` para invalidar TODAS las sesiones simultáneamente. Rotar credenciales de R2 de Vaultly como defensa en profundidad.
+3. Si se comprometió una sesión: revocarla vía la API admin de Better Auth, o rotar `BETTER_AUTH_SECRET` para invalidar TODAS las sesiones simultáneamente. Rotar credenciales de R2 de EnVault Management como defensa en profundidad.
 4. El audit log **no es criptográficamente inmutable** — un DBA con acceso a la DB de control puede editarlo ([security-model.md §3](security-model.md)). Exportá las filas sospechosas a un sistema separado antes de investigar, por si las adulteran.
 
 ---
 
 ## 5. Backup de la propia DB de control
 
-**Este es el paso más salteado y el más doloroso cuando muerde.** Vaultly backupea tus DBs gestionadas. NO backupea su propia DB de control.
+**Este es el paso más salteado y el más doloroso cuando muerde.** EnVault Management backupea tus DBs gestionadas. NO backupea su propia DB de control.
 
 Si se pierde la DB de control, perdés:
 - Cada conexión registrada (credenciales, hosts, nombres)
@@ -193,7 +193,7 @@ Si se pierde la DB de control, perdés:
 - El metadata que apunta a los dumps en R2 (los dumps en sí quedan en R2, pero perdés el índice)
 
 **Estrategia mínima aceptable**:
-- `pg_dump` diario de la DB de control a una ubicación separada (NO el mismo bucket R2 que usa Vaultly — cuenta distinta o proveedor distinto).
+- `pg_dump` diario de la DB de control a una ubicación separada (NO el mismo bucket R2 que usa EnVault Management — cuenta distinta o proveedor distinto).
 - Procedimiento de restore probado (hacelo una vez en staging, documentá los pasos).
 - Retención: al menos 30 días de backups diarios.
 
