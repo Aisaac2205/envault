@@ -254,7 +254,6 @@ describe('BackupService', () => {
     });
 
     it('cancels running backup job by triggering active abort controller', async () => {
-      let triggerAbort: (() => void) | undefined;
       mockBackupRepository.findById.mockResolvedValue({
         id: 'job-running',
         connectionId: 'conn-1',
