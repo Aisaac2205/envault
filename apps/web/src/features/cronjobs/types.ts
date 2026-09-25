@@ -47,7 +47,3 @@ export interface UpdateCronjobDto extends RetentionFields {
   isActive?: boolean;
 }
 
-export interface RetentionPreview {
-  count: number;
-  totalSizeMb: number;
-}

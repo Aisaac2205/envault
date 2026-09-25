@@ -7,19 +7,8 @@ import type {
   Connection,
   CreateCronjobDto,
   UpdateCronjobDto,
-  RetentionPreview,
 } from "../types";
 import { validateCronExpression } from "../lib/cron-validator";
-import {
-  useRetentionPreview,
-  type RetentionPreviewParams,
-} from "./useRetentionPreview";
-
-function parseOptionalInt(value: string): number | undefined {
-  if (value.trim() === "") return undefined;
-  const n = Number(value);
-  return Number.isInteger(n) && n >= 0 ? n : undefined;
-}
 
 export interface CronPreset {
   label: string;
@@ -54,13 +43,6 @@ export interface CronjobFormData {
   frequency: CronFrequency;
 }
 
-export interface RetentionFormData {
-  enabled: boolean;
-  keepLast: string;
-  maxAgeDays: string;
-  maxSizeMb: string;
-}
-
 export interface UseCronjobFormProps {
   cronjob?: Cronjob;
   connections: Connection[];
@@ -73,8 +55,6 @@ export interface UseCronjobFormReturn {
   formData: CronjobFormData;
   selectedPresetLabel: string;
   validationError: string | null;
-  retention: RetentionFormData;
-  retentionPreview: RetentionPreview | undefined;
   isCustom: boolean;
   isEditMode: boolean;
   nameCounts: Record<string, number>;
@@ -82,16 +62,12 @@ export interface UseCronjobFormReturn {
   handleChange: (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
   handlePresetChange: (e: ChangeEvent<HTMLSelectElement>) => void;
   handleCronExpressionChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  handleRetentionChange: <K extends keyof RetentionFormData>(
-    field: K,
-    value: RetentionFormData[K],
-  ) => void;
   handleSubmit: (e: FormEvent) => Promise<void>;
 }
 
 /**
- * Custom React hook for managing the state, validation, presets, and retention preview
- * calculations of the CronjobForm component.
+ * Custom React hook for managing the state, validation, and presets
+ * of the CronjobForm component.
  */
 export function useCronjobForm({
   cronjob,
@@ -118,38 +94,6 @@ export function useCronjobForm({
 
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const [retention, setRetention] = useState<RetentionFormData>({
-    enabled: cronjob?.retentionEnabled ?? false,
-    keepLast: cronjob?.retentionKeepLast?.toString() ?? "",
-    maxAgeDays: cronjob?.retentionMaxAgeDays?.toString() ?? "",
-    maxSizeMb: cronjob?.retentionMaxSizeMb?.toString() ?? "",
-  });
-
-  const previewParams = useMemo<RetentionPreviewParams | null>(() => {
-    if (!retention.enabled) return null;
-    const slug = connections.find((c) => c.id === formData.connectionId)?.slug;
-    if (!slug) return null;
-    const keepLast = parseOptionalInt(retention.keepLast);
-    const maxAgeDays = parseOptionalInt(retention.maxAgeDays);
-    const maxTotalSizeMb = parseOptionalInt(retention.maxSizeMb);
-    if (
-      keepLast === undefined &&
-      maxAgeDays === undefined &&
-      maxTotalSizeMb === undefined
-    ) {
-      return null;
-    }
-    return {
-      connectionSlug: slug,
-      category: formData.frequency,
-      keepLast,
-      maxAgeDays,
-      maxTotalSizeMb,
-    };
-  }, [retention, connections, formData.connectionId, formData.frequency]);
-
-  const { data: retentionPreview } = useRetentionPreview(previewParams);
-
   const nameCounts = useMemo<Record<string, number>>(() => {
     const counts: Record<string, number> = {};
     for (const c of connections) {
@@ -167,7 +111,6 @@ export function useCronjobForm({
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
-    // Type assertion is safe here because form inputs use matching name attributes
     setFormData((prev) => ({ ...prev, [name as keyof CronjobFormData]: value }));
     setValidationError(null);
   };
@@ -199,13 +142,6 @@ export function useCronjobForm({
     setValidationError(null);
   };
 
-  const handleRetentionChange = <K extends keyof RetentionFormData>(
-    field: K,
-    value: RetentionFormData[K],
-  ) => {
-    setRetention((prev) => ({ ...prev, [field]: value }));
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
@@ -234,10 +170,6 @@ export function useCronjobForm({
         connectionId: formData.connectionId,
         cronExpression: formData.cronExpression.trim(),
         frequency: formData.frequency,
-        retentionEnabled: retention.enabled,
-        retentionKeepLast: parseOptionalInt(retention.keepLast),
-        retentionMaxAgeDays: parseOptionalInt(retention.maxAgeDays),
-        retentionMaxSizeMb: parseOptionalInt(retention.maxSizeMb),
       });
     } catch {
       // Parent handle components will catch this error
@@ -250,8 +182,6 @@ export function useCronjobForm({
     formData,
     selectedPresetLabel,
     validationError,
-    retention,
-    retentionPreview,
     isCustom,
     isEditMode,
     nameCounts,
@@ -259,7 +189,6 @@ export function useCronjobForm({
     handleChange,
     handlePresetChange,
     handleCronExpressionChange,
-    handleRetentionChange,
     handleSubmit,
   };
 }

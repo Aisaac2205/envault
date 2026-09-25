@@ -48,8 +48,6 @@ export default function CronjobForm({
     formData,
     selectedPresetLabel,
     validationError,
-    retention,
-    retentionPreview,
     isCustom,
     isEditMode,
     nameCounts,
@@ -57,7 +55,6 @@ export default function CronjobForm({
     handleChange,
     handlePresetChange,
     handleCronExpressionChange,
-    handleRetentionChange,
     handleSubmit,
   } = useCronjobForm({
     cronjob,
@@ -238,98 +235,6 @@ export default function CronjobForm({
             0 */6 * * * = {t("form.cronHint.every6h")}
           </div>
 
-          {/* Retención */}
-          <fieldset className="mt-4 rounded-md border border-border p-3">
-            <legend className="px-1 text-xs font-semibold text-muted-foreground">
-              {t("form.field.retention")}
-            </legend>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={retention.enabled}
-                onChange={(e) =>
-                  handleRetentionChange("enabled", e.target.checked)
-                }
-                disabled={isLoading}
-              />
-              {t("form.pruneLabel")}
-            </label>
-
-            {retention.enabled && (
-              <>
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="flex flex-col gap-1">
-                    <label
-                      htmlFor="ret-keep-last"
-                      className="text-xs font-semibold text-muted-foreground"
-                    >
-                      {t("form.field.keepLast")}
-                    </label>
-                    <input
-                      id="ret-keep-last"
-                      className={inputClass}
-                      type="number"
-                      min={0}
-                      value={retention.keepLast}
-                      onChange={(e) =>
-                        handleRetentionChange("keepLast", e.target.value)
-                      }
-                      placeholder={t("form.placeholder.keepLast")}
-                      disabled={isLoading}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label
-                      htmlFor="ret-max-age"
-                      className="text-xs font-semibold text-muted-foreground"
-                    >
-                      {t("form.field.maxAge")}
-                    </label>
-                    <input
-                      id="ret-max-age"
-                      className={inputClass}
-                      type="number"
-                      min={1}
-                      value={retention.maxAgeDays}
-                      onChange={(e) =>
-                        handleRetentionChange("maxAgeDays", e.target.value)
-                      }
-                      placeholder={t("form.placeholder.maxAge")}
-                      disabled={isLoading}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label
-                      htmlFor="ret-max-size"
-                      className="text-xs font-semibold text-muted-foreground"
-                    >
-                      {t("form.field.maxSize")}
-                    </label>
-                    <input
-                      id="ret-max-size"
-                      className={inputClass}
-                      type="number"
-                      min={1}
-                      value={retention.maxSizeMb}
-                      onChange={(e) =>
-                        handleRetentionChange("maxSizeMb", e.target.value)
-                      }
-                      placeholder={t("form.placeholder.maxSize")}
-                      disabled={isLoading}
-                    />
-                  </div>
-                </div>
-                <p
-                  aria-live="polite"
-                  className="mt-2 text-xs text-muted-foreground"
-                >
-                  {retentionPreview
-                    ? t("form.retentionPreview", { count: retentionPreview.count, size: retentionPreview.totalSizeMb })
-                    : t("form.retentionEmpty")}
-                </p>
-              </>
-            )}
-          </fieldset>
 
           {validationError && (
             <div className="mt-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
