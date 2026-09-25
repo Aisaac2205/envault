@@ -25,35 +25,60 @@ EnVault Management ships as two Docker images:
 Build them yourself from the repo, or pull from your registry once your CI publishes them.
 
 ```bash
-# Local build for testing
+# Local build from monorepo root
 docker build -t envault-api:local -f apps/api/Dockerfile .
 docker build -t envault-web:local -f apps/web/Dockerfile .
 ```
 
-Both Dockerfiles expect the **monorepo root** as the build context (they read `pnpm-workspace.yaml` and `pnpm-lock.yaml`).
+Both Dockerfiles expect the monorepo root as the build context because they read `pnpm-workspace.yaml` and `pnpm-lock.yaml`.
+
+### Individual Container Deployment
+
+If you prefer to deploy the API and Web applications on separate hosts or standalone containers without Docker Compose:
+
+```bash
+# 1. API Container (on backend host)
+docker run -d \
+  --name envault-api \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  --env-file .env.api \
+  envault-api:local
+
+# 2. Web Container (on frontend host)
+docker run -d \
+  --name envault-web \
+  --restart unless-stopped \
+  -p 80:80 \
+  -e API_UPSTREAM=api.internal.corp:3000 \
+  -e CSP_HEADER_NAME=Content-Security-Policy \
+  envault-web:local
+```
 
 ---
 
-## 2. Environment variables — the contract
+## 2. Environment Variables: The Contract
 
-Full reference: [environment-variables.md](environment-variables.md). The contract below is the minimum to start.
+Full reference in [environment-variables.md](environment-variables.md). The table below specifies the mandatory configuration contract.
 
 ### API (runtime)
 
 | Variable | Required | Notes |
-|----------|----------|-------|
-| `DATABASE_URL` | yes | Control DB connection string (must be PostgreSQL 16+) |
+|---|---|---|
+| `DATABASE_URL` | yes | Control database connection string (must be PostgreSQL 16+) |
+| `ENCRYPTION_KEY` | yes | 64-character hexadecimal key (32 bytes) for AES-256-GCM credential encryption |
 | `NODE_ENV` | yes | `production` in any deployed environment |
-| `PORT` | no (default `3000`) | Listen port |
-| `CORS_ORIGIN` | yes in production | Exact frontend domain, no wildcards |
-| `BETTER_AUTH_SECRET` | yes | Secret for signing sessions (64-char hex) |
+| `PORT` | no (default `3000`) | HTTP listen port |
+| `CORS_ORIGIN` | yes in production | Exact frontend domain, no wildcards allowed |
+| `BETTER_AUTH_SECRET` | yes | Secret for signing session cookies (minimum 32 random characters) |
 | `BETTER_AUTH_URL` | yes | Public base URL of the API |
-| `BETTER_AUTH_ADMIN_EMAIL` | yes | Seed admin email (used on first boot) |
-| `BETTER_AUTH_ADMIN_PASSWORD` | yes | Seed admin password (used on first boot) |
-| `R2_ACCOUNT_ID` | yes in production | Cloudflare account ID (32-char hex) |
-| `R2_ACCESS_KEY_ID` | yes in production | From R2 API Token |
-| `R2_SECRET_ACCESS_KEY` | yes in production | From R2 API Token |
-| `R2_BUCKET_NAME` | yes in production | Bucket for dumps |
+| `BETTER_AUTH_ADMIN_EMAIL` | yes | Seed administrator email (used on initial boot) |
+| `BETTER_AUTH_ADMIN_PASSWORD` | yes | Seed administrator password |
+| `R2_ACCOUNT_ID` | yes in production | Cloudflare account identifier (32-character hexadecimal) |
+| `R2_ACCESS_KEY_ID` | yes in production | Generated from Cloudflare R2 API Tokens |
+| `R2_SECRET_ACCESS_KEY` | yes in production | Generated from Cloudflare R2 API Tokens |
+| `R2_BUCKET_NAME` | yes in production | Cloudflare R2 bucket designated for backups |
+| `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for restore executions |
 
 ### Web (build-time AND runtime)
 
