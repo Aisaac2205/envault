@@ -86,13 +86,17 @@ export interface AsciiGardenConfig {
     dataUrl: string | null;
     shapes: any[];
   };
+  focalPoint?: { x: number; y: number };
+  mobileFocalPoint?: { x: number; y: number };
 }
 
 export const DEFAULT_CONFIG: AsciiGardenConfig = {
   renderMode: 'dither',
   bgMode: 'original',
   bgBlur: 0,
-  bgOpacity: 60,
+  bgOpacity: 85,
+  focalPoint: { x: 0.5, y: 0.5 },
+  mobileFocalPoint: { x: 0.16, y: 0.65 },
   cellSize: 9,
   coverage: 100,
   invert: false,
@@ -173,7 +177,7 @@ interface Props {
 }
 
 export const AsciiGardenCanvas: React.FC<Props> = ({
-  sourcePhoto = '/ascii-editor/demos/generated/ref-029.webp',
+  sourcePhoto = '/ascii-editor/demos/generated/hero.webp',
   config: userConfig,
   className = '',
   interactive = true,
@@ -368,13 +372,26 @@ export const AsciiGardenCanvas: React.FC<Props> = ({
       // Step 1: Draw source photo / garden into offscreen canvas
       offCtx.clearRect(0, 0, width, height);
       if (imageRef.current && imageRef.current.complete && imageRef.current.naturalWidth > 0) {
-        // Draw image cover-fit
+        // Draw image cover-fit with responsive focal framing
         const img = imageRef.current;
+        const isMobile = width < 768 || width < height;
+        const focalX = isMobile
+          ? (activeConfig.mobileFocalPoint?.x ?? 0.16)
+          : (activeConfig.focalPoint?.x ?? 0.5);
+        const focalY = isMobile
+          ? (activeConfig.mobileFocalPoint?.y ?? 0.65)
+          : (activeConfig.focalPoint?.y ?? 0.5);
+
         const hRatio = width / img.naturalWidth;
         const vRatio = height / img.naturalHeight;
         const ratio = Math.max(hRatio, vRatio);
-        const centerShiftX = (width - img.naturalWidth * ratio) / 2;
-        const centerShiftY = (height - img.naturalHeight * ratio) / 2;
+
+        const scaledW = img.naturalWidth * ratio;
+        const scaledH = img.naturalHeight * ratio;
+
+        const centerShiftX = Math.min(0, Math.max(width - scaledW, (width - scaledW) * focalX));
+        const centerShiftY = Math.min(0, Math.max(height - scaledH, (height - scaledH) * focalY));
+
         offCtx.drawImage(
           img,
           0,
@@ -383,8 +400,8 @@ export const AsciiGardenCanvas: React.FC<Props> = ({
           img.naturalHeight,
           centerShiftX,
           centerShiftY,
-          img.naturalWidth * ratio,
-          img.naturalHeight * ratio
+          scaledW,
+          scaledH
         );
       } else {
         drawProceduralGarden(offCtx, width, height);
@@ -421,8 +438,10 @@ export const AsciiGardenCanvas: React.FC<Props> = ({
       const animIntensity = (activeConfig.animIntensity.intensity / 100) * 0.45;
       const animTime = isAnimated ? time * animSpeedFactor : 0;
 
-      // Step 2: Grid segmentation
-      const cellSize = Math.max(4, activeConfig.cellSize);
+      // Step 2: Grid segmentation — mobile screen gets finer cell size for delicate lotus flower outlines
+      const isMobileFrame = width < 768 || width < height;
+      const baseCell = activeConfig.cellSize;
+      const cellSize = Math.max(4, isMobileFrame ? Math.min(baseCell, 6) : baseCell);
       const cols = Math.ceil(width / cellSize);
       const rows = Math.ceil(height / cellSize);
 
