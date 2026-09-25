@@ -18,6 +18,10 @@ describe('envValidationSchema auth rate limiting', () => {
     expect(value.AUTH_RATE_MAX_KEYS).toBe(10_000);
     expect(value.AUTH_RATE_SWEEP_INTERVAL_MS).toBe(60_000);
     expect(value.RESTORE_TIMEOUT_MS).toBe(1_800_000);
+    expect(value.BACKUP_TIMEOUT_MS).toBe(1_800_000);
+    expect(value.REDIS_HOST).toBe('localhost');
+    expect(value.REDIS_PORT).toBe(6379);
+    expect(value.REDIS_TLS).toBe(false);
   });
 
   it.each([
@@ -26,10 +30,50 @@ describe('envValidationSchema auth rate limiting', () => {
     ['AUTH_RATE_MAX_KEYS', 99],
     ['AUTH_RATE_SWEEP_INTERVAL_MS', 999],
     ['RESTORE_TIMEOUT_MS', 9_999],
+    ['BACKUP_TIMEOUT_MS', 9_999],
+    ['REDIS_PORT', 0],
+    ['REDIS_PORT', 65536],
   ])('rejects an unsafe %s value', (name, unsafeValue) => {
     const { error } = envValidationSchema.validate({
       ...validEnvironment,
       [name]: unsafeValue,
+    });
+
+    expect(error).toBeDefined();
+  });
+});
+
+describe('envValidationSchema Redis configuration', () => {
+  it('accepts custom Redis host, port, password, and TLS', () => {
+    const { error, value } = envValidationSchema.validate({
+      ...validEnvironment,
+      REDIS_HOST: 'redis.internal',
+      REDIS_PORT: 6380,
+      REDIS_PASSWORD: 'redis-secret-pass',
+      REDIS_TLS: true,
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.REDIS_HOST).toBe('redis.internal');
+    expect(value.REDIS_PORT).toBe(6380);
+    expect(value.REDIS_PASSWORD).toBe('redis-secret-pass');
+    expect(value.REDIS_TLS).toBe(true);
+  });
+
+  it('accepts valid REDIS_URL with redis:// and rediss://', () => {
+    const { error, value } = envValidationSchema.validate({
+      ...validEnvironment,
+      REDIS_URL: 'rediss://default:secret@redis.railway.internal:6379',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.REDIS_URL).toBe('rediss://default:secret@redis.railway.internal:6379');
+  });
+
+  it('rejects invalid REDIS_URL scheme', () => {
+    const { error } = envValidationSchema.validate({
+      ...validEnvironment,
+      REDIS_URL: 'http://localhost:6379',
     });
 
     expect(error).toBeDefined();

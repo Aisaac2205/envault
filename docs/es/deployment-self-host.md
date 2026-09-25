@@ -34,10 +34,17 @@ Ambos Dockerfiles esperan la raíz del monorepo como contexto de build porque le
 
 ### Despliegue Individual de Contenedores
 
-Si prefiere desplegar la API y el Web en servidores o procesos separados sin orquestador:
+Si prefiere desplegar la API, el Web y los servicios base en servidores o procesos separados sin orquestador:
 
 ```bash
-# 1. Contenedor de la API (en el host de backend)
+# 1. Contenedor de Redis (con persistencia AOF y contraseña obligatoria)
+docker run -d \
+  --name envault-redis \
+  --restart unless-stopped \
+  -v redis_data:/data \
+  redis:7-alpine redis-server --appendonly yes --requirepass "tu-clave-segura"
+
+# 2. Contenedor de la API (en el host de backend)
 docker run -d \
   --name envault-api \
   --restart unless-stopped \
@@ -45,7 +52,7 @@ docker run -d \
   --env-file .env.api \
   envault-api:local
 
-# 2. Contenedor Web (en el host de frontend)
+# 3. Contenedor Web (en el host de frontend)
 docker run -d \
   --name envault-web \
   --restart unless-stopped \
@@ -74,10 +81,16 @@ Referencia completa en [environment-variables.md](environment-variables.md). La 
 | `BETTER_AUTH_URL` | sí | URL pública base de la API |
 | `BETTER_AUTH_ADMIN_EMAIL` | sí | Correo electrónico del usuario administrador inicial |
 | `BETTER_AUTH_ADMIN_PASSWORD` | sí | Contraseña inicial del usuario administrador |
+| `REDIS_HOST` | condicional | Host de Redis (ejemplo: `redis` en Docker Compose o `localhost`). Alternativamente use `REDIS_URL` |
+| `REDIS_PORT` | no (default `6379`) | Puerto TCP de conexión a Redis |
+| `REDIS_PASSWORD` | sí en producción | Contraseña para autenticar con Redis mediante comando requirepass |
+| `REDIS_URL` | opcional | URL completa de Redis (`redis://...` o `rediss://...`). Prioritaria si está definida |
+| `REDIS_TLS` | no (default `false`) | Habilita TLS si conecta hacia un clúster Redis gestionado externo |
 | `R2_ACCOUNT_ID` | sí en producción | Identificador de cuenta Cloudflare (hexadecimal de 32 caracteres) |
 | `R2_ACCESS_KEY_ID` | sí en producción | Clave de acceso generada en R2 API Tokens |
 | `R2_SECRET_ACCESS_KEY` | sí en producción | Clave secreta generada en R2 API Tokens |
 | `R2_BUCKET_NAME` | sí en producción | Nombre del bucket R2 destinado a los respaldos |
+| `BACKUP_TIMEOUT_MS` | no (default `1800000`) | Límite máximo en milisegundos para operaciones de dump (30 minutos) |
 | `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Límite máximo en milisegundos para operaciones de restauración |
 
 ### Web (build-time Y runtime)
@@ -126,11 +139,12 @@ Números honestos como baseline. **Validalos con tu workload** — son puntos de
 | API | 100m | 500m | 256 MiB | 512 MiB |
 | Web (nginx) | 25m | 100m | 32 MiB | 128 MiB |
 | DB de control (Postgres 16) | 250m | 1000m | 512 MiB | 2 GiB |
+| Redis (BullMQ) | 50m | 200m | 64 MiB | 256 MiB |
 
 **Drivers de escalado**:
 - La memoria de la API crece con el **tamaño del dump durante el streaming**. `pg_dump` de una DB de 50GB no la carga toda en memoria (es streaming), pero partes del multipart upload a R2 hacen buffering. Si backupeás DBs grandes (>20GB), subí la memoria de la API a 1 GiB.
 - La CPU de la API tiene spikes durante compresión de dump y restore. Spikes breves está bien; presión sostenida significa que estás cortito.
-- El Web es esencialmente gratis — nginx sirviendo archivos estáticos. Si tenés miles de usuarios concurrentes es otra conversación, pero para una herramienta interna de DevOps los defaults sobran.
+- El Web es esencialmente gratis (nginx sirviendo archivos estáticos). Si tenés miles de usuarios concurrentes es otra conversación, pero para una herramienta interna de DevOps los defaults sobran.
 
 ---
 
@@ -140,7 +154,8 @@ Números honestos como baseline. **Validalos con tu workload** — son puntos de
 |-----------|--------------------------------|---------|
 | API | **No** | Stateless. Los dumps van por stream a R2, nada queda en disco local. |
 | Web | **No** | Stateless. Solo sirve archivos estáticos. |
-| DB de control | **Sí** | Es la fuente de verdad — también backupeala (ver [devops-runbook.md §5](devops-runbook.md)). |
+| DB de control | **Sí** | Es la fuente de verdad (también backupeala, ver [devops-runbook.md §5](devops-runbook.md)). |
+| Redis | **Sí** | Persistencia AOF de colas BullMQ y estados de ejecución. |
 
 Para la DB de control, usá la estrategia de volumen de tu plataforma: PVC en K8s, EBS en EC2, SSD local con snapshots diarios en VPS, etc. **Mínimo 20 GiB** para el volumen de la DB de control; crece despacio (los audit logs son el driver principal).
 

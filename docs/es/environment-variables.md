@@ -39,9 +39,20 @@ R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
 R2_BUCKET_NAME=envault-dumps
 R2_PUBLIC_BASE_URL=
 
-# ── Restore (opcional) ─────────────────────────────────────────
+# ── Restore y Backup (opcional) ────────────────────────────────
 # Timeout en milisegundos para restauraciones (default: 1800000 = 30 min).
 RESTORE_TIMEOUT_MS=1800000
+# Timeout en milisegundos para volcados/dumps (default: 1800000 = 30 min).
+BACKUP_TIMEOUT_MS=1800000
+
+# ── Redis y Colas BullMQ ───────────────────────────────────────
+# En Docker Compose usar REDIS_HOST=redis. En Railway REDIS_URL se inyecta sola.
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+# REDIS_URL=redis://default:<password>@<host>:<port>
+REDIS_TLS=false
+
 
 # ── Seed script (vars individuales para dev local) ─────────────
 # Nota: DB_NAME/DB_USER usan underscore porque PostgreSQL no acepta
