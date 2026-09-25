@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   ConflictException,
   Inject,
@@ -9,7 +10,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
+
 import { CreateRestoreDto } from './dto/create-restore.dto';
 import { RestoreRepository } from './restore.repository';
 import { RestoreLeaseRepository } from './restore-lease.repository';
@@ -220,9 +222,14 @@ export class RestoreService implements OnApplicationBootstrap {
       );
       const fileKey = await this.resolveSourceFileKey(dto, initialTarget);
       staging = await this.restoreStagingService.create(jobId, dto.targetConnectionId);
-      await this.restoreStagingService.writeDump(staging, await this.r2Service.download(fileKey));
+      const dumpStats = await this.restoreStagingService.writeDump(
+        staging,
+        await this.r2Service.download(fileKey),
+      );
+      await this.verifyDumpIntegrity(dto, fileKey, dumpStats.sha256);
 
       this.sseService.emit(jobId, {
+
         type: 'progress',
         payload: { percent: 25 },
       });
@@ -554,6 +561,63 @@ export class RestoreService implements OnApplicationBootstrap {
           `pero el destino "${targetConnection.name}" es "${targetConnection.dbType}".`,
       );
     }
+  }
+
+  private async verifyDumpIntegrity(
+    dto: CreateRestoreDto,
+    fileKey: string,
+    actualSha256: string,
+  ): Promise<void> {
+    let expectedSha256: string | null = null;
+
+    if (dto.sourceBackupId) {
+      try {
+        const backup = await this.backupService.getBackupById(dto.sourceBackupId);
+        if (backup?.sha256) {
+          expectedSha256 = backup.sha256;
+        }
+      } catch {
+        expectedSha256 = null;
+      }
+    }
+
+
+    if (!expectedSha256) {
+      const manifestKey = fileKey.replace(/\.dump$/, '.manifest.json');
+      const manifest = await this.r2Service
+        .downloadJson<DumpManifest>(manifestKey)
+        .catch(() => null);
+
+      if (manifest && 'sha256' in manifest && manifest.sha256) {
+        expectedSha256 = manifest.sha256;
+      }
+    }
+
+    if (expectedSha256) {
+      const isValid = this.isDigestEqual(expectedSha256, actualSha256);
+      if (!isValid) {
+        throw new BadRequestException(
+          'El dump descargado no coincide con el digest criptográfico registrado (SHA-256). Posible corrupción o manipulación del archivo.',
+        );
+      }
+    }
+  }
+
+  private isDigestEqual(expected: string, actual: string): boolean {
+    if (typeof expected !== 'string' || typeof actual !== 'string') {
+      return false;
+    }
+    const cleanExpected = expected.trim().toLowerCase();
+    const cleanActual = actual.trim().toLowerCase();
+    if (cleanExpected.length !== 64 || cleanActual.length !== 64) {
+      return false;
+    }
+    const bufExpected = Buffer.from(cleanExpected, 'hex');
+    const bufActual = Buffer.from(cleanActual, 'hex');
+    if (bufExpected.length !== 32 || bufActual.length !== 32) {
+      return false;
+    }
+    return timingSafeEqual(bufExpected, bufActual);
   }
 
   async listRestores() {

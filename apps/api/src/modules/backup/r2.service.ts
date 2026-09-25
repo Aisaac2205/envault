@@ -60,6 +60,57 @@ export class R2Service {
     return this.bucket !== '';
   }
 
+  private healthCache: {
+    status: 'up' | 'down' | 'unconfigured';
+    latencyMs?: number;
+    error?: string;
+    cachedAt: number;
+  } | null = null;
+
+  async checkHealth(): Promise<{
+    status: 'up' | 'down' | 'unconfigured';
+    latencyMs?: number;
+    error?: string;
+  }> {
+    if (!this.isAvailable()) {
+      return { status: 'unconfigured' };
+    }
+
+    const now = Date.now();
+    if (this.healthCache && now - this.healthCache.cachedAt < 30_000) {
+      return {
+        status: this.healthCache.status,
+        latencyMs: this.healthCache.latencyMs,
+        error: this.healthCache.error,
+      };
+    }
+
+    const start = Date.now();
+    try {
+      await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          MaxKeys: 1,
+        }),
+      );
+      const latencyMs = Date.now() - start;
+      const result = { status: 'up' as const, latencyMs };
+      this.healthCache = { ...result, cachedAt: now };
+      return result;
+    } catch (error) {
+      const latencyMs = Date.now() - start;
+      const message = error instanceof Error ? error.message : String(error);
+      const result = {
+        status: 'down' as const,
+        latencyMs,
+        error: message,
+      };
+      this.healthCache = { ...result, cachedAt: now };
+      return result;
+    }
+  }
+
+
   async upload(
     key: string,
     stream: Readable,

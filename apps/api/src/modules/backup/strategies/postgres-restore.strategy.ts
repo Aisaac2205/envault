@@ -23,8 +23,47 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
     filePath: string,
     onLog: (message: string) => void,
   ): Promise<void> {
+    await this.runPreflight(filePath, onLog);
     await this.runPgRestore(connection, filePath, onLog);
   }
+
+  private runPreflight(
+    filePath: string,
+    onLog: (message: string) => void,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      onLog('Ejecutando preflight estructural de dump (pg_restore -l)...');
+      const proc = spawn('pg_restore', ['-l', filePath]);
+      let stderrOutput = '';
+
+      proc.stderr.on('data', (chunk: Buffer) => {
+        stderrOutput += chunk.toString();
+      });
+
+      proc.on('error', (err: Error) => {
+        reject(
+          new Error(`Fallo al ejecutar preflight pg_restore: ${err.message}`),
+        );
+      });
+
+      proc.on('close', (code: number | null) => {
+        if (code !== 0) {
+          const detail = sanitizeMessage(
+            stderrOutput.trim() || `exit code ${code ?? 'unknown'}`,
+          );
+          reject(
+            new Error(
+              `Preflight estructural falló: el dump está truncado o es inválido (${detail})`,
+            ),
+          );
+          return;
+        }
+        onLog('Preflight estructural completado exitosamente.');
+        resolve();
+      });
+    });
+  }
+
 
   private runPgRestore(
     connection: ConnectionEntity,

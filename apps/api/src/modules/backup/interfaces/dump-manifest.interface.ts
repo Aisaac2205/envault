@@ -10,10 +10,24 @@ export interface DumpManifestSource {
   tables: DumpManifestTable[];
 }
 
-export interface DumpManifest {
+export interface DumpManifestV1 {
   version: 1;
   createdAt: string;
   dbType: string;
   database: string;
   source: DumpManifestSource;
 }
+
+export interface DumpManifestV2 {
+  version: 2;
+  createdAt: string;
+  dbType: string;
+  database: string;
+  source: DumpManifestSource;
+  sha256: string;
+  bytes: number;
+  compression: string;
+}
+
+export type DumpManifest = DumpManifestV1 | DumpManifestV2;
+

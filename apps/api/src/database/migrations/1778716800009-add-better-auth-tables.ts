@@ -5,7 +5,7 @@ export class AddBetterAuthTables1778716800009 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TABLE "user" (
+      CREATE TABLE IF NOT EXISTS "user" (
         "id" text NOT NULL PRIMARY KEY,
         "name" text NOT NULL,
         "email" text NOT NULL UNIQUE,
@@ -21,7 +21,7 @@ export class AddBetterAuthTables1778716800009 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE TABLE "session" (
+      CREATE TABLE IF NOT EXISTS "session" (
         "id" text NOT NULL PRIMARY KEY,
         "expiresAt" timestamptz NOT NULL,
         "token" text NOT NULL UNIQUE,
@@ -35,7 +35,7 @@ export class AddBetterAuthTables1778716800009 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE TABLE "account" (
+      CREATE TABLE IF NOT EXISTS "account" (
         "id" text NOT NULL PRIMARY KEY,
         "accountId" text NOT NULL,
         "providerId" text NOT NULL,
@@ -53,7 +53,7 @@ export class AddBetterAuthTables1778716800009 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      CREATE TABLE "verification" (
+      CREATE TABLE IF NOT EXISTS "verification" (
         "id" text NOT NULL PRIMARY KEY,
         "identifier" text NOT NULL,
         "value" text NOT NULL,
@@ -64,13 +64,13 @@ export class AddBetterAuthTables1778716800009 implements MigrationInterface {
     `);
 
     await queryRunner.query(
-      `CREATE INDEX "session_userId_idx" ON "session" ("userId")`,
+      `CREATE INDEX IF NOT EXISTS "session_userId_idx" ON "session" ("userId")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "account_userId_idx" ON "account" ("userId")`,
+      `CREATE INDEX IF NOT EXISTS "account_userId_idx" ON "account" ("userId")`,
     );
     await queryRunner.query(
-      `CREATE INDEX "verification_identifier_idx" ON "verification" ("identifier")`,
+      `CREATE INDEX IF NOT EXISTS "verification_identifier_idx" ON "verification" ("identifier")`,
     );
   }
 

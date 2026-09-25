@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 import { Transform } from 'stream';
-import { BackupStrategy } from '../interfaces/backup-strategy.interface';
+import {
+  BackupExecutionResult,
+  BackupStrategy,
+} from '../interfaces/backup-strategy.interface';
 import { R2Service } from '../r2.service';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
 
@@ -15,7 +19,8 @@ export class PostgresBackupStrategy implements BackupStrategy {
     connection: ConnectionEntity,
     fileKey: string,
     metadata?: Record<string, string>,
-  ): Promise<number> {
+  ): Promise<BackupExecutionResult> {
+
     return new Promise((resolve, reject) => {
       let stderrBuffer = '';
       let settled = false;
@@ -48,9 +53,11 @@ export class PostgresBackupStrategy implements BackupStrategy {
       }, BACKUP_TIMEOUT_MS);
 
       let totalBytes = 0;
+      const hash = createHash('sha256');
       const counter = new Transform({
         transform(chunk: Buffer, _enc, cb) {
           totalBytes += chunk.length;
+          hash.update(chunk);
           cb(null, chunk);
         },
       });
@@ -64,8 +71,6 @@ export class PostgresBackupStrategy implements BackupStrategy {
         settle(reject, new Error(`pg_dump failed to start: ${err.message}`));
       });
 
-      // Pipe BEFORE starting the upload to avoid the readable side
-      // emitting an early EOF on some Node.js versions.
       pgDump.stdout.pipe(counter);
 
       uploadPromise = this.r2Service.upload(fileKey, counter, { metadata });
@@ -78,10 +83,18 @@ export class PostgresBackupStrategy implements BackupStrategy {
           return;
         }
 
+        const sha256 = hash.digest('hex');
         uploadPromise!
-          .then(() => settle(resolve, totalBytes / (1024 * 1024)))
+          .then(() =>
+            settle(resolve, {
+              fileSizeMb: totalBytes / (1024 * 1024),
+              sha256,
+              bytes: totalBytes,
+            }),
+          )
           .catch((err: Error) => settle(reject, new Error(`R2 upload failed: ${err.message}`)));
       });
     });
   }
 }
+

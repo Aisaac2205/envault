@@ -3,7 +3,8 @@ import { chmod, lstat, mkdtemp, open, readFile, readdir, rm, writeFile } from 'f
 import type { FileHandle } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { Readable } from 'stream';
+import { createHash } from 'crypto';
+import { Readable, Transform } from 'stream';
 
 export const RESTORE_STAGING_OWNERSHIP = 'RESTORE_STAGING_OWNERSHIP';
 
@@ -21,6 +22,11 @@ export interface RestoreStaging {
   dumpFilePath: string;
   metadataPath: string;
   dumpFileHandle: FileHandle | null;
+}
+
+export interface StagedDumpStats {
+  sha256: string;
+  bytes: number;
 }
 
 const STAGING_DIRECTORY_PREFIX = 'restore-';
@@ -58,19 +64,39 @@ export class RestoreStagingService {
     return { directoryPath, dumpFilePath, metadataPath, dumpFileHandle };
   }
 
-  async writeDump(staging: RestoreStaging, source: Readable): Promise<void> {
+  async writeDump(
+    staging: RestoreStaging,
+    source: Readable,
+  ): Promise<StagedDumpStats> {
     const handle = staging.dumpFileHandle;
     if (!handle) {
       throw new Error(`Restore staging dump file is not open: ${staging.dumpFilePath}`);
     }
 
+    const hash = createHash('sha256');
+    let totalBytes = 0;
+    const hasher = new Transform({
+      transform(chunk: Buffer, _enc, cb) {
+        totalBytes += chunk.length;
+        hash.update(chunk);
+        cb(null, chunk);
+      },
+    });
+
+    source.pipe(hasher);
+
     try {
-      await writeFile(handle, source);
+      await writeFile(handle, hasher);
+      return {
+        sha256: hash.digest('hex'),
+        bytes: totalBytes,
+      };
     } finally {
       await handle.close();
       staging.dumpFileHandle = null;
     }
   }
+
 
   async cleanup(staging: RestoreStaging): Promise<void> {
     if (staging.dumpFileHandle) {
