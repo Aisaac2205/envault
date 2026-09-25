@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { EnrichedR2Object } from "@/features/dumps/types";
 import { cn } from "@/shared/lib/cn";
@@ -39,10 +39,10 @@ export function DumpsList({
   if (dumps.length === 0) {
     return (
       <div
-        role="status"
-        className="rounded-xl bg-muted/30 px-3 py-3 text-sm text-muted-foreground"
+        className="flex items-center gap-2.5 rounded-xl border border-dashed border-border/70 bg-muted/20 px-3.5 py-4 text-xs text-muted-foreground"
       >
-        {t("dumps.empty")}
+        <Database className="size-4 shrink-0 text-muted-foreground/60" />
+        <span>{t("dumps.empty")}</span>
       </div>
     );
   }

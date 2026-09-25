@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { BackupCategory } from "@/types/backup.types";
 import type { Connection } from "../types";
 import type { EnrichedR2Object } from "@/features/dumps/types";
@@ -52,6 +53,8 @@ export function R2DumpPicker({
     setCategory(null);
   }
 
+  const { t } = useTranslation("restore");
+
   return (
     <div className="space-y-3">
       <div>
@@ -59,7 +62,7 @@ export function R2DumpPicker({
           htmlFor="source-connection"
           className="mb-1.5 block text-xs font-medium text-muted-foreground"
         >
-          Base de datos
+          {t("picker.database")}
         </label>
         <div id="source-connection">
           <SourceConnectionCombobox
@@ -78,7 +81,7 @@ export function R2DumpPicker({
             id="frequency-label"
             className="mb-1.5 block text-xs font-medium text-muted-foreground"
           >
-            Frecuencia
+            {t("picker.frequency")}
           </span>
           <FrequencyTabs
             value={category}
@@ -94,7 +97,7 @@ export function R2DumpPicker({
             id="dumps-list-label"
             className="mb-1.5 block text-xs font-medium text-muted-foreground"
           >
-            Dumps disponibles
+            {t("picker.dumpsAvailable")}
           </span>
           <DumpsList
             dumps={dumps}
@@ -102,7 +105,7 @@ export function R2DumpPicker({
             onChange={onChange}
             loading={dumpsLoading}
             disabled={disabled}
-            label="Dumps disponibles"
+            label={t("picker.dumpsAvailable")}
           />
         </div>
       )}

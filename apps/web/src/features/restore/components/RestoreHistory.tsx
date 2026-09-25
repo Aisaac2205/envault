@@ -182,32 +182,34 @@ export function RestoreHistory({
         </div>
       </div>
 
-      {/* Table or Empty State */}
-      {filteredJobs.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center">
-          <EmptyState
-            icon={<HistoryIcon className="h-8 w-8" />}
-            title={t('empty.noRestores')}
-            description={t('empty.noRestoresDescription')}
-          />
-        </div>
-      ) : (
-        <div
-          ref={tableRef}
-          className="min-h-0 flex-1 overflow-auto rounded-lg border border-border"
-        >
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-background">
+      {/* Table with stable header and zero-CLS empty state */}
+      <div
+        ref={tableRef}
+        className="min-h-0 flex-1 overflow-auto rounded-lg border border-border"
+      >
+        <Table>
+          <TableHeader className="sticky top-0 z-10 bg-background">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="py-3">{t('column.connection')}</TableHead>
+              <TableHead className="py-3">{t('column.date')}</TableHead>
+              <TableHead className="py-3">{t('column.environment')}</TableHead>
+              <TableHead className="py-3">{t('column.status')}</TableHead>
+              <TableHead className="py-3 text-right">{t('column.duration')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {displayedJobs.length === 0 ? (
               <TableRow className="hover:bg-transparent">
-                <TableHead className="py-3">{t('column.connection')}</TableHead>
-                <TableHead className="py-3">{t('column.date')}</TableHead>
-                <TableHead className="py-3">{t('column.environment')}</TableHead>
-                <TableHead className="py-3">{t('column.status')}</TableHead>
-                <TableHead className="py-3 text-right">{t('column.duration')}</TableHead>
+                <TableCell colSpan={5} className="h-64 text-center align-middle">
+                  <EmptyState
+                    icon={<HistoryIcon className="size-6 text-muted-foreground/60" />}
+                    title={t('empty.noRestores')}
+                    description={t('empty.noRestoresDescription')}
+                    className="py-8"
+                  />
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayedJobs.map((job) => {
+            ) : displayedJobs.map((job) => {
                 const info = job.targetConnectionId ? connectionMap.get(job.targetConnectionId) : undefined;
                 return (
                   <TableRow key={job.id} className="hover:bg-muted/40">
@@ -251,7 +253,6 @@ export function RestoreHistory({
             </TableBody>
           </Table>
         </div>
-      )}
-    </div>
+      </div>
   );
 }
