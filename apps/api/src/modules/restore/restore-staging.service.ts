@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { chmod, lstat, mkdtemp, open, readFile, readdir, rm, writeFile } from 'fs/promises';
+import { chmod, lstat, mkdtemp, open, readFile, readdir, rm, statfs, writeFile } from 'fs/promises';
 import type { FileHandle } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -47,6 +47,23 @@ export class RestoreStagingService {
     @Optional() root?: string,
   ) {
     this.root = root ?? tmpdir();
+  }
+
+  async checkAvailableDiskSpace(requiredBytes: number): Promise<{ availableBytes: number; requiredBytes: number }> {
+    const stats = await statfs(this.root);
+    const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+    const safetyBuffer = Math.max(50 * 1024 * 1024, Math.floor(requiredBytes * 0.2));
+    const totalNeeded = requiredBytes + safetyBuffer;
+
+    if (availableBytes < totalNeeded) {
+      const availableMb = (availableBytes / (1024 * 1024)).toFixed(2);
+      const neededMb = (totalNeeded / (1024 * 1024)).toFixed(2);
+      throw new Error(
+        `Espacio insuficiente en disco para staging. Disponible: ${availableMb} MB, Requerido: ${neededMb} MB`,
+      );
+    }
+
+    return { availableBytes, requiredBytes };
   }
 
   async create(jobId: string, targetConnectionId: string): Promise<RestoreStaging> {

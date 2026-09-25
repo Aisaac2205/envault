@@ -104,4 +104,16 @@ describe('RestoreStagingService', () => {
     expect((await lstat(candidate)).isSymbolicLink()).toBe(true);
     await rm(outside, { recursive: true, force: true });
   });
+
+  it('validates disk space successfully when available space exceeds requirements', async () => {
+    const result = await service.checkAvailableDiskSpace(1024);
+    expect(result.requiredBytes).toBe(1024);
+    expect(result.availableBytes).toBeGreaterThan(1024);
+  });
+
+  it('throws an error when required space exceeds available disk space', async () => {
+    await expect(
+      service.checkAvailableDiskSpace(Number.MAX_SAFE_INTEGER - 100),
+    ).rejects.toThrow('Espacio insuficiente en disco para staging');
+  });
 });

@@ -1,5 +1,6 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
 import { Readable } from 'stream';
 import { BackupService } from '../backup/backup.service';
 import { R2Service } from '../backup/r2.service';
@@ -15,6 +16,7 @@ import { RestoreLeaseRepository } from './restore-lease.repository';
 import { RestoreRepository } from './restore.repository';
 import { RestoreService } from './restore.service';
 import { RestoreStagingService } from './restore-staging.service';
+import { RESTORE_QUEUE_NAME } from './restore.constants';
 
 type FinalizerStep = 'staging' | 'ownership' | 'sse' | 'lease';
 
@@ -579,6 +581,208 @@ describe('RestoreService executeRestoreAsync lease renewal heartbeat', () => {
     expect(releaseMock).toHaveBeenCalledWith(targetConnectionId, jobId, leaseToken);
 
     jest.useRealTimers();
+  });
+});
+
+describe('RestoreService queue and cancelRestore', () => {
+  const targetConnectionId = '00000000-0000-0000-0000-000000000001';
+  const jobId = '00000000-0000-0000-0000-000000000002';
+  const testUser: AuthUser = {
+    id: 'user-1',
+    email: 'admin@envault.dev',
+    name: 'Admin',
+    role: 'admin',
+  };
+
+  let mockRestoreRepository: {
+    create: jest.Mock;
+    findById: jest.Mock;
+    tryCreateWithLease: jest.Mock;
+    updateStatus: jest.Mock;
+    startIfLeaseActive: jest.Mock;
+    failPendingIfLeaseInactive: jest.Mock;
+  };
+  let mockRestoreLeaseRepository: {
+    release: jest.Mock;
+    releaseByJobId: jest.Mock;
+    renew: jest.Mock;
+  };
+  let mockQueue: {
+    add: jest.Mock;
+    getJob: jest.Mock;
+  };
+  let mockSseService: {
+    register: jest.Mock;
+    emit: jest.Mock;
+    complete: jest.Mock;
+  };
+  let mockConnectionsService: {
+    findById: jest.Mock;
+  };
+  let mockBackupService: {
+    getBackupById: jest.Mock;
+  };
+  let service: RestoreService;
+
+  beforeEach(async () => {
+    mockRestoreRepository = {
+      create: jest.fn(),
+      findById: jest.fn(),
+      tryCreateWithLease: jest.fn().mockResolvedValue(jobId),
+      updateStatus: jest.fn().mockResolvedValue(undefined),
+      startIfLeaseActive: jest.fn().mockResolvedValue(true),
+      failPendingIfLeaseInactive: jest.fn().mockResolvedValue(undefined),
+    };
+    mockRestoreLeaseRepository = {
+      release: jest.fn().mockResolvedValue(true),
+      releaseByJobId: jest.fn().mockResolvedValue(true),
+      renew: jest.fn().mockResolvedValue(true),
+    };
+    mockQueue = {
+      add: jest.fn().mockResolvedValue({ id: jobId }),
+      getJob: jest.fn(),
+    };
+    mockSseService = {
+      register: jest.fn(),
+      emit: jest.fn(),
+      complete: jest.fn(),
+    };
+    mockConnectionsService = {
+      findById: jest.fn().mockResolvedValue({
+        id: targetConnectionId,
+        name: 'Staging DB',
+        environment: Environment.DEV,
+        dbType: DbTypeEnum.POSTGRES,
+      }),
+    };
+    mockBackupService = {
+      getBackupById: jest.fn().mockResolvedValue({
+        id: 'backup-1',
+        dbType: DbTypeEnum.POSTGRES,
+        status: JobStatus.COMPLETED,
+        fileKey: 'prod-db/manual/test.dump',
+        sha256: 'a'.repeat(64),
+        bytes: 1024,
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RestoreService,
+        { provide: RestoreRepository, useValue: mockRestoreRepository },
+        { provide: RestoreLeaseRepository, useValue: mockRestoreLeaseRepository },
+        {
+          provide: RestoreExecutionOwnershipService,
+          useValue: {
+            tryAcquire: jest.fn().mockResolvedValue({ targetConnectionId }),
+            release: jest.fn().mockResolvedValue(undefined),
+            findActiveTarget: jest.fn().mockResolvedValue({
+              id: targetConnectionId,
+              name: 'Staging DB',
+              environment: Environment.DEV,
+              dbType: DbTypeEnum.POSTGRES,
+            }),
+            hasActiveLease: jest.fn().mockResolvedValue(true),
+          },
+        },
+        {
+          provide: RestoreStagingService,
+          useValue: {
+            create: jest.fn().mockResolvedValue({ directoryPath: 'staging', dumpFilePath: 'staging/dump' }),
+            cleanup: jest.fn().mockResolvedValue(undefined),
+            writeDump: jest.fn().mockResolvedValue({ sha256: 'a'.repeat(64), bytes: 1024 }),
+            checkAvailableDiskSpace: jest.fn().mockResolvedValue({ availableBytes: 1024 * 1024 * 500, requiredBytes: 1024 }),
+          },
+        },
+        {
+          provide: R2Service,
+          useValue: {
+            download: jest.fn().mockResolvedValue(Readable.from('dump content')),
+            downloadJson: jest.fn().mockResolvedValue(null),
+            getObjectSize: jest.fn().mockResolvedValue(1024),
+          },
+        },
+        { provide: BackupService, useValue: mockBackupService },
+        { provide: ConnectionsService, useValue: mockConnectionsService },
+        { provide: SseService, useValue: mockSseService },
+        { provide: getQueueToken(RESTORE_QUEUE_NAME), useValue: mockQueue },
+        {
+          provide: 'RESTORE_STRATEGIES',
+          useValue: new Map<DbTypeEnum, RestoreStrategy>([
+            [DbTypeEnum.POSTGRES, { execute: jest.fn().mockResolvedValue(undefined) }],
+          ]),
+        },
+      ],
+    }).compile();
+
+    service = module.get<RestoreService>(RestoreService);
+  });
+
+  it('createRestore enqueues restore job into BullMQ restore queue', async () => {
+    const dto = {
+      targetConnectionId,
+      sourceBackupId: 'backup-1',
+      isDryRun: false,
+    };
+
+    const result = await service.createRestore(dto, testUser);
+
+    expect(result.jobId).toBe(jobId);
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      'process-restore',
+      expect.objectContaining({
+        jobId,
+        dto,
+        user: testUser,
+        leaseToken: expect.any(String),
+      }),
+      expect.objectContaining({
+        attempts: 1,
+      }),
+    );
+  });
+
+  it('cancelRestore throws NotFoundException when job does not exist', async () => {
+    mockRestoreRepository.findById.mockResolvedValue(null);
+
+    await expect(service.cancelRestore('unknown-id', testUser)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('cancelRestore throws ConflictException when job is already completed', async () => {
+    mockRestoreRepository.findById.mockResolvedValue({
+      id: jobId,
+      status: JobStatus.COMPLETED,
+    });
+
+    await expect(service.cancelRestore(jobId, testUser)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+
+  it('cancelRestore cancels pending restore job and releases lease', async () => {
+    const mockBullJob = { remove: jest.fn().mockResolvedValue(undefined) };
+    mockRestoreRepository.findById.mockResolvedValue({
+      id: jobId,
+      status: JobStatus.PENDING,
+      targetConnectionId,
+    });
+    mockQueue.getJob.mockResolvedValue(mockBullJob);
+
+    const result = await service.cancelRestore(jobId, testUser);
+
+    expect(result.status).toBe(JobStatus.FAILED);
+    expect(mockBullJob.remove).toHaveBeenCalled();
+    expect(mockRestoreLeaseRepository.releaseByJobId).toHaveBeenCalledWith(jobId);
+    expect(mockRestoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.FAILED,
+      expect.objectContaining({
+        errorMessage: 'Operación cancelada por el usuario',
+      }),
+    );
+    expect(mockSseService.complete).toHaveBeenCalledWith(jobId);
   });
 });
 

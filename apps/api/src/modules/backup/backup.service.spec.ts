@@ -37,6 +37,7 @@ describe('BackupService', () => {
   };
   let mockQueue: {
     add: jest.Mock;
+    getJob?: jest.Mock;
   };
   let mockStrategy: {
     execute: jest.Mock;
@@ -210,5 +211,81 @@ describe('BackupService', () => {
       }),
     );
     expect(mockSseService.complete).toHaveBeenCalledWith('job-123');
+  });
+
+  describe('cancelBackup', () => {
+    it('throws NotFoundException when job does not exist', async () => {
+      mockBackupRepository.findById.mockResolvedValue(null);
+
+      await expect(service.cancelBackup('unknown-id', mockUser)).rejects.toThrow();
+    });
+
+    it('throws ConflictException when job is already completed', async () => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-1',
+        status: JobStatus.COMPLETED,
+      });
+
+      await expect(service.cancelBackup('job-1', mockUser)).rejects.toThrow();
+    });
+
+    it('cancels pending backup job from BullMQ and marks FAILED', async () => {
+      const mockBullJob = { remove: jest.fn().mockResolvedValue(undefined) };
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-pending',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/pending.dump',
+      });
+      mockQueue.getJob = jest.fn().mockResolvedValue(mockBullJob);
+
+      const result = await service.cancelBackup('job-pending', mockUser);
+
+      expect(result.status).toBe(JobStatus.FAILED);
+      expect(mockBullJob.remove).toHaveBeenCalled();
+      expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
+        'job-pending',
+        JobStatus.FAILED,
+        expect.objectContaining({
+          errorMessage: 'Operación cancelada por el usuario',
+        }),
+      );
+      expect(mockR2Service.delete).toHaveBeenCalledWith('prod-db/manual/pending.dump');
+      expect(mockSseService.complete).toHaveBeenCalledWith('job-pending');
+    });
+
+    it('cancels running backup job by triggering active abort controller', async () => {
+      let triggerAbort: (() => void) | undefined;
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-running',
+        connectionId: 'conn-1',
+        status: JobStatus.RUNNING,
+        fileKey: 'prod-db/manual/running.dump',
+        category: BackupCategory.MANUAL,
+        triggeredBy: mockUser.id,
+      });
+
+      mockStrategy.execute.mockImplementation((_conn, _key, _meta, options) => {
+        return new Promise((_resolve, reject) => {
+          options?.abortSignal?.addEventListener('abort', () => {
+            reject(new Error('Operación cancelada por el usuario'));
+          });
+          setImmediate(() => {
+            void service.cancelBackup('job-running', mockUser);
+          });
+        });
+      });
+
+      const executeResult = await service.executeQueuedBackup('job-running');
+
+      expect(executeResult.status).toBe(JobStatus.FAILED);
+      expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
+        'job-running',
+        JobStatus.FAILED,
+        expect.objectContaining({
+          errorMessage: 'Operación cancelada por el usuario',
+        }),
+      );
+      expect(mockR2Service.delete).toHaveBeenCalledWith('prod-db/manual/running.dump');
+    });
   });
 });

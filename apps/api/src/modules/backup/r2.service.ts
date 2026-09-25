@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
@@ -229,5 +230,24 @@ export class R2Service {
       Key: key,
     });
     return getSignedUrl(this.client, command, { expiresIn });
+  }
+
+  async getObjectSize(key: string): Promise<number | undefined> {
+    if (!this.isAvailable()) {
+      return undefined;
+    }
+    try {
+      const command = new HeadObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
+      const response = await this.client.send(command);
+      return response.ContentLength;
+    } catch (error) {
+      this.logger.warn(
+        `Could not determine object size for ${key}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
+    }
   }
 }

@@ -5,5 +5,6 @@ export interface RestoreStrategy {
     connection: ConnectionEntity,
     filePath: string,
     onLog: (message: string) => void,
+    options?: { abortSignal?: AbortSignal },
   ): Promise<void>;
 }

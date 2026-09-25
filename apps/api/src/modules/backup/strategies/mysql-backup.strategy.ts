@@ -29,6 +29,7 @@ export class MySQLBackupStrategy implements BackupStrategy {
     connection: ConnectionEntity,
     fileKey: string,
     metadata?: Record<string, string>,
+    options?: { abortSignal?: AbortSignal },
   ): Promise<BackupExecutionResult> {
 
     return new Promise((resolve, reject) => {
@@ -62,6 +63,22 @@ export class MySQLBackupStrategy implements BackupStrategy {
         env: { ...process.env, MYSQL_PWD: connection.password },
       });
 
+      if (options?.abortSignal) {
+        if (options.abortSignal.aborted) {
+          mySqlDump.kill();
+          settle(reject, new Error('Operación cancelada por el usuario'));
+          return;
+        }
+        options.abortSignal.addEventListener(
+          'abort',
+          () => {
+            mySqlDump.kill();
+            settle(reject, new Error('Operación cancelada por el usuario'));
+          },
+          { once: true },
+        );
+      }
+
       const timeout = setTimeout(() => {
         mySqlDump.kill();
         settle(reject, new Error(`mysqldump exceeded ${this.timeoutMs}ms timeout`));
@@ -89,7 +106,10 @@ export class MySQLBackupStrategy implements BackupStrategy {
 
       mySqlDump.stdout.pipe(counter);
 
-      uploadPromise = this.r2Service.upload(fileKey, counter, { metadata });
+      uploadPromise = this.r2Service.upload(fileKey, counter, {
+        metadata,
+        abortSignal: options?.abortSignal,
+      });
 
       mySqlDump.on('close', (code: number | null) => {
         if (code !== 0) {
