@@ -6,6 +6,8 @@ import {
   Body,
   Req,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { BetterAuthGuard } from '../../auth/auth.guard';
@@ -27,6 +29,7 @@ export class RestoreController {
   ) {}
 
   @Post()
+  @HttpCode(HttpStatus.ACCEPTED)
   async createRestore(
     @Body() dto: CreateRestoreDto,
     @CurrentUser() user: AuthUser,
@@ -43,6 +46,21 @@ export class RestoreController {
         r2Key: dto.r2Key,
         isDryRun: dto.isDryRun,
       },
+    });
+    return result;
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelRestore(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    const result = await this.service.cancelRestore(id, user);
+    setAuditContext(req, {
+      resourceId: id,
+      metadata: { action: 'cancel' },
     });
     return result;
   }

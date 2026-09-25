@@ -29,6 +29,7 @@ export class PostgresBackupStrategy implements BackupStrategy {
     connection: ConnectionEntity,
     fileKey: string,
     metadata?: Record<string, string>,
+    options?: { abortSignal?: AbortSignal },
   ): Promise<BackupExecutionResult> {
 
     return new Promise((resolve, reject) => {
@@ -57,6 +58,22 @@ export class PostgresBackupStrategy implements BackupStrategy {
         env: { ...process.env, PGPASSWORD: connection.password },
       });
 
+      if (options?.abortSignal) {
+        if (options.abortSignal.aborted) {
+          pgDump.kill();
+          settle(reject, new Error('Operación cancelada por el usuario'));
+          return;
+        }
+        options.abortSignal.addEventListener(
+          'abort',
+          () => {
+            pgDump.kill();
+            settle(reject, new Error('Operación cancelada por el usuario'));
+          },
+          { once: true },
+        );
+      }
+
       const timeout = setTimeout(() => {
         pgDump.kill();
         settle(reject, new Error(`pg_dump exceeded ${this.timeoutMs}ms timeout`));
@@ -84,7 +101,10 @@ export class PostgresBackupStrategy implements BackupStrategy {
 
       pgDump.stdout.pipe(counter);
 
-      uploadPromise = this.r2Service.upload(fileKey, counter, { metadata });
+      uploadPromise = this.r2Service.upload(fileKey, counter, {
+        metadata,
+        abortSignal: options?.abortSignal,
+      });
 
       pgDump.on('close', (code: number | null) => {
         if (code !== 0) {

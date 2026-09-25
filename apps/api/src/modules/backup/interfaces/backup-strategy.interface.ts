@@ -11,6 +11,7 @@ export interface BackupStrategy {
     connection: ConnectionEntity,
     fileKey: string,
     metadata?: Record<string, string>,
+    options?: { abortSignal?: AbortSignal },
   ): Promise<BackupExecutionResult>;
 }
 

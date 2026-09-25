@@ -103,6 +103,22 @@ export class BackupController {
     return result;
   }
 
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelBackup(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    const result = await this.service.cancelBackup(id, user);
+    setAuditContext(req, {
+      environment: Environment.PROD,
+      resourceId: id,
+      metadata: { action: 'cancel' },
+    });
+    return result;
+  }
+
   @Sse(':id/stream')
   async streamBackup(@Param('id') id: string): Promise<Observable<MessageEvent>> {
     const job = await this.service.getBackupById(id);

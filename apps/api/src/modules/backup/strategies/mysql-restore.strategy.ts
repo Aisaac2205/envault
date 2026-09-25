@@ -23,44 +23,53 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
     connection: ConnectionEntity,
     filePath: string,
     onLog: (message: string) => void,
+    options?: { abortSignal?: AbortSignal },
   ): Promise<void> {
+    if (options?.abortSignal?.aborted) {
+      throw new Error('Operación cancelada por el usuario');
+    }
+
     const ts = Date.now();
     const shadowDb = `${connection.database}_shadow_${ts}`;
     const backupDb = `${connection.database}_pre_restore_${ts}`;
 
     try {
-      // Phase 1 — restore into isolated shadow database
+      // Phase 1: restore into isolated shadow database
       onLog('Creating shadow database for safe restore...');
       await this.createDatabase(connection, shadowDb);
-      await this.runMysqlRestore(connection, filePath, onLog, shadowDb);
+      await this.runMysqlRestore(connection, filePath, onLog, shadowDb, options?.abortSignal);
 
-      // Phase 2 — validate shadow has tables
-      const shadowTables = await this.getTableNames(connection, shadowDb);
+      // Phase 2: validate shadow has tables
+      const shadowTables = await this.getTableNames(connection, shadowDb, options?.abortSignal);
       if (shadowTables.length === 0) {
-        throw new Error('Restore produced no tables — dump may be empty or corrupt');
+        throw new Error('Restore produced no tables. Dump may be empty or corrupt');
       }
       onLog(`Shadow restore validated: ${shadowTables.length} tables`);
 
-      // Phase 3 — atomic swap: original→backup, shadow→original
-      const originalTables = await this.getTableNames(connection);
+      // Phase 3: atomic swap: original->backup, shadow->original
+      const originalTables = await this.getTableNames(connection, undefined, options?.abortSignal);
       await this.createDatabase(connection, backupDb);
       await this.atomicTableSwap(
-        connection, shadowDb, backupDb, originalTables, shadowTables, onLog,
+        connection, shadowDb, backupDb, originalTables, shadowTables, onLog, options?.abortSignal,
       );
 
-      // Phase 4 — cleanup
+      // Phase 4: cleanup
       await this.safeDropDatabase(connection, backupDb);
       await this.safeDropDatabase(connection, shadowDb);
       onLog('Restore completed successfully');
     } catch (error) {
-      // Original database is untouched — clean up temp databases
+      // Original database is untouched, clean up temp databases
       await this.safeDropDatabase(connection, shadowDb);
       await this.safeDropDatabase(connection, backupDb);
       throw error;
     }
   }
 
-  private getTableNames(connection: ConnectionEntity, database?: string): Promise<string[]> {
+  private getTableNames(
+    connection: ConnectionEntity,
+    database?: string,
+    abortSignal?: AbortSignal,
+  ): Promise<string[]> {
     return new Promise((resolve, reject) => {
       let settled = false;
       const settle = (fn: typeof resolve | typeof reject, value: unknown) => {
@@ -88,6 +97,22 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
       const child = spawn('mysql', args, {
         env: { ...process.env, MYSQL_PWD: connection.password },
       });
+
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          child.kill();
+          settle(reject, new Error('Operación cancelada por el usuario'));
+          return;
+        }
+        abortSignal.addEventListener(
+          'abort',
+          () => {
+            child.kill();
+            settle(reject, new Error('Operación cancelada por el usuario'));
+          },
+          { once: true },
+        );
+      }
 
       const timeout = setTimeout(() => {
         child.kill();
@@ -128,6 +153,7 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
     connection: ConnectionEntity,
     sql: string,
     database?: string,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -154,6 +180,22 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
       const child = spawn('mysql', args, {
         env: { ...process.env, MYSQL_PWD: connection.password },
       });
+
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          child.kill();
+          settle(reject, new Error('Operación cancelada por el usuario'));
+          return;
+        }
+        abortSignal.addEventListener(
+          'abort',
+          () => {
+            child.kill();
+            settle(reject, new Error('Operación cancelada por el usuario'));
+          },
+          { once: true },
+        );
+      }
 
       const timeout = setTimeout(() => {
         child.kill();
@@ -190,6 +232,7 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
     filePath: string,
     onLog: (message: string) => void,
     database?: string,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -211,9 +254,7 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
         database ?? connection.database,
       ];
 
-      // Pipe the dump through stdin — avoids the `source` command which is
-      // vulnerable to injection via filePath and forces the entire dump to
-      // be on disk before execution can begin.
+      // Pipe the dump through stdin to avoid injection and force stream handling.
       const fileStream = createReadStream(filePath);
       fileStream.on('error', (err: Error) => {
         mysqlChild.kill();
@@ -224,6 +265,24 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
       const mysqlChild = spawn('mysql', args, {
         env: { ...process.env, MYSQL_PWD: connection.password },
       });
+
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          fileStream.destroy();
+          mysqlChild.kill();
+          settle(reject, new Error('Operación cancelada por el usuario'));
+          return;
+        }
+        abortSignal.addEventListener(
+          'abort',
+          () => {
+            fileStream.destroy();
+            mysqlChild.kill();
+            settle(reject, new Error('Operación cancelada por el usuario'));
+          },
+          { once: true },
+        );
+      }
 
       fileStream.pipe(mysqlChild.stdin);
 
@@ -260,11 +319,14 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
   private async createDatabase(
     connection: ConnectionEntity,
     dbName: string,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     const escaped = this.escapeId(dbName);
     await this.executeSql(
       connection,
       `DROP DATABASE IF EXISTS \`${escaped}\`; CREATE DATABASE \`${escaped}\``,
+      undefined,
+      abortSignal,
     );
   }
 
@@ -291,19 +353,20 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
     originalTables: string[],
     shadowTables: string[],
     onLog: (message: string) => void,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     const esc = (id: string) => this.escapeId(id);
     const origDb = connection.database;
     const renames: string[] = [];
 
-    // Move original tables → backup (preserves data for rollback)
+    // Move original tables -> backup (preserves data for rollback)
     for (const t of originalTables) {
       renames.push(
         `\`${esc(origDb)}\`.\`${esc(t)}\` TO \`${esc(backupDb)}\`.\`${esc(t)}\``,
       );
     }
 
-    // Move shadow tables → original (the new data)
+    // Move shadow tables -> original (the new data)
     for (const t of shadowTables) {
       renames.push(
         `\`${esc(shadowDb)}\`.\`${esc(t)}\` TO \`${esc(origDb)}\`.\`${esc(t)}\``,
@@ -315,17 +378,16 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
       return;
     }
 
-    // RENAME TABLE is atomic — all renames succeed or none do.
-    // Triggers are moved with their tables automatically.
+    // RENAME TABLE is atomic: all renames succeed or none do.
     const sql = [
       'SET FOREIGN_KEY_CHECKS = 0;',
       `RENAME TABLE ${renames.join(', ')};`,
       'SET FOREIGN_KEY_CHECKS = 1;',
     ].join('\n');
 
-    await this.executeSql(connection, sql);
+    await this.executeSql(connection, sql, undefined, abortSignal);
     onLog(
-      `Swapped ${originalTables.length} original → backup, ${shadowTables.length} shadow → original`,
+      `Swapped ${originalTables.length} original -> backup, ${shadowTables.length} shadow -> original`,
     );
   }
 

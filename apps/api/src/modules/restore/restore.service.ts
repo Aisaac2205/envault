@@ -4,12 +4,15 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { randomUUID, timingSafeEqual } from 'crypto';
 
 import { CreateRestoreDto } from './dto/create-restore.dto';
@@ -20,6 +23,7 @@ import {
   RestoreExecutionOwnershipService,
 } from './restore-execution-ownership.service';
 import { RestoreStaging, RestoreStagingService } from './restore-staging.service';
+import { RESTORE_QUEUE_NAME } from './restore.constants';
 import { R2Service } from '../backup/r2.service';
 import { BackupService } from '../backup/backup.service';
 import { ConnectionsService } from '../connections/connections.service';
@@ -42,6 +46,7 @@ const SNAPSHOT_TIMEOUT_MS = 10_000;
 @Injectable()
 export class RestoreService implements OnApplicationBootstrap {
   private readonly logger = new Logger(RestoreService.name);
+  private readonly activeRestores = new Map<string, AbortController>();
 
   constructor(
     private readonly restoreRepository: RestoreRepository,
@@ -54,6 +59,9 @@ export class RestoreService implements OnApplicationBootstrap {
     private readonly sseService: SseService,
     @Inject('RESTORE_STRATEGIES')
     private readonly restoreStrategies: Map<DbTypeEnum, RestoreStrategy>,
+    @Optional()
+    @InjectQueue(RESTORE_QUEUE_NAME)
+    private readonly restoreQueue?: Queue,
     @Optional()
     private readonly configService?: ConfigService,
   ) {}
@@ -170,9 +178,46 @@ export class RestoreService implements OnApplicationBootstrap {
 
     this.sseService.register(admittedJobId);
 
-    setImmediate(() => {
-      this.executeRestoreAsync(admittedJobId, dto, user, leaseToken);
-    });
+    if (this.restoreQueue) {
+      try {
+        await this.restoreQueue.add(
+          'process-restore',
+          {
+            jobId: admittedJobId,
+            dto,
+            user,
+            leaseToken,
+          },
+          {
+            jobId: admittedJobId,
+            attempts: 1,
+            removeOnComplete: 100,
+            removeOnFail: 200,
+          },
+        );
+      } catch (queueErr) {
+        const errorMessage =
+          queueErr instanceof Error ? queueErr.message : 'Error desconocido al encolar en Redis';
+        this.logger.error(`Failed to enqueue restore job ${admittedJobId}: ${errorMessage}`);
+        await this.restoreLeaseRepository.releaseByJobId(admittedJobId).catch(() => {});
+        await this.restoreRepository.updateStatus(admittedJobId, JobStatus.FAILED, {
+          errorMessage: `Fallo al encolar en Redis: ${errorMessage}`,
+          completedAt: new Date(),
+        });
+        this.sseService.emit(admittedJobId, {
+          type: 'failed',
+          payload: { jobId: admittedJobId, error: `Fallo al encolar en Redis: ${errorMessage}` },
+        });
+        this.sseService.complete(admittedJobId);
+        throw new InternalServerErrorException(
+          `No se pudo encolar el trabajo de restauración en Redis: ${errorMessage}`,
+        );
+      }
+    } else {
+      setImmediate(() => {
+        this.executeRestoreAsync(admittedJobId, dto, user, leaseToken);
+      });
+    }
 
     return { jobId: admittedJobId };
   }
@@ -187,8 +232,14 @@ export class RestoreService implements OnApplicationBootstrap {
     let staging: RestoreStaging | null = null;
     let ownership: RestoreExecutionOwnership | null = null;
     let leaseRenewalTimer: NodeJS.Timeout | null = null;
+    const abortController = new AbortController();
+    this.activeRestores.set(jobId, abortController);
 
     try {
+      if (abortController.signal.aborted) {
+        throw new Error('Operación cancelada por el usuario');
+      }
+
       const started = await this.restoreRepository.startIfLeaseActive(
         jobId,
         dto.targetConnectionId,
@@ -217,7 +268,7 @@ export class RestoreService implements OnApplicationBootstrap {
           .then((renewed) => {
             if (!renewed) {
               this.logger.warn(
-                `Lease renewal returned false for restore job ${jobId} — lease may have been lost`,
+                `Lease renewal returned false for restore job ${jobId}. Lease may have been lost`,
               );
             }
           })
@@ -245,6 +296,43 @@ export class RestoreService implements OnApplicationBootstrap {
         dto.targetConnectionId,
       );
       const fileKey = await this.resolveSourceFileKey(dto, initialTarget);
+
+      if (abortController.signal.aborted) {
+        throw new Error('Operación cancelada por el usuario');
+      }
+
+      let expectedBytes: number | null = null;
+      if (dto.sourceBackupId) {
+        try {
+          const backup = await this.backupService.getBackupById(dto.sourceBackupId);
+          if (backup?.bytes) {
+            expectedBytes = Number(backup.bytes);
+          } else if (backup?.fileSizeMb) {
+            expectedBytes = Math.ceil(backup.fileSizeMb * 1024 * 1024);
+          }
+        } catch {
+          expectedBytes = null;
+        }
+      }
+
+      if (!expectedBytes && typeof this.r2Service.getObjectSize === 'function') {
+        expectedBytes = (await this.r2Service.getObjectSize(fileKey)) ?? null;
+      }
+
+      if (typeof this.restoreStagingService.checkAvailableDiskSpace === 'function') {
+        await this.restoreStagingService.checkAvailableDiskSpace(
+          expectedBytes ?? 50 * 1024 * 1024,
+        );
+      }
+
+      this.sseService.emit(jobId, {
+        type: 'log',
+        payload: {
+          message: 'Verificación de espacio en disco de staging completada exitosamente.',
+          timestamp: new Date(),
+        },
+      });
+
       staging = await this.restoreStagingService.create(jobId, dto.targetConnectionId);
       const dumpStats = await this.restoreStagingService.writeDump(
         staging,
@@ -253,7 +341,6 @@ export class RestoreService implements OnApplicationBootstrap {
       await this.verifyDumpIntegrity(dto, fileKey, dumpStats.sha256);
 
       this.sseService.emit(jobId, {
-
         type: 'progress',
         payload: { percent: 25 },
       });
@@ -287,12 +374,21 @@ export class RestoreService implements OnApplicationBootstrap {
         );
       }
 
-      await strategy.execute(targetConnection, staging.dumpFilePath, (message: string) => {
-        this.sseService.emit(jobId, {
-          type: 'log',
-          payload: { message, timestamp: new Date() },
-        });
-      });
+      if (abortController.signal.aborted) {
+        throw new Error('Operación cancelada por el usuario');
+      }
+
+      await strategy.execute(
+        targetConnection,
+        staging.dumpFilePath,
+        (message: string) => {
+          this.sseService.emit(jobId, {
+            type: 'log',
+            payload: { message, timestamp: new Date() },
+          });
+        },
+        { abortSignal: abortController.signal },
+      );
 
       this.sseService.emit(jobId, {
         type: 'progress',
@@ -330,6 +426,7 @@ export class RestoreService implements OnApplicationBootstrap {
         payload: { jobId, error: errorMessage },
       });
     } finally {
+      this.activeRestores.delete(jobId);
       if (leaseRenewalTimer) {
         clearInterval(leaseRenewalTimer);
       }
@@ -659,5 +756,87 @@ export class RestoreService implements OnApplicationBootstrap {
       );
     }
     return job;
+  }
+
+  async cancelRestore(
+    id: string,
+    _user: AuthUser,
+  ): Promise<{ message: string; jobId: string; status: JobStatus }> {
+    const job = await this.restoreRepository.findById(id);
+    if (!job) {
+      throw new NotFoundException(`Restore job con ID "${id}" no encontrado`);
+    }
+
+    if (job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED) {
+      throw new ConflictException(
+        `No se puede cancelar un trabajo de restauración con estado "${job.status}".`,
+      );
+    }
+
+    const completedAt = new Date();
+    const errorMessage = 'Operación cancelada por el usuario';
+
+    if (job.status === JobStatus.PENDING) {
+      if (this.restoreQueue) {
+        try {
+          const bullJob = await this.restoreQueue.getJob(job.id);
+          if (bullJob) {
+            await bullJob.remove();
+          }
+        } catch (queueErr) {
+          this.logger.warn(`Could not remove pending restore job ${job.id} from BullMQ: ${queueErr}`);
+        }
+      }
+
+      await this.restoreLeaseRepository.releaseByJobId(job.id).catch((err: Error) => {
+        this.logger.error(`Failed to release lease on cancel for job ${job.id}: ${err.message}`);
+      });
+
+      await this.restoreRepository.updateStatus(job.id, JobStatus.FAILED, {
+        errorMessage,
+        completedAt,
+      });
+
+      this.sseService.emit(job.id, {
+        type: 'log',
+        payload: {
+          message: errorMessage,
+          timestamp: completedAt,
+        },
+      });
+      this.sseService.emit(job.id, {
+        type: 'failed',
+        payload: { jobId: job.id, error: errorMessage },
+      });
+      this.sseService.complete(job.id);
+
+      return {
+        message: 'Restauración cancelada exitosamente',
+        jobId: job.id,
+        status: JobStatus.FAILED,
+      };
+    }
+
+    const controller = this.activeRestores.get(job.id);
+    if (controller) {
+      controller.abort();
+    } else {
+      await this.restoreLeaseRepository.releaseByJobId(job.id).catch(() => {});
+      await this.restoreRepository.updateStatus(job.id, JobStatus.FAILED, {
+        errorMessage,
+        completedAt,
+      });
+      this.sseService.emit(job.id, {
+        type: 'failed',
+        payload: { jobId: job.id, error: errorMessage },
+      });
+      this.sseService.complete(job.id);
+    }
+
+    return {
+      message: 'Restauración cancelada exitosamente',
+      jobId: job.id,
+      status: JobStatus.FAILED,
+    };
   }
 }

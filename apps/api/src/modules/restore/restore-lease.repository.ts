@@ -67,6 +67,17 @@ export class RestoreLeaseRepository {
     return this.hasAffectedRows(rows);
   }
 
+  async releaseByJobId(restoreJobId: string): Promise<boolean> {
+    const rows = await this.dataSource.query(
+      `DELETE FROM restore_leases
+       WHERE "restoreJobId" = $1::uuid
+       RETURNING "targetConnectionId"`,
+      [restoreJobId],
+    );
+
+    return this.hasAffectedRows(rows);
+  }
+
   private hasAffectedRows(result: LeaseMutationResult): boolean {
     if (this.isMutationResult(result)) {
       return result[1] > 0;

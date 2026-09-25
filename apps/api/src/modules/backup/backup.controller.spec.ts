@@ -22,6 +22,7 @@ describe('BackupController', () => {
     getDownloadUrl: jest.Mock;
     listEnrichedDumps: jest.Mock;
     listDumpsFromR2: jest.Mock;
+    cancelBackup?: jest.Mock;
   };
   let mockSseService: {
     subscribe: jest.Mock;
@@ -104,5 +105,21 @@ describe('BackupController', () => {
     const emitted: unknown[] = [];
     stream$.subscribe((event) => emitted.push(event));
     expect(emitted.length).toBe(1);
+  });
+
+  it('cancelBackup delegates to service and returns result', async () => {
+    mockBackupService.cancelBackup = jest.fn().mockResolvedValue({
+      message: 'Respaldo cancelado exitosamente',
+      jobId: 'job-123',
+      status: JobStatus.FAILED,
+    });
+
+    const result = await controller.cancelBackup('job-123', mockUser, mockReq);
+    expect(result).toEqual({
+      message: 'Respaldo cancelado exitosamente',
+      jobId: 'job-123',
+      status: JobStatus.FAILED,
+    });
+    expect(mockBackupService.cancelBackup).toHaveBeenCalledWith('job-123', mockUser);
   });
 });

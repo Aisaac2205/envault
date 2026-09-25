@@ -41,6 +41,7 @@ import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
+  private readonly activeBackups = new Map<string, AbortController>();
 
   constructor(
     private readonly backupRepository: BackupRepository,
@@ -180,6 +181,9 @@ export class BackupService {
       startedAt,
     });
 
+    const abortController = new AbortController();
+    this.activeBackups.set(job.id, abortController);
+
     this.sseService.register(job.id);
     this.sseService.emit(job.id, {
       type: 'log',
@@ -203,6 +207,10 @@ export class BackupService {
     };
 
     try {
+      if (abortController.signal.aborted) {
+        throw new Error('Operación cancelada por el usuario');
+      }
+
       const sourceSnapshot = await this.captureSourceSnapshot(connection);
 
       this.sseService.emit(job.id, {
@@ -229,7 +237,9 @@ export class BackupService {
         payload: { percent: 50 },
       });
 
-      const backupResult = await strategy.execute(connection, job.fileKey!, metadata);
+      const backupResult = await strategy.execute(connection, job.fileKey!, metadata, {
+        abortSignal: abortController.signal,
+      });
 
       const manifest: DumpManifest = {
         version: 2,
@@ -246,6 +256,7 @@ export class BackupService {
         await this.r2Service.upload(
           manifestKey,
           Readable.from(JSON.stringify(manifest)),
+          { abortSignal: abortController.signal },
         );
       } catch (manifestError) {
         await this.r2Service.delete(job.fileKey!).catch(() => {});
@@ -296,6 +307,8 @@ export class BackupService {
 
       this.logger.error(`Backup failed for connection ${connection.id}: ${errorMessage}`);
 
+      await this.r2Service.delete(job.fileKey!).catch(() => {});
+
       await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
         errorMessage,
         completedAt,
@@ -307,9 +320,19 @@ export class BackupService {
       });
       this.sseService.complete(job.id);
 
+      if (rawMessage.includes('Operación cancelada por el usuario')) {
+        return {
+          jobId: job.id,
+          fileKey: job.fileKey!,
+          status: JobStatus.FAILED,
+        };
+      }
+
       throw new InternalServerErrorException(
         `Backup failed for job ${job.id}: ${errorMessage}`,
       );
+    } finally {
+      this.activeBackups.delete(job.id);
     }
   }
 
@@ -533,4 +556,85 @@ export class BackupService {
     }
   }
 
+  async cancelBackup(
+    id: string,
+    _user: AuthUser,
+  ): Promise<{ message: string; jobId: string; status: JobStatus }> {
+    const job = await this.backupRepository.findById(id);
+    if (!job) {
+      throw new NotFoundException(`Backup job "${id}" no encontrado`);
+    }
+
+    if (job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED) {
+      throw new ConflictException(
+        `No se puede cancelar un trabajo de respaldo con estado "${job.status}".`,
+      );
+    }
+
+    const completedAt = new Date();
+    const errorMessage = 'Operación cancelada por el usuario';
+
+    if (job.status === JobStatus.PENDING) {
+      try {
+        const bullJob = await this.backupQueue.getJob(job.id);
+        if (bullJob) {
+          await bullJob.remove();
+        }
+      } catch (queueErr) {
+        this.logger.warn(`Could not remove pending backup job ${job.id} from BullMQ: ${queueErr}`);
+      }
+
+      await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
+        errorMessage,
+        completedAt,
+      });
+
+      if (job.fileKey) {
+        await this.r2Service.delete(job.fileKey).catch(() => {});
+      }
+
+      this.sseService.emit(job.id, {
+        type: 'log',
+        payload: {
+          message: errorMessage,
+          timestamp: completedAt,
+        },
+      });
+      this.sseService.emit(job.id, {
+        type: 'failed',
+        payload: { jobId: job.id, error: errorMessage },
+      });
+      this.sseService.complete(job.id);
+
+      return {
+        message: 'Respaldo cancelado exitosamente',
+        jobId: job.id,
+        status: JobStatus.FAILED,
+      };
+    }
+
+    const controller = this.activeBackups.get(job.id);
+    if (controller) {
+      controller.abort();
+    } else {
+      await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
+        errorMessage,
+        completedAt,
+      });
+      if (job.fileKey) {
+        await this.r2Service.delete(job.fileKey).catch(() => {});
+      }
+      this.sseService.emit(job.id, {
+        type: 'failed',
+        payload: { jobId: job.id, error: errorMessage },
+      });
+      this.sseService.complete(job.id);
+    }
+
+    return {
+      message: 'Respaldo cancelado exitosamente',
+      jobId: job.id,
+      status: JobStatus.FAILED,
+    };
+  }
 }

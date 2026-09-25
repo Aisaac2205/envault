@@ -22,26 +22,52 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
     connection: ConnectionEntity,
     filePath: string,
     onLog: (message: string) => void,
+    options?: { abortSignal?: AbortSignal },
   ): Promise<void> {
-    await this.runPreflight(filePath, onLog);
-    await this.runPgRestore(connection, filePath, onLog);
+    await this.runPreflight(filePath, onLog, options?.abortSignal);
+    await this.runPgRestore(connection, filePath, onLog, options?.abortSignal);
   }
 
   private runPreflight(
     filePath: string,
     onLog: (message: string) => void,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       onLog('Ejecutando preflight estructural de dump (pg_restore -l)...');
       const proc = spawn('pg_restore', ['-l', filePath]);
       let stderrOutput = '';
+      let settled = false;
+
+      const settle = (fn: typeof resolve | typeof reject, value?: unknown) => {
+        if (settled) return;
+        settled = true;
+        (fn as (v?: unknown) => void)(value);
+      };
+
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          proc.kill();
+          settle(reject, new Error('Operación cancelada por el usuario'));
+          return;
+        }
+        abortSignal.addEventListener(
+          'abort',
+          () => {
+            proc.kill();
+            settle(reject, new Error('Operación cancelada por el usuario'));
+          },
+          { once: true },
+        );
+      }
 
       proc.stderr.on('data', (chunk: Buffer) => {
         stderrOutput += chunk.toString();
       });
 
       proc.on('error', (err: Error) => {
-        reject(
+        settle(
+          reject,
           new Error(`Fallo al ejecutar preflight pg_restore: ${err.message}`),
         );
       });
@@ -51,7 +77,8 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
           const detail = sanitizeMessage(
             stderrOutput.trim() || `exit code ${code ?? 'unknown'}`,
           );
-          reject(
+          settle(
+            reject,
             new Error(
               `Preflight estructural falló: el dump está truncado o es inválido (${detail})`,
             ),
@@ -59,16 +86,16 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
           return;
         }
         onLog('Preflight estructural completado exitosamente.');
-        resolve();
+        settle(resolve);
       });
     });
   }
-
 
   private runPgRestore(
     connection: ConnectionEntity,
     filePath: string,
     onLog: (message: string) => void,
+    abortSignal?: AbortSignal,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -99,6 +126,22 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
       const pgRestore = spawn('pg_restore', args, {
         env: { ...process.env, PGPASSWORD: connection.password },
       });
+
+      if (abortSignal) {
+        if (abortSignal.aborted) {
+          pgRestore.kill();
+          settle(reject, new Error('Operación cancelada por el usuario'));
+          return;
+        }
+        abortSignal.addEventListener(
+          'abort',
+          () => {
+            pgRestore.kill();
+            settle(reject, new Error('Operación cancelada por el usuario'));
+          },
+          { once: true },
+        );
+      }
 
       const timeout = setTimeout(() => {
         pgRestore.kill();
