@@ -84,10 +84,12 @@ function flattenContent(content: DocContent): string {
 // public documentation describes the API contract, never the implementation.
 // (jest-junit, Vitest, pytest, PHPUnit, Maven, Gradle, and similar are the
 // reader's own tooling and are intentionally not in this list.)
+// PostgreSQL is intentionally not in this list: it's EnVault's own documented
+// product requirement (the control database and registered backup targets run
+// on it), not an internal implementation detail like the frameworks below.
 const FORBIDDEN_STACK_TERMS = [
   'NestJS',
   'Express',
-  'PostgreSQL',
   'Prisma',
   'Redis',
   'BullMQ',
