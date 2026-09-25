@@ -1,6 +1,6 @@
 services:
   api:
-    image: jefedesarrollocoide/vaultly-api:0.1.1
+    image: envault-management-api:0.1.1
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: jefedesarrollocoide/vaultly-web:0.1.1
+    image: envault-management-web:0.1.1
     build:
       context: .
       dockerfile: apps/web/Dockerfile

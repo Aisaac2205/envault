@@ -11,7 +11,7 @@ export const SNIPPETS: Record<SnippetId, string> = {
   docker: `# docker-compose.yml (repo root)
 services:
   api:
-    image: jefedesarrollocoide/vaultly-api:0.1.1
+    image: envault-management-api:0.1.1
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: jefedesarrollocoide/vaultly-web:0.1.1
+    image: envault-management-web:0.1.1
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -50,10 +50,10 @@ services:
 volumes:
   db_data:`,
 
-  railway: `# Railway: vaultly-api + vaultly-web + Postgres
+  railway: `# Railway: envault-api + envault-web + Postgres
 # Reference variables auto-fill these at deploy
 
-# vaultly-api
+# envault-api
 DB_HOST=\${{Postgres.PGHOST}}
 DB_PORT=\${{Postgres.PGPORT}}
 DB_NAME=\${{Postgres.PGDATABASE}}
@@ -64,9 +64,9 @@ BETTER_AUTH_URL=https://<web-public-domain>
 R2_ACCOUNT_ID=<cloudflare-account-id>
 R2_ACCESS_KEY_ID=<r2-access-key-id>
 R2_SECRET_ACCESS_KEY=<r2-secret-access-key>
-R2_BUCKET_NAME=vaultly-dumps
+R2_BUCKET_NAME=envault-dumps
 
-# vaultly-web
+# envault-web
 VITE_APP_BASE_URL=https://<public-domain>
 API_UPSTREAM=<api-private-domain>:3000`,
 };
