@@ -118,9 +118,11 @@ El hook escribe a través del pool de `pg` (`authPool`) que Better Auth ya posee
 
 ### Limitaciones conocidas
 
-1. **Los cronjobs no se auditan en `audit_logs`.** Corren in-process, no por HTTP, así que el interceptor no los ve. Su trazabilidad vive en `backup_jobs.triggeredBy = 'system-cronjob'`.
+1. **`environment` recurre por defecto a `dev`** para mutaciones de recursos cuando la petición no incluye un campo `environment` ni en el body ni en los params. Esto contamina el listado con falsos DEVs. La columna ahora es nullable (migración `1778716800019`), por lo que el fallback a `Environment.DEV` del interceptor podrá removerse — dicho cambio aún no se ha aplicado en el código en ejecución.
 
-2. **Los logs son append-only a nivel DB.** Un trigger (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE` en la tabla `audit_logs`. Esto previene adulteración incluso por usuarios con acceso directo a la DB. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
+2. **Los cronjobs no se auditan en `audit_logs`.** Corren in-process, no por HTTP, así que el interceptor no los ve. Su trazabilidad vive en `backup_jobs.triggeredBy = 'system-cronjob'`. Si se requiere auditoría unificada, debe invocarse el log manualmente desde `CronjobsService.executeCronjob`.
+
+3. **Los logs son append-only a nivel DB.** Un trigger (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE` en la tabla `audit_logs`. Esto previene adulteración incluso por usuarios con acceso directo a la DB. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
 
 ---
 

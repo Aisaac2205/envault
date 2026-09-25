@@ -17,7 +17,7 @@ export class RestoreLeaseRepository {
   ): Promise<boolean> {
     const rows = await this.dataSource.query(
       `INSERT INTO restore_leases ("targetConnectionId", "restoreJobId", "leaseToken", "expiresAt")
-       VALUES ($1, $2, $3, $4)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4)
        ON CONFLICT ("targetConnectionId") DO UPDATE
        SET "restoreJobId" = EXCLUDED."restoreJobId",
            "leaseToken" = EXCLUDED."leaseToken",
@@ -39,9 +39,9 @@ export class RestoreLeaseRepository {
     const rows = await this.dataSource.query(
       `UPDATE restore_leases
        SET "expiresAt" = $4
-       WHERE "targetConnectionId" = $1
-         AND "restoreJobId" = $2
-         AND "leaseToken" = $3
+       WHERE "targetConnectionId" = $1::uuid
+         AND "restoreJobId" = $2::uuid
+         AND "leaseToken" = $3::uuid
          AND "expiresAt" > CURRENT_TIMESTAMP
        RETURNING "targetConnectionId"`,
       [targetConnectionId, restoreJobId, leaseToken, expiresAt],
@@ -57,9 +57,9 @@ export class RestoreLeaseRepository {
   ): Promise<boolean> {
     const rows = await this.dataSource.query(
       `DELETE FROM restore_leases
-       WHERE "targetConnectionId" = $1
-         AND "restoreJobId" = $2
-         AND "leaseToken" = $3
+       WHERE "targetConnectionId" = $1::uuid
+         AND "restoreJobId" = $2::uuid
+         AND "leaseToken" = $3::uuid
        RETURNING "targetConnectionId"`,
       [targetConnectionId, restoreJobId, leaseToken],
     );
