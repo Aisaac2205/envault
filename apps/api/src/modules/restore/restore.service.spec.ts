@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Readable } from 'stream';
 import { BackupService } from '../backup/backup.service';
@@ -8,6 +9,7 @@ import { Environment } from '../../database/enums/environment.enum';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { SseService } from '../../shared/sse/sse.service';
+import { AuthUser } from '../../auth/decorators/current-user.decorator';
 import { RestoreExecutionOwnershipService } from './restore-execution-ownership.service';
 import { RestoreLeaseRepository } from './restore-lease.repository';
 import { RestoreRepository } from './restore.repository';
@@ -117,3 +119,240 @@ describe('RestoreService finalizer', () => {
     });
   }
 });
+
+describe('RestoreService engine compatibility by sourceBackupId', () => {
+  const targetConnectionId = '00000000-0000-0000-0000-000000000001';
+  const testUser: AuthUser = {
+    id: 'admin-user',
+    email: 'admin@vaultly.local',
+    name: 'Admin',
+    role: 'admin',
+  };
+
+  async function buildModule({
+    targetDbType = DbTypeEnum.POSTGRES,
+    backupDbType = DbTypeEnum.POSTGRES,
+    backupStatus = JobStatus.COMPLETED,
+    backupFileKey = 'source/manual/dump.dump' as string | null,
+    targetEnv = Environment.DEV,
+  }: {
+    targetDbType?: DbTypeEnum;
+    backupDbType?: DbTypeEnum | null;
+    backupStatus?: JobStatus;
+    backupFileKey?: string | null;
+    targetEnv?: Environment;
+  } = {}) {
+    const target = {
+      id: targetConnectionId,
+      name: 'Test Target',
+      dbType: targetDbType,
+      environment: targetEnv,
+    };
+    const backup = {
+      id: 'backup-1',
+      dbType: backupDbType,
+      fileKey: backupFileKey,
+      status: backupStatus,
+    };
+
+    const restoreRepository = {
+      create: jest.fn().mockResolvedValue({ id: 'dry-job-1' }),
+      tryCreateWithLease: jest.fn().mockResolvedValue('admitted-job-1'),
+      startIfLeaseActive: jest.fn().mockResolvedValue(true),
+      failPendingIfLeaseInactive: jest.fn().mockResolvedValue(undefined),
+      updateStatus: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const connectionsService = {
+      findById: jest.fn().mockResolvedValue(target),
+    };
+
+    const backupService = {
+      getBackupById: jest.fn().mockResolvedValue(backup),
+    };
+
+    const sseService = {
+      register: jest.fn(),
+      emit: jest.fn(),
+      complete: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RestoreService,
+        { provide: RestoreRepository, useValue: restoreRepository },
+        { provide: RestoreLeaseRepository, useValue: { release: jest.fn() } },
+        {
+          provide: RestoreExecutionOwnershipService,
+          useValue: {
+            findActiveTarget: jest.fn().mockResolvedValue(target),
+            hasActiveLease: jest.fn().mockResolvedValue(true),
+            release: jest.fn(),
+            tryAcquire: jest.fn().mockResolvedValue({ targetConnectionId }),
+          },
+        },
+        {
+          provide: RestoreStagingService,
+          useValue: {
+            cleanup: jest.fn(),
+            create: jest.fn().mockResolvedValue({
+              directoryPath: 'staging',
+              dumpFileHandle: null,
+              dumpFilePath: 'staging/dump',
+              metadataPath: 'staging/metadata',
+            }),
+            writeDump: jest.fn(),
+          },
+        },
+        { provide: R2Service, useValue: { download: jest.fn().mockResolvedValue(Readable.from('dump')) } },
+        { provide: BackupService, useValue: backupService },
+        { provide: ConnectionsService, useValue: connectionsService },
+        { provide: SseService, useValue: sseService },
+        {
+          provide: 'RESTORE_STRATEGIES',
+          useValue: new Map<DbTypeEnum, RestoreStrategy>([
+            [DbTypeEnum.POSTGRES, { execute: jest.fn() }],
+            [DbTypeEnum.MYSQL, { execute: jest.fn() }],
+          ]),
+        },
+      ],
+    }).compile();
+
+    const service = module.get(RestoreService);
+    jest.spyOn(service, 'executeRestoreAsync').mockResolvedValue(undefined);
+    return { service, restoreRepository };
+  }
+
+  it('rejects restore when backup engine does not match target connection engine', async () => {
+    const { service } = await buildModule({
+      targetDbType: DbTypeEnum.POSTGRES,
+      backupDbType: DbTypeEnum.MYSQL,
+    });
+
+    await expect(
+      service.createRestore(
+        {
+          targetConnectionId,
+          sourceBackupId: 'backup-1',
+          isDryRun: false,
+        },
+        testUser,
+      ),
+    ).rejects.toThrow(
+      new ForbiddenException(
+        'Tipo de base de datos incompatible: el backup es "mysql" pero el destino "Test Target" es "postgres".',
+      ),
+    );
+  });
+
+  it('rejects restore when target engine is MySQL but backup engine is Postgres', async () => {
+    const { service } = await buildModule({
+      targetDbType: DbTypeEnum.MYSQL,
+      backupDbType: DbTypeEnum.POSTGRES,
+    });
+
+    await expect(
+      service.createRestore(
+        {
+          targetConnectionId,
+          sourceBackupId: 'backup-1',
+          isDryRun: false,
+        },
+        testUser,
+      ),
+    ).rejects.toThrow(
+      new ForbiddenException(
+        'Tipo de base de datos incompatible: el backup es "postgres" pero el destino "Test Target" es "mysql".',
+      ),
+    );
+  });
+
+  it('rejects dry run when backup engine does not match target connection engine', async () => {
+    const { service } = await buildModule({
+      targetDbType: DbTypeEnum.POSTGRES,
+      backupDbType: DbTypeEnum.MYSQL,
+    });
+
+    await expect(
+      service.createRestore(
+        {
+          targetConnectionId,
+          sourceBackupId: 'backup-1',
+          isDryRun: true,
+        },
+        testUser,
+      ),
+    ).rejects.toThrow(
+      new ForbiddenException(
+        'Tipo de base de datos incompatible: el backup es "mysql" pero el destino "Test Target" es "postgres".',
+      ),
+    );
+  });
+
+  it('rejects restore when backup job status is not completed', async () => {
+    const { service } = await buildModule({
+      targetDbType: DbTypeEnum.POSTGRES,
+      backupDbType: DbTypeEnum.POSTGRES,
+      backupStatus: JobStatus.FAILED,
+    });
+
+    await expect(
+      service.createRestore(
+        {
+          targetConnectionId,
+          sourceBackupId: 'backup-1',
+          isDryRun: false,
+        },
+        testUser,
+      ),
+    ).rejects.toThrow(
+      new ForbiddenException('El backup fuente no está completado o no tiene archivo.'),
+    );
+  });
+
+  it('rejects restore when backup job has no fileKey', async () => {
+    const { service } = await buildModule({
+      targetDbType: DbTypeEnum.POSTGRES,
+      backupDbType: DbTypeEnum.POSTGRES,
+      backupFileKey: null,
+    });
+
+    await expect(
+      service.createRestore(
+        {
+          targetConnectionId,
+          sourceBackupId: 'backup-1',
+          isDryRun: false,
+        },
+        testUser,
+      ),
+    ).rejects.toThrow(
+      new ForbiddenException('El backup fuente no está completado o no tiene archivo.'),
+    );
+  });
+
+  it('admits restore and returns jobId when engines match', async () => {
+    const { service, restoreRepository } = await buildModule({
+      targetDbType: DbTypeEnum.POSTGRES,
+      backupDbType: DbTypeEnum.POSTGRES,
+    });
+
+    const result = await service.createRestore(
+      {
+        targetConnectionId,
+        sourceBackupId: 'backup-1',
+        isDryRun: false,
+      },
+      testUser,
+    );
+
+    expect(result).toEqual({ jobId: 'admitted-job-1' });
+    expect(restoreRepository.tryCreateWithLease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceBackupId: 'backup-1',
+        targetConnectionId,
+      }),
+    );
+  });
+});
+
