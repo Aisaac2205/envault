@@ -3,19 +3,26 @@ import { API_BASE_URL_TOKEN, type DocContent } from './types';
 export const en: DocContent = {
   pageTitle: 'Documentation | EnVault Management',
   pageDescription:
-    'A practical guide to registering databases, scheduling automated backups, configuring Cloudflare R2 storage, and restoring dumps safely in EnVault Management.',
+    'Technical guide to registering databases, scheduling automated backups, configuring Cloudflare R2 storage, and restoring database dumps safely with EnVault Management.',
   breadcrumbLabel: 'Architecture & API Guide',
-  tocLabel: 'Table of contents',
+  tocLabel: 'Table of Contents',
   heroTitle: 'Documentation',
   heroSubtitle:
-    'A practical guide to running EnVault Management yourself. Register your databases, schedule backups, watch jobs live, and restore safely when you need to.',
+    'Technical guide to deploying and operating EnVault Management. Register database connections, schedule periodic backups, track jobs in real time, and execute controlled restorations.',
   copyCodeLabel: 'Copy code',
   copiedLabel: 'Copied!',
   navGroups: [
-    { label: 'Introduction', sectionIds: ['getting-started', 'architecture-overview'] },
+    {
+      label: 'Introduction',
+      sectionIds: ['getting-started', 'architecture-overview', 'environments-guide'],
+    },
     {
       label: 'Deployment Guide',
       sectionIds: ['deployment-docker', 'control-db-requirements', 'storage-configuration'],
+    },
+    {
+      label: 'Security & Access',
+      sectionIds: ['auth-user-limits', 'audit-trail-observability'],
     },
     {
       label: 'API Reference',
@@ -27,7 +34,10 @@ export const en: DocContent = {
         'other-languages',
       ],
     },
-    { label: 'Operations & DevOps', sectionIds: ['scheduler-locks-guide', 'retention-cleanup'] },
+    {
+      label: 'Operations & DevOps',
+      sectionIds: ['scheduler-locks-guide', 'retention-cleanup'],
+    },
   ],
   sections: [
     {
@@ -37,31 +47,31 @@ export const en: DocContent = {
       blocks: [
         {
           type: 'paragraph',
-          text: 'EnVault Management is a self-hosted platform for backing up and restoring your databases. Register a PostgreSQL or MySQL connection, schedule backups on a cron expression with timezone support, and watch each job run live in your browser. When you need to bring data back, a dry run checks connectivity and schema compatibility before anything actually changes.',
+          text: 'EnVault Management is a self-hosted platform for backing up databases and restoring them when required. It allows you to register connections to PostgreSQL or MySQL, schedule backups using cron expressions with a defined timezone, and track job executions live directly in the browser. Before executing a real restoration, you can run a dry-run test that verifies network connectivity and schema compatibility without modifying existing tables.',
         },
-        { type: 'subheading', text: 'Before You Install It' },
+        { type: 'subheading', text: 'Infrastructure requirements' },
         {
           type: 'paragraph',
-          text: "EnVault Management keeps its own state, connections, schedules, encrypted credentials, and the audit trail, in a control database, and that control database has to run PostgreSQL 16 or newer. Older versions will not work. The platform depends on PostgreSQL's advisory locks and JSONB columns to coordinate jobs safely across replicas.",
+          text: 'EnVault Management stores its internal state, including registered connections, schedules, encrypted credentials, and audit logs, in a dedicated control database. This control database requires PostgreSQL 16 or newer due to native advisory locking mechanisms and structured JSONB columns.',
         },
         {
           type: 'table',
-          headers: ['Requirement', 'Version', 'Why it matters'],
+          headers: ['Requirement', 'Version', 'Purpose'],
           rows: [
             [
               'Control database',
               'PostgreSQL 16+',
-              'Stores your connections, schedules, encrypted credentials, and the audit trail',
+              'Stores connections, cronjobs, encrypted credentials, and audit logs',
             ],
             [
-              'Backup targets',
+              'Backed up databases',
               'PostgreSQL or MySQL',
-              'The databases you register to back up and restore',
+              'Target database instances registered for backup and restore tasks',
             ],
             [
               'Object storage',
-              'Cloudflare R2',
-              'Where every dump is streamed and stored, over an S3-compatible API',
+              'Cloudflare R2 / S3',
+              'Destination where dumps stream and persist via an S3-compatible API',
             ],
           ],
         },
@@ -70,31 +80,52 @@ export const en: DocContent = {
     {
       id: 'architecture-overview',
       navLabel: 'Architecture',
-      title: 'How EnVault Keeps Data Safe',
+      title: 'Data Isolation and Security Guarantees',
       blocks: [
         {
           type: 'paragraph',
-          text: 'EnVault keeps its own control plane, where job metadata, schedules, and audit history live, separate from the databases it backs up. Connection credentials are encrypted with AES-256-GCM before they are stored, and they are never sent to your browser in plain text.',
+          text: 'EnVault keeps its control plane completely decoupled from the databases it manages. Database credentials are encrypted with authenticated AES-256-GCM before writing to disk, and they are never returned in plaintext to the client application.',
         },
-        { type: 'subheading', text: 'What That Buys You' },
+        { type: 'subheading', text: 'Operational guarantees' },
         {
           type: 'list',
           items: [
-            'Every user is either an admin or a regular user. There is no separate operator or read-only tier to configure.',
-            'A restore can never target a connection marked as production, so a wrong click cannot overwrite a live database.',
-            'Every mutation (a backup trigger, a download, a connection change, a restore attempt) is written to an audit log that cannot be edited or deleted afterward, not even by an admin.',
+            'Strict privilege separation between administrators and standard operators.',
+            'Hard boundary preventing any production database from being selected as a restore target.',
+            'Immutable audit trail recording every mutation and authentication attempt without allowing deletion.',
           ],
+        },
+      ],
+    },
+    {
+      id: 'environments-guide',
+      navLabel: 'Environments & Segregation',
+      title: 'Standard Environments and Segregation Model',
+      blocks: [
+        {
+          type: 'paragraph',
+          text: 'Every database connection registered in EnVault is assigned to one of three standard environments, specifically production (prod), quality assurance (qa), or development (dev). This separation reflects canonical software engineering practices to isolate credentials and apply distinct operational rules based on data sensitivity.',
+        },
+        { type: 'subheading', text: 'Production write safeguards' },
+        {
+          type: 'paragraph',
+          text: 'The assigned environment governs what actions can be executed on each connection. EnVault strictly blocks any connection flagged as production from serving as a restore destination. This architectural barrier ensures that manual errors or automated scripts cannot overwrite live production data.',
+        },
+        { type: 'subheading', text: 'Current immutability and roadmap' },
+        {
+          type: 'paragraph',
+          text: 'In the current release, these three environments are immutable and validated directly by the control plane schema to maintain operational predictability. The development roadmap includes support for custom environments, allowing engineering teams to register specialized tiers such as staging, uat, or sandboxes to match complex deployment topologies.',
         },
       ],
     },
     {
       id: 'deployment-docker',
       navLabel: 'Docker Deployment',
-      title: 'Deploying With Docker Compose',
+      title: 'Deploying with Docker Compose',
       blocks: [
         {
           type: 'paragraph',
-          text: 'You can bring up the whole stack, the API and a PostgreSQL 16 database, with a single command. The compose file below persists the control database to a named volume, so restarting the containers will not wipe your data.',
+          text: 'You can deploy EnVault and its PostgreSQL 16 control database using a declarative composition file. A named volume preserves control data and connection secrets across container recycles.',
         },
         {
           type: 'code',
@@ -137,32 +168,74 @@ volumes:
     },
     {
       id: 'control-db-requirements',
-      navLabel: 'Control DB',
+      navLabel: 'Control Database',
       title: 'Configuring the Control Database',
       blocks: [
         {
           type: 'paragraph',
-          text: 'The control database schema is created and kept up to date automatically the first time the API starts, so there is no migration command to run by hand. It stores your registered connections, backup schedules, encrypted credentials, and the audit trail.',
+          text: 'The control database schema initializes and migrates automatically when the application starts for the first time. This database stores connections, cron schedules, encrypted credentials, and the immutable audit log.',
         },
         {
           type: 'callout',
           tone: 'info',
-          text: 'Point EnVault at a dedicated PostgreSQL database rather than reusing one of the databases you plan to back up. Keeping the control database separate makes restores and upgrades far less risky.',
+          text: 'Connect EnVault to a dedicated PostgreSQL database that remains isolated from the databases you intend to back up. Keeping the control database independent guarantees availability during recovery procedures.',
         },
       ],
     },
     {
       id: 'storage-configuration',
       navLabel: 'Cloud Storage',
-      title: 'Cloudflare R2 Storage Setup',
+      title: 'Configuring Cloudflare R2 Storage',
       blocks: [
         {
           type: 'paragraph',
-          text: 'Every backup streams directly to Cloudflare R2 through a multipart upload while the dump is still running, so nothing touches local disk even when the source database is hundreds of gigabytes. R2 is the only storage backend EnVault supports today. There is no local-disk option and no other cloud provider to configure.',
+          text: 'Every backup streams directly to object storage through multipart transfers while the dump binary executes. This streaming pipeline avoids spooling temporary archives onto the local file system, allowing large databases to back up without filling local ephemeral disks.',
         },
         {
           type: 'paragraph',
-          text: 'Because R2 exposes an S3-compatible API, you set it up the same way you would set up any S3-compatible client. You just need an endpoint, a bucket name, and a pair of access keys with permission to read and write objects.',
+          text: 'Cloudflare R2 provides full S3 protocol compatibility. You can configure the storage driver by specifying the endpoint address, bucket name, and access keys with read and write permissions.',
+        },
+      ],
+    },
+    {
+      id: 'auth-user-limits',
+      navLabel: 'Authentication & Users',
+      title: 'Access Control and User Creation Limits',
+      blocks: [
+        {
+          type: 'paragraph',
+          text: 'Access to the web interface and protected endpoints is handled by an integrated authentication subsystem that manages sessions using secure cookies with SameSite lax and httpOnly attributes. This configuration blocks token extraction by untrusted browser scripts.',
+        },
+        { type: 'subheading', text: 'Closed registration model' },
+        {
+          type: 'paragraph',
+          text: 'Because EnVault safeguards enterprise data infrastructure, public self-registration is intentionally disabled. The user interface does not expose public signup forms. The initial administrator account is provisioned automatically during initial system boot through server environment variables.',
+        },
+        { type: 'subheading', text: 'Operator hierarchy and management' },
+        {
+          type: 'paragraph',
+          text: 'The authorization layer enforces two distinct roles, administrator and operator. Once the platform is operational, authenticated administrators retain sole authority to register additional operator accounts or revoke credentials, preserving an audited access boundary.',
+        },
+      ],
+    },
+    {
+      id: 'audit-trail-observability',
+      navLabel: 'Audit Trail',
+      title: 'Forensic Audit Trail and Observability',
+      blocks: [
+        {
+          type: 'paragraph',
+          text: 'Every credential mutation, connection update, scheduled job execution, and authentication event generates an entry in the control database audit table. Database integrity rules prevent updates or deletions on this table, creating an tamper-resistant activity record.',
+        },
+        { type: 'subheading', text: 'Captured forensic metadata' },
+        {
+          type: 'paragraph',
+          text: 'Each audit entry records the user identifier, username, source IP address, user agent, HTTP method, route, affected environment, ISO timestamp, execution outcome, and a severity rating categorized as low, medium, high, or critical.',
+        },
+        { type: 'subheading', text: 'Multi-criteria filtering and detailed inspection' },
+        {
+          type: 'paragraph',
+          text: 'The web audit console provides search filters combining user, environment, resource type, execution state, and time ranges. The event detail view exposes sanitized request payloads, query parameters, duration metrics, and storage volumes without leaking sensitive credentials, providing compliance evidence for standards such as SOC 2 and ISO 27001.',
         },
       ],
     },
@@ -173,7 +246,7 @@ volumes:
       blocks: [
         {
           type: 'paragraph',
-          text: 'Starts an asynchronous backup job for a registered connection and returns its job ID right away, before the dump has actually finished running.',
+          text: 'Initiates an asynchronous backup job for a registered connection and returns its job identifier immediately, without waiting for the dump stream to finish.',
         },
         {
           type: 'code',
@@ -189,12 +262,12 @@ volumes:
     },
     {
       id: 'api-restore-execute',
-      navLabel: 'API: Restore Database',
+      navLabel: 'API: Restore Dump',
       title: 'REST Endpoint: Restore a Backup',
       blocks: [
         {
           type: 'paragraph',
-          text: 'Restores a backup to a target connection. Set "isDryRun" to true first to verify connectivity and schema compatibility without touching any data, then send the same request with it set to false once you are confident. EnVault refuses the request outright if the target connection is marked as production.',
+          text: 'Restores a backup archive onto a specified target connection. Sending isDryRun as true verifies connectivity and schema compatibility without altering table rows. Setting isDryRun to false runs the real restore. If the target connection is marked as production, the request is rejected immediately.',
         },
         {
           type: 'code',
@@ -213,11 +286,11 @@ volumes:
     {
       id: 'api-sse-telemetry',
       navLabel: 'API: SSE Telemetry',
-      title: 'Live Restore Progress via Server-Sent Events',
+      title: 'Live Restore Progress with Server-Sent Events',
       blocks: [
         {
           type: 'paragraph',
-          text: 'Restore jobs stream their progress over Server-Sent Events, a way for the server to push live updates to your browser or client without you having to poll for them. Open the stream for a restore job ID and you receive events as the job moves through each stage, ending with its final status.',
+          text: 'Restore jobs stream progress updates through Server-Sent Events (SSE), delivering real-time execution steps without polling overhead. Connecting to the stream route for a given job identifier provides continuous state transitions until completion.',
         },
         {
           type: 'code',
@@ -228,40 +301,40 @@ volumes:
         {
           type: 'callout',
           tone: 'info',
-          text: 'Backup jobs do not stream progress yet. Poll the backup or job status endpoint instead to check whether one has finished.',
+          text: 'Backup jobs currently emit an event when finished. To inspect the intermediate status of a running backup, query the jobs endpoint.',
         },
       ],
     },
     {
       id: 'api-audit-log',
-      navLabel: 'API: Audit Trail',
-      title: 'Immutable Audit Logging',
+      navLabel: 'API: Audit Logs',
+      title: 'Immutable Audit Log Endpoint',
       blocks: [
         {
           type: 'paragraph',
-          text: 'Every mutation (a backup trigger, a download, a connection or credential change, a restore attempt) is written to an audit log automatically. A database trigger blocks any update or delete against that log, so even an administrator with direct database access cannot rewrite history.',
+          text: 'System alterations persist in the control database audit table. The audit endpoint supports querying event records with filters for environment, resource type, and pagination.',
         },
         {
           type: 'code',
           language: 'shell',
           code: `curl -H "Authorization: Bearer $ENVAULT_API_TOKEN" \\
-  "${API_BASE_URL_TOKEN}/audit?pageSize=25"`,
+  "${API_BASE_URL_TOKEN}/audit?environment=prod&resourceType=backup&pageSize=25"`,
         },
       ],
     },
     {
       id: 'other-languages',
       navLabel: 'Other Languages',
-      title: 'Calling the API From Other Languages',
+      title: 'Calling the API from Other Languages',
       blocks: [
         {
           type: 'paragraph',
-          text: 'The examples above use curl, but EnVault exposes a plain REST API, so any HTTP client works fine.',
+          text: 'The HTTP interface follows standard REST patterns, allowing applications to trigger and monitor backups from any programming language.',
         },
-        { type: 'subheading', text: 'Triggering a Backup From Your Own Code' },
+        { type: 'subheading', text: 'Triggering a backup from code' },
         {
           type: 'paragraph',
-          text: 'Here is the same manual backup trigger written for a couple of common runtimes.',
+          text: 'Examples illustrating how to call the backup endpoint using standard HTTP client libraries.',
         },
         {
           type: 'codeGroup',
@@ -312,26 +385,42 @@ print(job["jobId"])`,
     {
       id: 'scheduler-locks-guide',
       navLabel: 'Scheduler Locks',
-      title: 'Mutual Exclusion Across Replicas',
+      title: 'Mutual Exclusion Across Replicas with Advisory Locks',
       blocks: [
         {
           type: 'paragraph',
-          text: 'If you run more than one instance of the API for redundancy, EnVault still runs each scheduled job exactly once. Right before a cron job, a manual retention sweep, or a restore starts, the replica that picks it up acquires a PostgreSQL advisory lock scoped to that job and connection, and releases it once the work is done, whether it succeeded or failed. Any other replica that tries to pick up the same job while the lock is held simply skips it.',
+          text: 'When deploying multiple EnVault instances behind a load balancer for high availability, the platform guarantees that each scheduled cronjob, retention sweep, and restore runs once. Distributed coordination relies natively on PostgreSQL advisory locks, eliminating the need to maintain separate external memory clusters.',
+        },
+        { type: 'subheading', text: 'Non-blocking acquisition' },
+        {
+          type: 'paragraph',
+          text: 'Immediately before starting a job, the worker replica calculates a 64-bit numeric key from the connection identifier and job category. It invokes the native pg_try_advisory_lock function on the control database. If another replica already holds the lock, the call returns false non-blockingly, allowing the replica to skip the tick without connection delays.',
+        },
+        { type: 'subheading', text: 'Release guarantees' },
+        {
+          type: 'paragraph',
+          text: 'The advisory lock remains held strictly during execution and releases inside a guaranteed finalization block when the task finishes, whether it succeeded or failed. If a container stops unexpectedly or a worker crashes, the PostgreSQL engine automatically releases session-level locks as soon as the underlying TCP connection closes.',
         },
       ],
     },
     {
       id: 'retention-cleanup',
       navLabel: 'Retention & Cleanup',
-      title: 'Retention Windows and Automatic Pruning',
+      title: 'Retention Windows and Automated Pruning',
       blocks: [
         {
           type: 'paragraph',
-          text: 'Each connection has its own retention window, so you can keep thirty days of backups for one database and a year for another. A background job checks for dumps past their window and prunes them automatically, freeing storage without you having to step in.',
+          text: 'Each database connection defines an independent retention policy specified in days, allowing teams to keep seven days of backups for ephemeral development environments and three hundred and sixty-five days for production. A background worker periodically inspects the control database to locate dumps whose creation timestamp has surpassed the configured window.',
         },
+        { type: 'subheading', text: 'Coordinated two-phase deletion' },
         {
           type: 'paragraph',
-          text: 'Before deleting anything for real, you can preview a cleanup to see exactly which dumps it would remove and how much storage it would free.',
+          text: 'The pruning procedure runs in two coordinated steps to prevent orphaned files in cloud storage or missing references in the control database. First, it issues deletion commands to the remote object storage bucket, and once removal is confirmed, it purges the corresponding metadata record from the control database.',
+        },
+        { type: 'subheading', text: 'Non-destructive simulation' },
+        {
+          type: 'paragraph',
+          text: 'To evaluate retention rules safely before applying permanent deletions, EnVault supports running cleanups in simulation mode. This operation evaluates the retention policy and reports the exact list of dumps eligible for removal, their identifiers, and the total storage volume in bytes that will be reclaimed, without removing any data from object storage.',
         },
       ],
     },
