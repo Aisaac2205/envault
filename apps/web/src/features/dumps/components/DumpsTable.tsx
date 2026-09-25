@@ -1,4 +1,5 @@
 import { DataTable, type Column } from "@/shared/ui/data-table";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Database, AlertCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -163,25 +164,21 @@ export function DumpsTable({
           ? `${t('label.showing', { start, end, total, item: total === 1 ? t('label.record', { ns: 'common' }) : t('label.records', { ns: 'common' }) })}`
           : t('label.noRecords')}
       </p>
-      {dumps.length === 0 && !isLoading ? (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-          <Database className="h-8 w-8 mb-3 text-muted-foreground/50" />
-          <p className="text-sm font-medium text-foreground">
-            {t('empty.noResults.title')}
-          </p>
-          <p className="text-xs mt-1">
-            {t('empty.noResults.description')}
-          </p>
-        </div>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={dumps}
-          loading={isLoading}
-          emptyMessage={t('empty.noBackups')}
-          pagination={pagination}
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={dumps}
+        loading={isLoading}
+        emptyMessage={t('empty.noBackups')}
+        emptyContent={
+          <EmptyState
+            icon={<Database className="size-6 text-muted-foreground/60" />}
+            title={t('empty.noResults.title')}
+            description={t('empty.noResults.description')}
+            className="py-6"
+          />
+        }
+        pagination={pagination}
+      />
     </div>
   );
 }

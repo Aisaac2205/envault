@@ -33,7 +33,7 @@ export function UpcomingCronjobsCard({ cronjobs }: UpcomingCronjobsCardProps) {
           <span className="truncate font-medium text-xs text-text-primary" title={cj.name}>
             {cj.name}
           </span>
-          <span className="font-mono text-[10px] text-muted-foreground/70 truncate">
+          <span className="text-[11px] text-muted-foreground truncate">
             {cj.connectionName ?? cj.cronExpression}
           </span>
         </div>
@@ -42,7 +42,7 @@ export function UpcomingCronjobsCard({ cronjobs }: UpcomingCronjobsCardProps) {
     {
       header: t('column.nextRun', { defaultValue: 'Próxima ejecución' }),
       accessor: (cj) => (
-        <span className="text-xs whitespace-nowrap text-muted-foreground font-mono">
+        <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums font-medium">
           {cj.nextRunAt ? formatUpcomingTime(cj.nextRunAt) : t('upcoming.noNext')}
         </span>
       ),
@@ -61,7 +61,7 @@ export function UpcomingCronjobsCard({ cronjobs }: UpcomingCronjobsCardProps) {
           <EmptyState
             icon={<Clock className="h-8 w-8" />}
             title={t('upcoming.empty')}
-            description={t('upcoming.empty')}
+            description={t('upcoming.emptyDescription')}
           />
         ) : (
           <>

@@ -2,6 +2,7 @@ import type { Connection, ConnectionTestResult } from "../types";
 import { ConnectionStateBadge } from "@/shared/components/ConnectionStateBadge";
 import { Button } from "@/shared/ui/button";
 import { DataTable, type Column } from "@/shared/ui/data-table";
+import { EmptyState } from "@/shared/ui/empty-state";
 import TestConnectionBadge from "./TestConnectionBadge";
 import PostgresSQL from "@/shared/assets/PostgresSQL.svg";
 import MySQL from "@/shared/assets/MySQL.svg";
@@ -165,30 +166,20 @@ export default function ConnectionsTable({
     },
   ];
 
-  // ─── Empty state ────────────────────────────────────────
-
-  if (!isLoading && connections.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <ClipboardList className="mb-4 h-10 w-10 text-muted-foreground" />
-        <h3 className="text-base font-medium text-text-primary">
-          {t('empty.filtered.title')}
-        </h3>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          {t('empty.filtered.description')}
-        </p>
-      </div>
-    );
-  }
-
-  // ─── Data / Loading ─────────────────────────────────────
-
   return (
     <DataTable
       columns={columns}
       data={connections}
       loading={isLoading}
       emptyMessage={t('empty.filtered.title')}
+      emptyContent={
+        <EmptyState
+          icon={<ClipboardList className="size-6 text-muted-foreground/60" />}
+          title={t('empty.filtered.title')}
+          description={t('empty.filtered.description')}
+          className="py-6"
+        />
+      }
     />
   );
 }

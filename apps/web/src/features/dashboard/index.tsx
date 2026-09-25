@@ -10,6 +10,10 @@ import { RestoreTimeline } from "./components/RestoreTimeline";
 import { BackupAreaChart } from "./components/BackupAreaChart";
 import { UpcomingCronjobsCard } from "./components/UpcomingCronjobsCard";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
+import { buttonVariants } from "@/shared/ui/button";
+import { cn } from "@/shared/lib/cn";
+import { Link } from "react-router-dom";
+import { Database, Plus } from "lucide-react";
 import { GlobalLoadingOverlay } from "@/shared/ui/TetrominoLoader";
 import { useSmoothLoading } from "@/shared/hooks/useSmoothLoading";
 
@@ -77,6 +81,36 @@ export default function Dashboard() {
           </div>
 
           <DashboardHeader lastUpdated={new Date()} />
+
+          {connections.length === 0 && !rawLoading && (
+            <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-muted/20 p-5 sm:p-6 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/40 text-muted-foreground shadow-2xs ring-1 ring-border/20">
+                    <Database className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold tracking-tight text-text-primary">
+                      {t('onboarding.title')}
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground max-w-xl leading-relaxed text-balance">
+                      {t('onboarding.description')}
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  to="/connections"
+                  className={cn(
+                    buttonVariants({ size: "sm" }),
+                    "shrink-0 gap-1.5 self-start sm:self-center",
+                  )}
+                >
+                  <Plus className="size-4" />
+                  {t('onboarding.cta')}
+                </Link>
+              </div>
+            </div>
+          )}
 
           <KpiGrid stats={stats} connections={connections} dailyCounts={dailyCounts} />
 

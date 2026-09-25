@@ -24,8 +24,8 @@ export function RestoreTimeline({ restores, maxItems = 8 }: RestoreTimelineProps
       header: t('column.id'),
       accessor: (job) => (
         <div className="flex flex-col gap-1 py-0.5">
-          <span className="truncate font-mono text-xs font-medium text-text-primary leading-tight">{shortId(job.id)}</span>
-          <span className="font-mono text-[10px] text-muted-foreground/70 leading-tight">
+          <span className="truncate text-xs font-medium text-text-primary leading-tight">#{shortId(job.id)}</span>
+          <span className="text-[10px] text-muted-foreground/70 leading-tight">
             {job.isDryRun ? "dry-run" : "restore"}
           </span>
         </div>

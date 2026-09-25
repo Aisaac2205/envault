@@ -1,10 +1,12 @@
 import { type ReactNode } from "react";
+import { cn } from "@/shared/lib/cn";
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
   icon?: ReactNode;
   title: string;
   description?: string;
   action?: ReactNode;
+  className?: string;
 }
 
 export function EmptyState({
@@ -12,19 +14,33 @@ export function EmptyState({
   title,
   description,
   action,
+  className,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      {icon && (
-        <div className="mb-4 text-muted-foreground">{icon}</div>
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center p-8 text-center select-none",
+        className,
       )}
-      <h3 className="text-lg font-medium text-text-primary">{title}</h3>
+    >
+      {icon && (
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border/70 bg-muted/40 text-muted-foreground shadow-xs ring-1 ring-border/20 [&>svg]:size-6">
+          {icon}
+        </div>
+      )}
+      <h3 className="text-base font-semibold tracking-tight text-text-primary">
+        {title}
+      </h3>
       {description && (
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">
+        <p className="mt-1.5 max-w-sm text-sm text-muted-foreground text-balance leading-relaxed">
           {description}
         </p>
       )}
-      {action && <div className="mt-6">{action}</div>}
+      {action && (
+        <div className="mt-5 flex items-center justify-center gap-3">
+          {action}
+        </div>
+      )}
     </div>
   );
 }

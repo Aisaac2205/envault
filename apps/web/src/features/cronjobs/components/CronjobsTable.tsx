@@ -6,6 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { ConnectionLabel } from "@/shared/components/ConnectionLabel";
 import { useConnections } from "@/features/connections/hooks/useConnections";
 import { DataTable, type Column } from "@/shared/ui/data-table";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { ToggleLeft, ToggleRight, Ellipsis, Clock } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
@@ -175,21 +176,20 @@ export default function CronjobsTable({
     },
   ];
 
-  if (!isLoading && cronjobs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-        <Clock className="h-8 w-8 mb-3 text-muted-foreground/50" />
-        <p className="text-sm font-medium text-foreground">{t('empty.title')}</p>
-        <p className="text-xs mt-1">{t('empty.description')}</p>
-      </div>
-    );
-  }
-
   return (
     <DataTable
       columns={columns}
       data={cronjobs}
       loading={isLoading}
+      emptyMessage={t('empty.title')}
+      emptyContent={
+        <EmptyState
+          icon={<Clock className="size-6 text-muted-foreground/60" />}
+          title={t('empty.title')}
+          description={t('empty.description')}
+          className="py-6"
+        />
+      }
       className="rounded-xl bg-card shadow-sm overflow-hidden"
     />
   );

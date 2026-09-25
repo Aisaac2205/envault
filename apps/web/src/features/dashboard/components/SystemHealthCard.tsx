@@ -80,14 +80,14 @@ export function SystemHealthCard({ dumps }: SystemHealthCardProps) {
       accessor: (m) => (
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-medium text-text-primary">{m.name}</span>
-          <span className="font-mono text-[10px] text-muted-foreground/70">{m.subtext}</span>
+          <span className="text-[11px] text-muted-foreground">{m.subtext}</span>
         </div>
       ),
     },
     {
       header: t('column.status', { defaultValue: 'Estado / Valor' }),
       accessor: (m) => (
-        <span className="font-mono text-xs font-semibold text-text-primary">
+        <span className="text-xs font-semibold tabular-nums text-text-primary">
           {m.value}
         </span>
       ),

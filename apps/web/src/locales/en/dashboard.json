@@ -17,6 +17,7 @@
   "chart.scheduled": "Scheduled",
   "chart.manual": "Manual",
   "chart.noData": "No data for this period",
+  "chart.noDataDescription": "Daily backup activity will automatically chart after your first execution.",
   "timeline.backups.title": "Recent Backups",
   "timeline.backups.empty.title": "No recent backups",
   "timeline.backups.empty.description": "No backups were executed in the last few days.",
@@ -45,6 +46,7 @@
   "health.empty.description": "No storage data available.",
   "upcoming.title": "Upcoming Runs",
   "upcoming.empty": "No scheduled runs",
+  "upcoming.emptyDescription": "Create or enable a cronjob to automate scheduled backups.",
   "upcoming.noNext": "No next run",
   "upcoming.more": "+{{count}} more",
   "upcoming.paused_one": "{{count}} paused",
@@ -55,5 +57,8 @@
   "chart.running": "Running",
   "chart.pending": "Pending",
   "chart.backupDistribution": "Backup Distribution",
-  "chart.noBackupData": "No backup data available"
+  "chart.noBackupData": "No backup data available",
+  "onboarding.title": "Welcome to EnVault Management",
+  "onboarding.description": "To start protecting your data and scheduling automated backups, connect your first PostgreSQL or MySQL database.",
+  "onboarding.cta": "Create Connection"
 }

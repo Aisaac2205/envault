@@ -17,6 +17,7 @@
   "chart.scheduled": "Programados",
   "chart.manual": "Manuales",
   "chart.noData": "No hay datos para este período",
+  "chart.noDataDescription": "La actividad diaria se graficará automáticamente tras el primer respaldo.",
   "timeline.backups.title": "Últimos Backups",
   "timeline.backups.empty.title": "Sin backups recientes",
   "timeline.backups.empty.description": "No se ejecutaron backups en los últimos días.",
@@ -45,6 +46,7 @@
   "health.empty.description": "No hay datos de almacenamiento disponibles.",
   "upcoming.title": "Próximas Ejecuciones",
   "upcoming.empty": "No hay ejecuciones programadas",
+  "upcoming.emptyDescription": "Crea o activa un cronjob para automatizar respaldos periódicos.",
   "upcoming.noNext": "Sin próxima ejecución",
   "upcoming.more": "+{{count}} más",
   "upcoming.paused_one": "{{count}} pausado",
@@ -55,5 +57,8 @@
   "chart.running": "En progreso",
   "chart.pending": "Pendientes",
   "chart.backupDistribution": "Distribución de Backups",
-  "chart.noBackupData": "No hay datos de backups disponibles"
+  "chart.noBackupData": "No hay datos de backups disponibles",
+  "onboarding.title": "Bienvenido a EnVault Management",
+  "onboarding.description": "Para comenzar a proteger tus datos y programar respaldos automáticos, conecta tu primera base de datos PostgreSQL o MySQL.",
+  "onboarding.cta": "Crear Conexión"
 }

@@ -14,6 +14,8 @@ import {
   type ChartConfig,
 } from "@/shared/ui/chart";
 import { useTranslation } from "react-i18next";
+import { BarChart3 } from "lucide-react";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { formatDate } from "@/lib/format";
 import type { DailyBackupCount } from "../types";
 
@@ -22,19 +24,19 @@ interface BackupAreaChartProps {
 }
 
 export function BackupAreaChart({ data }: BackupAreaChartProps) {
-  const { t } = useTranslation('dashboard');
+  const { t } = useTranslation("dashboard");
 
   const chartConfig: ChartConfig = {
     total: {
-      label: t('chart.title', { defaultValue: 'Backups' }),
+      label: t("chart.title", { defaultValue: "Backups completados" }),
       color: "#bfe70a",
     },
     scheduled: {
-      label: t('chart.scheduled', { defaultValue: 'Programados' }),
+      label: t("chart.scheduled", { defaultValue: "Programados" }),
       color: "#bfe70a",
     },
     manual: {
-      label: t('chart.manual', { defaultValue: 'Manuales' }),
+      label: t("chart.manual", { defaultValue: "Manuales" }),
       color: "#a1a1aa",
     },
   };
@@ -50,36 +52,31 @@ export function BackupAreaChart({ data }: BackupAreaChartProps) {
     <Card className="overflow-hidden border-border/80 shadow-xs">
       <CardHeader className="pb-2">
         <CardTitle className="text-base font-semibold text-text-primary">
-          {t('chart.title')}
+          {t("chart.title", { defaultValue: "Backups completados" })}
         </CardTitle>
         <CardDescription className="text-xs text-muted-foreground">
-          {t('chart.description', { defaultValue: 'Historial reciente de ejecuciones' })}
+          {t("chart.description", { defaultValue: "Historial reciente de ejecuciones" })}
         </CardDescription>
       </CardHeader>
       <CardContent className="px-2 pt-2 pb-4 sm:px-6">
         {chartData.length === 0 ? (
-          <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-            {t('chart.noData')}
-          </div>
+          <EmptyState
+            icon={<BarChart3 className="size-6 text-muted-foreground/60" />}
+            title={t("chart.noData")}
+            description={t("chart.noDataDescription")}
+            className="h-[220px] py-4"
+          />
         ) : (
-          <ChartContainer config={chartConfig} className="h-[200px] sm:h-[220px] w-full">
+          <ChartContainer config={chartConfig} className="h-[220px] w-full">
             <AreaChart
               data={chartData}
               height={220}
-              margin={{ top: 12, right: 12, left: 12, bottom: 4 }}
+              margin={{ top: 20, right: 16, left: 16, bottom: 6 }}
             >
               <defs>
                 <linearGradient id="fillBackupTotal" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="5%"
-                    stopColor="#bfe70a"
-                    stopOpacity={0.24}
-                  />
-                  <stop
-                    offset="95%"
-                    stopColor="#bfe70a"
-                    stopOpacity={0.0}
-                  />
+                  <stop offset="5%" stopColor="#bfe70a" stopOpacity={0.24} />
+                  <stop offset="95%" stopColor="#bfe70a" stopOpacity={0.0} />
                 </linearGradient>
               </defs>
               <CartesianGrid
@@ -94,13 +91,13 @@ export function BackupAreaChart({ data }: BackupAreaChartProps) {
                 tickMargin={8}
                 minTickGap={36}
                 tickFormatter={(value: string) =>
-                  formatDate(value, { day: '2-digit', month: 'short' })
+                  formatDate(value, { day: "2-digit", month: "short" })
                 }
-                className="text-[11px] font-mono fill-muted-foreground"
+                className="text-[11px] font-medium fill-muted-foreground"
               />
               <YAxis
                 hide
-                domain={['dataMin - 1', 'dataMax + 1']}
+                domain={[0, (dataMax: number) => Math.max(Math.ceil(dataMax * 1.25), 4)]}
               />
               <ChartTooltip
                 cursor={{
@@ -112,7 +109,7 @@ export function BackupAreaChart({ data }: BackupAreaChartProps) {
                 content={
                   <ChartTooltipContent
                     labelFormatter={(value: string) =>
-                      formatDate(value, { day: '2-digit', month: 'short', year: 'numeric' })
+                      formatDate(value, { day: "2-digit", month: "short", year: "numeric" })
                     }
                     indicator="line"
                   />
@@ -120,7 +117,7 @@ export function BackupAreaChart({ data }: BackupAreaChartProps) {
               />
               <Area
                 dataKey="total"
-                type="natural"
+                type="monotone"
                 fill="url(#fillBackupTotal)"
                 stroke="#bfe70a"
                 strokeWidth={2}

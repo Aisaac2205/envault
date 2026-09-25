@@ -26,8 +26,8 @@ export function BackupTimeline({ backups, maxItems = 8 }: BackupTimelineProps) {
       accessor: (job) => (
         <div className="flex flex-col gap-1 py-0.5">
           <ConnectionLabel id={job.connectionId} name={job.connectionName} className="font-medium text-xs text-text-primary leading-tight" />
-          <span className="font-mono text-[10px] text-muted-foreground/70 leading-tight">
-            {shortId(job.id)}
+          <span className="text-[10px] text-muted-foreground/70 leading-tight">
+            #{shortId(job.id)}
           </span>
         </div>
       ),

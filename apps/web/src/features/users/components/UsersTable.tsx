@@ -1,6 +1,7 @@
 import { UserX, ShieldOff } from "lucide-react";
 import { Badge, BadgeDot } from "@/shared/ui/badge";
 import { DataTable, type Column } from "@/shared/ui/data-table";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { UserActions } from "./UserActions";
 import { useTranslation } from "react-i18next";
 import { formatDate } from "@/lib/format";
@@ -75,43 +76,20 @@ export function UsersTable({ users, loading, filtered = false }: UsersTableProps
     },
   ];
 
-  if (!loading && users.length === 0) {
-    if (filtered) {
-      return (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-4 text-muted-foreground">
-            <ShieldOff className="h-10 w-10" />
-          </div>
-          <h3 className="text-lg font-medium text-foreground">
-            {t('empty.filtered.title')}
-          </h3>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            {t('empty.filtered.description')}
-          </p>
-        </div>
-      );
-    }
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="mb-4 text-muted-foreground">
-          <UserX className="h-10 w-10" />
-        </div>
-        <h3 className="text-lg font-medium text-foreground">
-          {t('empty.title')}
-        </h3>
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          {t('empty.description')}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <DataTable
       columns={columns}
       data={users}
       loading={loading}
-      emptyMessage={t('empty.filtered.title')}
+      emptyMessage={filtered ? t('empty.filtered.title') : t('empty.title')}
+      emptyContent={
+        <EmptyState
+          icon={filtered ? <ShieldOff className="size-6 text-muted-foreground/60" /> : <UserX className="size-6 text-muted-foreground/60" />}
+          title={filtered ? t('empty.filtered.title') : t('empty.title')}
+          description={filtered ? t('empty.filtered.description') : t('empty.description')}
+          className="py-6"
+        />
+      }
     />
   );
 }
