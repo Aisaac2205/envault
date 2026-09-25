@@ -275,18 +275,47 @@ If steps 1–4 work from the host but step 5 fails, the issue is Docker networki
 
 ---
 
-## 8. Production hardening checklist
+## 8. Production Hardening Checklist
 
-For a production on-prem connection:
+For a production enterprise database connection:
 
-- [ ] Dedicated DB user, **not** the admin/root account
-- [ ] Minimum required privileges (`SELECT` + `LOCK TABLES` for MySQL, `CONNECT` + table-level `SELECT` for Postgres)
-- [ ] SSL enabled at the DB layer (even if the tunnel encrypts, defense in depth)
-- [ ] Password rotation policy documented (90 days max recommended)
-- [ ] Tunnel/VPN monitored with alerts on disconnection
-- [ ] EnVault Management's egress IP documented and added to the DB's allowlist (if applicable)
-- [ ] Backups tested end-to-end (a registered connection that never gets backed up is worse than no connection)
-- [ ] Restore tested into a **non-prod** target (PROD restores are blocked by design, see [security-model.md](security-model.md))
+- [ ] Zero public TCP exposure (database servers must never listen on public internet interfaces).
+- [ ] Connectivity routed through encrypted private tunnels (WireGuard, Tailscale, or IPsec VPN).
+- [ ] Dedicated database user, never the root or superuser account.
+- [ ] Minimum required privileges (`SELECT` and `LOCK TABLES` for MySQL; `CONNECT` and table-level `SELECT` for PostgreSQL).
+- [ ] SSL enabled at the database layer as defense in depth.
+- [ ] Documented credential rotation schedule.
+- [ ] Tunnel monitoring with automatic alerts on connection loss.
+- [ ] End-to-end backup pipeline verified.
+- [ ] Restore operations verified against non-production targets (production restores are blocked by design).
+
+### Immutable Standard: Zero Public TCP Exposure
+Exposing ports 5432 or 3306 directly to the public internet with password authentication leaves systems vulnerable to brute-force credential stuffing and distributed denial-of-service attacks.
+
+Database daemons must bind exclusively to `127.0.0.1` or the assigned IP address of a private virtual network adapter.
+
+Example WireGuard interface configuration (`/etc/wireguard/wg0.conf`) connecting the database server with the EnVault host:
+
+```ini
+[Interface]
+Address = 10.100.0.2/24
+PrivateKey = DATABASE_SERVER_PRIVATE_KEY
+ListenPort = 51820
+
+[Peer]
+PublicKey = ENVAULT_HOST_PUBLIC_KEY
+AllowedIPs = 10.100.0.1/32
+Endpoint = public.envault.ip:51820
+PersistentKeepalive = 25
+```
+
+In the host firewall (UFW or iptables), drop all incoming database traffic arriving on public network interfaces:
+
+```bash
+# Allow PostgreSQL connections strictly via WireGuard interface wg0
+sudo ufw allow in on wg0 to any port 5432 proto tcp
+sudo ufw deny 5432/tcp
+```
 
 ---
 

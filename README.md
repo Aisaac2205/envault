@@ -25,6 +25,23 @@ Centralized database management platform. Register database connections, run and
 
 ---
 
+## Data Integrity and Verifiable Backups
+
+EnVault Management enforces strict data integrity invariants to eliminate silent dump corruption, partial restores, and disaster recovery blind spots:
+
+1. **In-Flight Cryptographic Hashing**
+   Every database dump stream (`pg_dump` or `mysqldump`) computes an unbuffered SHA-256 digest in flight. The digest is persisted in both the control database and the Cloudflare R2 companion manifest v2 (`*.manifest.json`).
+2. **Pre-Restore Digest Verification**
+   Before piping bytes into a target database, EnVault downloads the dump to isolated staging, computes its SHA-256 digest, and validates it against the recorded database digest using `crypto.timingSafeEqual` (preventing timing attacks and object substitution).
+3. **Structural Preflight Check (`pg_restore -l`)**
+   The table of contents (TOC) is validated prior to opening connections to the target database. Truncated or malformed dumps abort before modifying destination state.
+4. **All-or-Nothing Transactions**
+   PostgreSQL restores execute with `--single-transaction`, guaranteeing clean rollback on error. MySQL restores execute via a 4-phase isolated shadow database with atomic table swap.
+5. **Cold Disaster Recovery**
+   Complete bare-metal runbook and operational sandbox drill scripts ensure platform recoverability from zero. Read [docs/en/disaster-recovery.md](docs/en/disaster-recovery.md).
+
+---
+
 ## Requirements (non-negotiable)
 
 The **control database** — the one EnVault Management uses to store its own state (registered connections, audit log, cronjobs, dump metadata) — **MUST be PostgreSQL 16 or higher**. This is hardcoded into the TypeORM configuration ([`apps/api/src/config/database.config.ts`](apps/api/src/config/database.config.ts)) and relies on Postgres-specific features (enum types, JSONB, defaults). Other engines are not supported and there is no plan to support them for the control DB.

@@ -182,27 +182,36 @@ If 1 fails: restart the container. If 2 shows the API crashed on startup: check 
 
 ---
 
-## 5. Backup of the control database itself
+## 5. Control Database Backup and Disaster Survival
 
-**This is the most-skipped step and the most painful when it bites.** EnVault Management backs up your managed DBs. It does NOT back up its own control DB.
+EnVault Management backs up your managed databases, but does not back up its own control database.
 
-If the control DB is lost, you lose:
-- Every registered connection (credentials, hosts, names)
-- Every cronjob schedule
-- The complete audit log history
-- The metadata pointing to dumps in R2 (the dumps themselves stay in R2, but you lose the index)
+If the control database is lost, operations lose:
+- Every registered connection (credentials, hostnames, and identifiers).
+- The ability to decrypt connection passwords if `ENCRYPTION_KEY` is not preserved.
+- Cronjob execution schedules.
+- Complete audit trail logs.
+- The catalog mapping stored dumps inside Cloudflare R2.
 
-**Minimum acceptable strategy**:
-- Daily `pg_dump` of the control DB to a separate location (NOT the same R2 bucket EnVault Management uses — different account or different provider).
-- Tested restore procedure (do it once in a staging env, document the steps).
-- Retention: at least 30 days of daily backups.
+Consult the comprehensive platform restoration procedures in [disaster-recovery.md](disaster-recovery.md).
 
-**Production-grade strategy**:
-- Continuous archiving (WAL-G, pgBackRest) with point-in-time recovery.
-- Cross-region replication of the control DB.
-- Quarterly disaster recovery drills.
+### Critical Custody of ENCRYPTION_KEY
+Database passwords are encrypted using AES-256-GCM. A backup of the control database is useless without the exact 64-character hexadecimal key stored in `ENCRYPTION_KEY`. Store this key in an external credential vault outside primary infrastructure.
 
-If you're on Railway: enable Railway's automatic Postgres backups for the control DB plugin. If you're elsewhere: set up `pg_dump` cron on a separate host.
+### Minimum Acceptable Strategy
+- Daily `pg_dump` of the control database to an isolated external destination (never sharing the primary R2 bucket used by EnVault).
+- Minimum retention of 30 days for daily backups.
+- Recommended command for control database dumps:
+  ```bash
+  pg_dump -h db.internal -p 5432 -U envault_user -d envault -F c -f "envault_control_$(date +%Y%m%d_%H%M%S).dump"
+  ```
+
+### Production-Grade Strategy
+- Continuous WAL archiving (WAL-G or pgBackRest) with point-in-time recovery (PITR).
+- Geographic cross-region database replication.
+- Quarterly disaster recovery drills following [disaster-recovery.md](disaster-recovery.md).
+
+When running on Railway, enable automatic backups for the PostgreSQL plugin. On self-hosted servers or independent containers, configure a scheduled backup job on a distinct host.
 
 ---
 

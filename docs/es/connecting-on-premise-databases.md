@@ -275,18 +275,47 @@ Si los pasos 1–4 funcionan desde el host pero el paso 5 falla, el problema es 
 
 ---
 
-## 8. Checklist de hardening para producción
+## 8. Checklist de Hardening para Producción
 
-Para una conexión on-prem productiva:
+Para una conexión corporativa productiva:
 
-- [ ] Usuario DB dedicado, **no** la cuenta admin/root
-- [ ] Privilegios mínimos requeridos (`SELECT` + `LOCK TABLES` para MySQL, `CONNECT` + `SELECT` a nivel tabla para Postgres)
-- [ ] SSL habilitado en la capa DB (aunque el túnel cifre, defensa en profundidad)
-- [ ] Política de rotación de password documentada (90 días máx recomendado)
-- [ ] Túnel/VPN monitoreado con alertas en desconexión
-- [ ] IP de egress de EnVault Management documentada y agregada al allowlist de la DB (si aplica)
-- [ ] Backups probados end-to-end (una conexión registrada que nunca se backupea es peor que ninguna conexión)
-- [ ] Restore probado contra un target **no-prod** (los restores a PROD están bloqueados por diseño, ver [security-model.md](security-model.md))
+- [ ] Cero exposición TCP pública (la base de datos jamás debe escuchar en interfaces de internet público).
+- [ ] Conectividad mediante túnel cifrado privado (WireGuard, Tailscale o VPN IPsec).
+- [ ] Usuario de base de datos dedicado, nunca la cuenta root o superusuario.
+- [ ] Privilegios mínimos requeridos (`SELECT` y `LOCK TABLES` para MySQL; `CONNECT` y `SELECT` por tabla para PostgreSQL).
+- [ ] SSL activo en el motor de base de datos como defensa en profundidad.
+- [ ] Rotación periódica de credenciales documentada.
+- [ ] Monitorización del túnel con alertas ante caídas de enlace.
+- [ ] Respaldo inicial probado de extremo a extremo.
+- [ ] Restauración probada contra un destino de desarrollo o pruebas (los restores a producción están bloqueados por diseño).
+
+### Política Inmutable: Cero Exposición TCP Pública
+Abrir los puertos 5432 o 3306 directamente a internet con usuario y contraseña constituye una vulnerabilidad grave ante ataques de fuerza bruta y denegación de servicio. 
+
+El servidor de base de datos debe escuchar únicamente en `127.0.0.1` o en la dirección IP asignada por el adaptador de red virtual privada.
+
+Ejemplo de configuración de interfaz WireGuard (`/etc/wireguard/wg0.conf`) para enlazar el servidor de base de datos con el host de EnVault:
+
+```ini
+[Interface]
+Address = 10.100.0.2/24
+PrivateKey = CLAVE_PRIVADA_DEL_SERVIDOR_DB
+ListenPort = 51820
+
+[Peer]
+PublicKey = CLAVE_PUBLICA_DEL_HOST_ENVAULT
+AllowedIPs = 10.100.0.1/32
+Endpoint = ip.publica.envault:51820
+PersistentKeepalive = 25
+```
+
+En la configuración del firewall corporativo (UFW o iptables), bloquee cualquier paquete entrante a los puertos de base de datos proveniente de interfaces públicas:
+
+```bash
+# Permitir tráfico PostgreSQL únicamente a través de la interfaz WireGuard wg0
+sudo ufw allow in on wg0 to any port 5432 proto tcp
+sudo ufw deny 5432/tcp
+```
 
 ---
 

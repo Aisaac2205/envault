@@ -25,6 +25,23 @@ Plataforma de gestión centralizada de bases de datos. Permite administrar conex
 
 ---
 
+## Integridad de Datos y Respaldos Verificables
+
+EnVault Management implementa invariantes estrictos de integridad de datos para erradicar la corrupción silenciosa de volcados, restauraciones parciales y pérdidas irreversibles:
+
+1. **Digest Criptográfico al Vuelo**
+   Cada volcado en streaming (`pg_dump` o `mysqldump`) calcula un hash SHA-256 al vuelo sin buffering en memoria. El digest se registra en la base de datos de control y en el archivo manifiesto versión 2 en Cloudflare R2 (`*.manifest.json`).
+2. **Verificación Criptográfica Previa al Restore**
+   Antes de escribir datos en el motor destino, EnVault descarga el archivo en staging, calcula su hash SHA-256 y lo compara contra el digest registrado usando `crypto.timingSafeEqual` (previniendo ataques de temporización y sustitución).
+3. **Preflight Estructural (`pg_restore -l`)**
+   Se valida la tabla de contenidos (TOC) y cabecera antes de abrir conexiones con el motor destino. Volcados truncados o corruptos abortan de inmediato.
+4. **Restauraciones Transaccionales Atómicas**
+   En PostgreSQL se aplica `--single-transaction` para rollback total ante cualquier fallo. En MySQL se utiliza una restauración en 4 fases sobre base de datos sombra (*shadow swap*).
+5. **Recuperación ante Desastres en Frío**
+   Runbook oficial de reconstrucción desde cero y simulacros periódicos en sandbox. Consulte [docs/es/disaster-recovery.md](docs/es/disaster-recovery.md).
+
+---
+
 ## Arquitectura — referencia visual
 
 EnVault Management corre en cualquier plataforma que pueda hostear contenedores Docker y una instancia de PostgreSQL 16+ — PaaS en la nube, servidores on-prem, clusters air-gapped, o una workstation local.

@@ -25,35 +25,60 @@ EnVault Management se distribuye como dos imágenes Docker:
 Buildealas vos desde el repo, o pulleá desde tu registry cuando tu CI las publique.
 
 ```bash
-# Build local para testing
+# Build local desde la raíz del monorepo
 docker build -t envault-api:local -f apps/api/Dockerfile .
 docker build -t envault-web:local -f apps/web/Dockerfile .
 ```
 
-Ambos Dockerfiles esperan la **raíz del monorepo** como contexto de build (leen `pnpm-workspace.yaml` y `pnpm-lock.yaml`).
+Ambos Dockerfiles esperan la raíz del monorepo como contexto de build porque leen `pnpm-workspace.yaml` y `pnpm-lock.yaml`.
+
+### Despliegue Individual de Contenedores
+
+Si prefiere desplegar la API y el Web en servidores o procesos separados sin orquestador:
+
+```bash
+# 1. Contenedor de la API (en el host de backend)
+docker run -d \
+  --name envault-api \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  --env-file .env.api \
+  envault-api:local
+
+# 2. Contenedor Web (en el host de frontend)
+docker run -d \
+  --name envault-web \
+  --restart unless-stopped \
+  -p 80:80 \
+  -e API_UPSTREAM=api.interno.corp:3000 \
+  -e CSP_HEADER_NAME=Content-Security-Policy \
+  envault-web:local
+```
 
 ---
 
-## 2. Variables de entorno — el contrato
+## 2. Variables de entorno: el contrato
 
-Referencia completa: [environment-variables.md](environment-variables.md). El contrato de abajo es el mínimo para arrancar.
+Referencia completa en [environment-variables.md](environment-variables.md). La tabla siguiente especifica el contrato obligatorio para arrancar.
 
 ### API (runtime)
 
 | Variable | Requerida | Notas |
-|----------|-----------|-------|
-| `DATABASE_URL` | sí | Connection string de la DB de control (debe ser PostgreSQL 16+) |
-| `NODE_ENV` | sí | `production` en cualquier entorno deployado |
-| `PORT` | no (default `3000`) | Puerto de escucha |
-| `CORS_ORIGIN` | sí en producción | Dominio exacto del frontend, sin wildcards |
-| `BETTER_AUTH_SECRET` | sí | Secret para firmar sesiones (hex de 64 chars) |
+|---|---|---|
+| `DATABASE_URL` | sí | Cadena de conexión PostgreSQL 16+ para la base de control |
+| `ENCRYPTION_KEY` | sí | Clave hexadecimal de 64 caracteres (32 bytes) para cifrar credenciales con AES-256-GCM |
+| `NODE_ENV` | sí | `production` en cualquier entorno productivo |
+| `PORT` | no (default `3000`) | Puerto TCP de escucha HTTP |
+| `CORS_ORIGIN` | sí en producción | Dominio exacto del frontend, sin comodines ni wildcards |
+| `BETTER_AUTH_SECRET` | sí | Clave secreta para firmar sesiones (mínimo 32 caracteres aleatorios) |
 | `BETTER_AUTH_URL` | sí | URL pública base de la API |
-| `BETTER_AUTH_ADMIN_EMAIL` | sí | Email del admin seed (se usa en el primer boot) |
-| `BETTER_AUTH_ADMIN_PASSWORD` | sí | Password del admin seed (se usa en el primer boot) |
-| `R2_ACCOUNT_ID` | sí en producción | Cloudflare account ID (hex de 32 chars) |
-| `R2_ACCESS_KEY_ID` | sí en producción | Desde un R2 API Token |
-| `R2_SECRET_ACCESS_KEY` | sí en producción | Desde un R2 API Token |
-| `R2_BUCKET_NAME` | sí en producción | Bucket para los dumps |
+| `BETTER_AUTH_ADMIN_EMAIL` | sí | Correo electrónico del usuario administrador inicial |
+| `BETTER_AUTH_ADMIN_PASSWORD` | sí | Contraseña inicial del usuario administrador |
+| `R2_ACCOUNT_ID` | sí en producción | Identificador de cuenta Cloudflare (hexadecimal de 32 caracteres) |
+| `R2_ACCESS_KEY_ID` | sí en producción | Clave de acceso generada en R2 API Tokens |
+| `R2_SECRET_ACCESS_KEY` | sí en producción | Clave secreta generada en R2 API Tokens |
+| `R2_BUCKET_NAME` | sí en producción | Nombre del bucket R2 destinado a los respaldos |
+| `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Límite máximo en milisegundos para operaciones de restauración |
 
 ### Web (build-time Y runtime)
 

@@ -182,27 +182,36 @@ Si 1 falla: reiniciar el container. Si 2 muestra que la API crasheó al arrancar
 
 ---
 
-## 5. Backup de la propia DB de control
+## 5. Backup y Supervivencia de la DB de Control
 
-**Este es el paso más salteado y el más doloroso cuando muerde.** EnVault Management backupea tus DBs gestionadas. NO backupea su propia DB de control.
+EnVault Management respalda sus bases de datos gestionadas, pero no se respalda a sí misma.
 
-Si se pierde la DB de control, perdés:
-- Cada conexión registrada (credenciales, hosts, nombres)
-- Cada schedule de cronjob
-- El historial completo de audit log
-- El metadata que apunta a los dumps en R2 (los dumps en sí quedan en R2, pero perdés el índice)
+Si la base de datos de control se destruye, se pierde:
+- Cada conexión registrada (credenciales, hosts y nombres).
+- La capacidad de descifrar contraseñas si no se preserva la variable `ENCRYPTION_KEY`.
+- La programación de los cronjobs.
+- El historial completo de auditoría.
+- El catálogo e índice que mapea los volcados guardados en R2.
 
-**Estrategia mínima aceptable**:
-- `pg_dump` diario de la DB de control a una ubicación separada (NO el mismo bucket R2 que usa EnVault Management — cuenta distinta o proveedor distinto).
-- Procedimiento de restore probado (hacelo una vez en staging, documentá los pasos).
-- Retención: al menos 30 días de backups diarios.
+Consulte el procedimiento integral de reconstrucción en [disaster-recovery.md](disaster-recovery.md).
 
-**Estrategia grado producción**:
-- Continuous archiving (WAL-G, pgBackRest) con point-in-time recovery.
-- Replicación cross-region de la DB de control.
-- Drills de disaster recovery trimestrales.
+### Custodia Crítica de ENCRYPTION_KEY
+Las contraseñas de las conexiones se guardan cifradas con AES-256-GCM. Un respaldo de la base de control resulta inútil sin la clave exacta de 64 caracteres hexadecimales configurada en `ENCRYPTION_KEY`. Guarde esta clave en un baúl de contraseñas externo y fuera de la infraestructura principal.
 
-Si estás en Railway: habilitá los backups automáticos del plugin Postgres para la DB de control. Si estás en otro lado: armá un cron de `pg_dump` en un host separado.
+### Estrategia Mínima Aceptable
+- `pg_dump` diario de la base de control hacia un destino externo y aislado (nunca en el mismo bucket R2 que utiliza EnVault).
+- Retención mínima de 30 días para copias diarias.
+- Comando recomendado para volcado de control:
+  ```bash
+  pg_dump -h db.internal -p 5432 -U envault_user -d envault -F c -f "envault_control_$(date +%Y%m%d_%H%M%S).dump"
+  ```
+
+### Estrategia de Grado de Producción
+- Archivado continuo de WAL (WAL-G o pgBackRest) con recuperación en el punto del tiempo (PITR).
+- Replicación geográfica de la base de control.
+- Simulacros trimestrales de reconstrucción completa siguiendo [disaster-recovery.md](disaster-recovery.md).
+
+En despliegues en Railway, active los respaldos automáticos del complemento de PostgreSQL. En servidores dedicados o contenedores propios, configure una tarea cron en un servidor independiente.
 
 ---
 
