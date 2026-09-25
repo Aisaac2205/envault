@@ -1,55 +1,52 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { APP_CONFIG, createAppConfig } from "./config";
 
-async function loadConfig(apiUrl?: string) {
-  vi.resetModules();
-  if (apiUrl === undefined) {
-    vi.unstubAllEnvs();
-  } else {
-    vi.stubEnv("VITE_API_URL", apiUrl);
-  }
-  return import("./config");
-}
+describe("createAppConfig", () => {
+  it("keeps apiUrl as the bare origin so Better Auth can append its own base path", () => {
+    const config = createAppConfig("https://api.example.com");
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.resetModules();
-});
-
-describe("APP_CONFIG", () => {
-  it("keeps apiUrl as the bare origin so Better Auth can append its own base path", async () => {
-    const { APP_CONFIG } = await loadConfig("https://api.example.com");
-
-    expect(APP_CONFIG.apiUrl).toBe("https://api.example.com");
+    expect(config.apiUrl).toBe("https://api.example.com");
   });
 
-  it("appends the global /api prefix for domain endpoints", async () => {
-    const { APP_CONFIG } = await loadConfig("https://api.example.com");
+  it("appends the global /api prefix for domain endpoints", () => {
+    const config = createAppConfig("https://api.example.com");
 
-    expect(APP_CONFIG.apiBaseUrl).toBe("https://api.example.com/api");
+    expect(config.apiBaseUrl).toBe("https://api.example.com/api");
   });
 
-  it("produces a same-origin relative base when no api url is configured", async () => {
-    const { APP_CONFIG } = await loadConfig("");
+  it("produces a same-origin relative base when no api url is configured", () => {
+    const config = createAppConfig("");
 
-    expect(APP_CONFIG.apiUrl).toBe("");
-    expect(APP_CONFIG.apiBaseUrl).toBe("/api");
+    expect(config.apiUrl).toBe("");
+    expect(config.apiBaseUrl).toBe("/api");
+
+    const configUndefined = createAppConfig(undefined);
+    expect(configUndefined.apiUrl).toBe("");
+    expect(configUndefined.apiBaseUrl).toBe("/api");
   });
 
-  it("does not double the slash when the configured url has a trailing one", async () => {
-    const { APP_CONFIG } = await loadConfig("https://api.example.com/");
+  it("does not double the slash when the configured url has a trailing one", () => {
+    const config = createAppConfig("https://api.example.com/");
 
-    expect(APP_CONFIG.apiBaseUrl).toBe("https://api.example.com/api");
+    expect(config.apiBaseUrl).toBe("https://api.example.com/api");
   });
 
-  it("throws loudly instead of silently breaking auth when VITE_API_URL carries a path", async () => {
-    await expect(loadConfig("https://api.example.com/api")).rejects.toThrow(
+  it("throws loudly instead of silently breaking auth when VITE_API_URL carries a path", () => {
+    expect(() => createAppConfig("https://api.example.com/api")).toThrow(
       /bare origin with no path/,
     );
   });
 
-  it("throws loudly when VITE_API_URL is not a valid absolute URL", async () => {
-    await expect(loadConfig("not-a-url")).rejects.toThrow(
+  it("throws loudly when VITE_API_URL is not a valid absolute URL", () => {
+    expect(() => createAppConfig("not-a-url")).toThrow(
       /not a valid absolute URL/,
     );
   });
+
+  it("exports APP_CONFIG matching AppConfig contract", () => {
+    expect(typeof APP_CONFIG.apiUrl).toBe("string");
+    expect(typeof APP_CONFIG.apiBaseUrl).toBe("string");
+    expect(APP_CONFIG.apiBaseUrl.endsWith("/api")).toBe(true);
+  });
 });
+
