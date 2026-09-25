@@ -11,10 +11,10 @@ interface Props {
 const {
   locale = "es",
   title = locale === "es"
-    ? "EnVault Management — Control Centralizado de Bases de Datos & Backups Automatizados"
-    : "EnVault Management — Centralized Database Control & Automated Dumps",
+    ? "EnVault Management"
+    : "EnVault Management",
   description = locale === "es"
-    ? "Plataforma industrial para registrar conexiones PostgreSQL y MySQL, programar backups sin fallos de concurrencia, restaurar con verificación de integridad y monitorear jobs en vivo vía SSE."
+    ? "Plataforma para registrar conexiones PostgreSQL y MySQL, programar copias de seguridad sin fallos de concurrencia, restaurar con verificación de integridad y monitorear jobs en vivo vía SSE."
     : "Industrial control plane to register PostgreSQL and MySQL connections, schedule automated dumps without race conditions, restore safely, and stream live telemetry via SSE.",
 } = Astro.props;
 
@@ -101,7 +101,7 @@ const siteUrl = site.toString().replace(/\/$/, "");
 
     <!-- Screen reader & search engine headline -->
     <h1 class="sr-only">
-      {isEn ? "EnVault Management — Centralized Database Control & Automated Dumps" : "EnVault Management — Control Centralizado de Bases de Datos & Backups Automatizados"}
+      {isEn ? "EnVault Management — Centralized Database Control & Automated Dumps" : "EnVault Management — Control Centralizado de Bases de Datos y Copias de Seguridad Automatizadas"}
     </h1>
 
     <div class="relative min-h-screen flex flex-col justify-between">
