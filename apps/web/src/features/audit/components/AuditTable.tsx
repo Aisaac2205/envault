@@ -1,4 +1,5 @@
 import { DataTable, type Column } from "@/shared/ui/data-table";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { ConnectionLabel } from "@/shared/components/ConnectionLabel";
 import {
   Pagination,
@@ -63,9 +64,9 @@ function ActionCell({ action }: { action: string }) {
   const Icon =
     AUTH_ACTION_ICONS[action] ?? METHOD_ICONS[action.split(" ")[0]] ?? FileText;
   return (
-    <div className="flex items-center gap-2">
+    <div className="inline-flex items-center justify-center gap-2 max-w-full">
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="text-xs text-text-primary">{action}</span>
+      <span className="text-xs text-text-primary font-medium truncate">{action}</span>
     </div>
   );
 }
@@ -86,29 +87,26 @@ function MetadataCell({ log }: { log: AuditLog }) {
   const formattedType = formatResourceType(log.resourceType);
 
   return (
-    <div className="flex flex-col items-center gap-1.5 py-0.5 w-full min-w-0">
-      <div className="flex items-center justify-center gap-2 min-w-0">
-        {log.resourceType === "connection" ? (
-          <ConnectionLabel id={log.resourceId} name={metaName} className="text-xs truncate font-medium" />
-        ) : metaName ? (
-          <span className="text-xs font-medium text-text-primary truncate" title={`${metaName} (${log.resourceId})`}>
-            {metaName}
-          </span>
-        ) : showId ? (
-          <span
-            className="text-xs text-muted-foreground truncate"
-            title={log.resourceId}
-          >
-            #{shortenId(log.resourceId)}
-          </span>
-        ) : null}
-        {formattedType && (
-          <span className="text-[11px] text-muted-foreground/70 shrink-0 font-medium">
-            {formattedType}
-          </span>
-        )}
-      </div>
-
+    <div className="inline-flex items-center justify-center gap-2 max-w-full py-0.5">
+      {log.resourceType === "connection" ? (
+        <ConnectionLabel id={log.resourceId} name={metaName} className="text-xs truncate font-medium" />
+      ) : metaName ? (
+        <span className="text-xs font-medium text-text-primary truncate" title={`${metaName} (${log.resourceId})`}>
+          {metaName}
+        </span>
+      ) : showId ? (
+        <span
+          className="text-xs text-muted-foreground tabular-nums truncate"
+          title={log.resourceId}
+        >
+          #{shortenId(log.resourceId)}
+        </span>
+      ) : null}
+      {formattedType && (
+        <span className="text-[11px] text-muted-foreground/70 shrink-0 font-medium">
+          {formattedType}
+        </span>
+      )}
     </div>
   );
 }
@@ -212,26 +210,28 @@ export default function AuditTable({
     {
       header: t('column.date'),
       accessor: (log) => (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
+        <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
           {formatDateTimeShort(log.createdAt)}
         </span>
       ),
-      className: "w-36 hidden sm:table-cell",
-      headerClassName: "w-36 hidden sm:table-cell",
+      className: "w-44 text-center hidden sm:table-cell",
+      headerClassName: "w-44 text-center hidden sm:table-cell",
     },
     {
       header: t('column.user'),
       accessor: (log) => (
-        <span className="text-sm font-medium text-text-primary truncate">{log.username}</span>
+        <span className="text-sm font-medium text-text-primary truncate block text-center">
+          {log.username}
+        </span>
       ),
-      className: "w-32 text-left",
-      headerClassName: "w-32 text-left",
+      className: "w-36 text-center",
+      headerClassName: "w-36 text-center",
     },
     {
       header: t('column.action'),
       accessor: (log) => <ActionCell action={log.action} />,
-      className: "w-44 text-left",
-      headerClassName: "w-44 text-left",
+      className: "text-center",
+      headerClassName: "text-center",
     },
     {
       header: t('column.environment'),
@@ -253,34 +253,30 @@ export default function AuditTable({
 
   return (
     <div className="space-y-2">
-      {logs.length === 0 && !isLoading ? (
-        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground rounded-xl bg-card border border-border/60">
-          <ClipboardList className="h-8 w-8 mb-3 text-muted-foreground/50" />
-          <p className="text-sm font-medium text-foreground">
-            {t('empty.title')}
-          </p>
-          <p className="text-xs mt-1">
-            {t('empty.description')}
-          </p>
-        </div>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={logs}
-          loading={isLoading}
-          emptyMessage={t('empty.title')}
-          rowHref={(log) => `/audit/${log.id}`}
-          rowLinkLabel={(log) => t('detail.linkLabel', { id: log.id })}
-          pagination={
-            <AuditPagination
-              page={page}
-              pageSize={pageSize}
-              total={total}
-              onPageChange={onPageChange}
-            />
-          }
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={logs}
+        loading={isLoading}
+        emptyMessage={t('empty.title')}
+        emptyContent={
+          <EmptyState
+            icon={<ClipboardList className="size-6 text-muted-foreground/60" />}
+            title={t('empty.title')}
+            description={t('empty.description')}
+            className="py-6"
+          />
+        }
+        rowHref={(log) => `/audit/${log.id}`}
+        rowLinkLabel={(log) => t('detail.linkLabel', { id: log.id })}
+        pagination={
+          <AuditPagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={onPageChange}
+          />
+        }
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Separator } from "@/shared/ui/separator";
@@ -97,9 +97,13 @@ export default function AuditDetailPage() {
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <Link
         to="/audit"
-        className="inline-flex items-center gap-2 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        <ChevronLeft
+          className="size-5 -ml-1 transition-transform duration-150 ease-out group-hover:-translate-x-0.5"
+          strokeWidth={2.5}
+          aria-hidden="true"
+        />
         {t("page.title")}
       </Link>
 
