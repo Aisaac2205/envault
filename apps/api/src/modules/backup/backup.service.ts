@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Readable } from 'stream';
 import { Client } from 'pg';
 import { createConnection as createMysqlConnection, RowDataPacket } from 'mysql2/promise';
@@ -14,6 +17,8 @@ import { CreateBackupDto } from './dto/create-backup.dto';
 import { ListHistoryQueryDto } from './dto/list-history-query.dto';
 import { BackupRepository } from './backup.repository';
 import { R2Service } from './r2.service';
+import { BACKUP_QUEUE_NAME } from './backup.constants';
+import { SseService } from '../../shared/sse/sse.service';
 import { BackupResult } from './interfaces/backup-result.interface';
 import { BackupHistoryItem } from './interfaces/backup-history-item.interface';
 import { R2Object } from './interfaces/r2-object.interface';
@@ -41,6 +46,9 @@ export class BackupService {
     private readonly backupRepository: BackupRepository,
     private readonly r2Service: R2Service,
     private readonly connectionsService: ConnectionsService,
+    private readonly sseService: SseService,
+    @InjectQueue(BACKUP_QUEUE_NAME)
+    private readonly backupQueue: Queue,
     @Inject('BACKUP_STRATEGIES')
     private readonly backupStrategies: Map<DbTypeEnum, BackupStrategy>,
   ) {}
@@ -65,41 +73,163 @@ export class BackupService {
       );
     }
 
+    const activeJob = await this.backupRepository.findActiveJobForConnection(connection.id);
+    if (activeJob) {
+      throw new ConflictException(
+        `Ya existe un respaldo activo para la conexión "${connection.name}" (Job: ${activeJob.id}).`,
+      );
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const uniqueSuffix = Math.random().toString(36).slice(2, 8);
     const fileKey = `${connection.slug}/${category}/${timestamp}-${uniqueSuffix}.dump`;
-
-    const metadata: Record<string, string> = {
-      connectionId: connection.id,
-      connectionSlug: connection.slug,
-      category,
-      environment: connection.environment,
-      dbType: connection.dbType,
-      triggeredBy: user.id,
-    };
 
     const job = await this.backupRepository.create({
       connectionId: connection.id,
       environment: connection.environment,
       dbType: connection.dbType,
       status: JobStatus.PENDING,
+      fileKey,
       triggeredBy: user.id,
       category,
       storageKeyVersion: STORAGE_KEY_VERSION.NEW,
     });
 
-    const startedAt = new Date();
-
-    await this.backupRepository.updateStatus(job.id, JobStatus.RUNNING, {
-      fileKey,
-      startedAt,
+    this.sseService.register(job.id);
+    this.sseService.emit(job.id, {
+      type: 'log',
+      payload: {
+        message: `Respaldo registrado en cola (${category}) para "${connection.name}".`,
+        timestamp: new Date(),
+      },
+    });
+    this.sseService.emit(job.id, {
+      type: 'progress',
+      payload: { percent: 0 },
     });
 
     try {
-      // Capture source snapshot BEFORE the dump starts
+      await this.backupQueue.add(
+        'process-backup',
+        { jobId: job.id },
+        {
+          jobId: job.id,
+          attempts: 2,
+          backoff: {
+            type: 'exponential',
+            delay: 5000,
+          },
+          removeOnComplete: 100,
+          removeOnFail: 200,
+        },
+      );
+    } catch (queueErr) {
+      const errorMessage =
+        queueErr instanceof Error ? queueErr.message : 'Error desconocido al encolar en Redis';
+      this.logger.error(`Failed to enqueue backup job ${job.id}: ${errorMessage}`);
+      await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
+        errorMessage: `Fallo al encolar en Redis: ${errorMessage}`,
+        completedAt: new Date(),
+      });
+      this.sseService.emit(job.id, {
+        type: 'failed',
+        payload: { jobId: job.id, error: `Fallo al encolar en Redis: ${errorMessage}` },
+      });
+      this.sseService.complete(job.id);
+      throw new InternalServerErrorException(
+        `No se pudo encolar el trabajo de backup en Redis: ${errorMessage}`,
+      );
+    }
+
+    return {
+      jobId: job.id,
+      fileKey,
+      status: JobStatus.PENDING,
+    };
+  }
+
+  async executeQueuedBackup(jobId: string): Promise<BackupResult> {
+    const job = await this.backupRepository.findById(jobId);
+    if (!job) {
+      this.logger.error(`Backup job ${jobId} not found in database`);
+      throw new NotFoundException(`Backup job "${jobId}" no encontrado`);
+    }
+
+    if (job.status === JobStatus.COMPLETED) {
+      this.logger.warn(`Backup job ${jobId} ya estaba completado.`);
+      return {
+        jobId: job.id,
+        fileKey: job.fileKey!,
+        fileSizeMb: job.fileSizeMb ?? undefined,
+        sha256: job.sha256 ?? undefined,
+        bytes: job.bytes ?? undefined,
+        status: JobStatus.COMPLETED,
+      };
+    }
+
+    const connection = await this.connectionsService.findById(job.connectionId);
+    const strategy = this.backupStrategies.get(connection.dbType);
+    if (!strategy) {
+      throw new BadRequestException(
+        `No hay estrategia de backup configurada para tipo "${connection.dbType}"`,
+      );
+    }
+
+    const startedAt = new Date();
+    await this.backupRepository.updateStatus(job.id, JobStatus.RUNNING, {
+      startedAt,
+    });
+
+    this.sseService.register(job.id);
+    this.sseService.emit(job.id, {
+      type: 'log',
+      payload: {
+        message: `Iniciando volcado para conexión "${connection.name}" (${connection.dbType})...`,
+        timestamp: startedAt,
+      },
+    });
+    this.sseService.emit(job.id, {
+      type: 'progress',
+      payload: { percent: 15 },
+    });
+
+    const metadata: Record<string, string> = {
+      connectionId: connection.id,
+      connectionSlug: connection.slug,
+      category: job.category ?? BackupCategory.MANUAL,
+      environment: connection.environment,
+      dbType: connection.dbType,
+      triggeredBy: job.triggeredBy,
+    };
+
+    try {
       const sourceSnapshot = await this.captureSourceSnapshot(connection);
 
-      const backupResult = await strategy.execute(connection, fileKey, metadata);
+      this.sseService.emit(job.id, {
+        type: 'log',
+        payload: {
+          message: `Snapshot de origen capturado (${sourceSnapshot.tableCount} tablas, ~${sourceSnapshot.estimatedRows} filas).`,
+          timestamp: new Date(),
+        },
+      });
+      this.sseService.emit(job.id, {
+        type: 'progress',
+        payload: { percent: 35 },
+      });
+
+      this.sseService.emit(job.id, {
+        type: 'log',
+        payload: {
+          message: 'Ejecutando streaming de dump hacia Cloudflare R2...',
+          timestamp: new Date(),
+        },
+      });
+      this.sseService.emit(job.id, {
+        type: 'progress',
+        payload: { percent: 50 },
+      });
+
+      const backupResult = await strategy.execute(connection, job.fileKey!, metadata);
 
       const manifest: DumpManifest = {
         version: 2,
@@ -111,14 +241,14 @@ export class BackupService {
         bytes: backupResult.bytes,
         compression: 'none',
       };
-      const manifestKey = fileKey.replace(/\.dump$/, '.manifest.json');
+      const manifestKey = job.fileKey!.replace(/\.dump$/, '.manifest.json');
       try {
         await this.r2Service.upload(
           manifestKey,
           Readable.from(JSON.stringify(manifest)),
         );
       } catch (manifestError) {
-        await this.r2Service.delete(fileKey).catch(() => {});
+        await this.r2Service.delete(job.fileKey!).catch(() => {});
         throw manifestError;
       }
 
@@ -131,14 +261,32 @@ export class BackupService {
         completedAt,
       });
 
+      this.sseService.emit(job.id, {
+        type: 'log',
+        payload: {
+          message: `Respaldo completado exitosamente: ${backupResult.fileSizeMb.toFixed(2)} MB, SHA-256 verificado.`,
+          timestamp: completedAt,
+        },
+      });
+      this.sseService.emit(job.id, {
+        type: 'progress',
+        payload: { percent: 100 },
+      });
+      this.sseService.emit(job.id, {
+        type: 'completed',
+        payload: { jobId: job.id, completedAt },
+      });
+      this.sseService.complete(job.id);
+
       return {
         jobId: job.id,
-        fileKey,
+        fileKey: job.fileKey!,
         fileSizeMb: backupResult.fileSizeMb,
         sha256: backupResult.sha256,
         bytes: backupResult.bytes,
         startedAt,
         completedAt,
+        status: JobStatus.COMPLETED,
       };
     } catch (error) {
       const completedAt = new Date();
@@ -152,6 +300,12 @@ export class BackupService {
         errorMessage,
         completedAt,
       });
+
+      this.sseService.emit(job.id, {
+        type: 'failed',
+        payload: { jobId: job.id, error: errorMessage },
+      });
+      this.sseService.complete(job.id);
 
       throw new InternalServerErrorException(
         `Backup failed for job ${job.id}: ${errorMessage}`,

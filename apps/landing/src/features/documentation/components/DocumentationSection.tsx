@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, Check, ArrowSquareOut } from '@phosphor-icons/react';
+import { Copy, Check, ArrowSquareOut, Lightning } from '@phosphor-icons/react';
 import type { DocumentationTranslations } from '../../i18n/types';
 import { highlight, type TokenKind } from '../lib/highlight';
 import { SNIPPETS, SNIPPET_LANGUAGES, type SnippetId } from './snippets';
@@ -25,7 +25,7 @@ const DEPLOYMENT_PLATFORMS: {
   id: TabId;
   name: string;
   category: string;
-  iconSrc: string;
+  iconSrc?: string;
 }[] = [
   {
     id: 'docker',
@@ -38,6 +38,11 @@ const DEPLOYMENT_PLATFORMS: {
     name: 'Railway',
     category: 'PaaS / Managed Cloud',
     iconSrc: '/tech-icons/railway.svg',
+  },
+  {
+    id: 'queues',
+    name: 'Redis + BullMQ',
+    category: 'Asynchronous Architecture',
   },
 ];
 
@@ -63,8 +68,8 @@ export function DocumentationSection({ locale = 'es' }: DocumentationSectionProp
         </h2>
         <p className="text-sm sm:text-base text-zinc-400 leading-relaxed">
           {isEn
-            ? 'Ready-to-use setup for Docker Compose and Railway, the same one this project actually runs on.'
-            : 'Configuración lista para usar en Docker Compose y Railway, la misma con la que corre este proyecto.'}
+            ? 'Production setups for Docker Compose, Railway, and asynchronous BullMQ workers backed by Redis.'
+            : 'Configuración lista para producción en Docker Compose, Railway y arquitectura asíncrona con BullMQ y Redis.'}
         </p>
       </div>
 
@@ -88,12 +93,16 @@ export function DocumentationSection({ locale = 'es' }: DocumentationSectionProp
                 isActive ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <img
-                src={platform.iconSrc}
-                alt=""
-                aria-hidden="true"
-                className={`size-4 object-contain ${isActive ? 'brightness-0' : ''}`}
-              />
+              {platform.iconSrc ? (
+                <img
+                  src={platform.iconSrc}
+                  alt=""
+                  aria-hidden="true"
+                  className={`size-4 object-contain ${isActive ? 'brightness-0' : ''}`}
+                />
+              ) : (
+                <Lightning size={16} weight="fill" className={isActive ? 'text-black' : 'text-[#bfe70a]'} aria-hidden="true" />
+              )}
               {platform.name}
             </button>
           );
@@ -108,7 +117,11 @@ export function DocumentationSection({ locale = 'es' }: DocumentationSectionProp
             <span className="size-2.5 rounded-full bg-[#febc2e]" />
             <span className="size-2.5 rounded-full bg-[#28c840]" />
             <span className="ml-2 text-xs font-mono text-zinc-400">
-              {activeTab === 'docker' ? 'docker-compose.yml' : 'railway environment variables'}
+              {activeTab === 'docker'
+                ? 'docker-compose.yml'
+                : activeTab === 'railway'
+                ? 'railway environment variables'
+                : 'bullmq-async-architecture.ts'}
             </span>
           </div>
 
@@ -146,6 +159,57 @@ export function DocumentationSection({ locale = 'es' }: DocumentationSectionProp
               return currentSnippet;
             })()}
           </pre>
+        </div>
+      </div>
+
+      {/* Asynchronous Architecture & Data Reliability Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="size-2 rounded-full bg-[#bfe70a]" />
+              <h3 className="text-sm font-semibold text-white">
+                {isEn ? 'Asynchronous Decoupling' : 'Desacople Asíncrono'}
+              </h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              {isEn
+                ? 'Backup and restore requests decouple immediately with an HTTP 202 Accepted status code. Background BullMQ workers with Redis persistence execute the tasks under strict concurrency limits.'
+                : 'La creación de copias de seguridad y las solicitudes de restauración responden de inmediato con código HTTP 202 Accepted. Los workers en segundo plano de BullMQ con persistencia en Redis ejecutan las tareas bajo límites estrictos de concurrencia.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="size-2 rounded-full bg-cyan-400" />
+              <h3 className="text-sm font-semibold text-white">
+                {isEn ? 'Two-Stage Coordinated Purge' : 'Depuración Coordinada en Dos Etapas'}
+              </h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              {isEn
+                ? 'Purging operates in two stages to prevent orphan files in cloud storage. First, EnVault issues physical deletion to the object storage bucket, and only after remote confirmation purges the record in the control database.'
+                : 'El proceso de purga opera en dos etapas coordinadas para garantizar que no permanezcan archivos huérfanos en la nube ni registros inconsistentes en la base de control. En primer lugar, se emite la orden de eliminación física hacia el bucket de almacenamiento de objetos, y una vez confirmada la supresión del archivo remoto, se purga el registro correspondiente en la base de datos de control.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="size-2 rounded-full bg-emerald-400" />
+              <h3 className="text-sm font-semibold text-white">
+                {isEn ? 'Non-Destructive Dry-Run' : 'Simulación Previa sin Impacto'}
+              </h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              {isEn
+                ? 'To validate retention policies before applying irreversible changes, EnVault runs dry-run simulations. This operation computes configured rules and reports candidate dumps and reclaimed volume without deleting any data.'
+                : 'Para validar el alcance de las políticas de retención antes de aplicar cambios irreversibles, EnVault permite ejecutar limpiezas en modo de simulación. Esta operación computa las reglas configuradas y reporta la relación exacta de copias candidatas a eliminación, sus identificadores y el volumen total de almacenamiento en bytes que se liberará, sin suprimir ningún dato del almacenamiento de objetos.'}
+            </p>
+          </div>
         </div>
       </div>
 

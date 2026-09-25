@@ -21,6 +21,7 @@ Centralized database management platform. Register database connections, run and
 | Auth            | Better Auth (native, cookie sessions) | —  |
 | Storage         | Cloudflare R2 (S3-compatible) | —       |
 | Control DB      | **PostgreSQL 16+ (required)** | —       |
+| Queues & Jobs   | Redis 7 + BullMQ (^11.0.3)    | —       |
 | Real-time       | Server-Sent Events (SSE)      | —       |
 
 ---
@@ -39,20 +40,45 @@ EnVault Management enforces strict data integrity invariants to eliminate silent
    PostgreSQL restores execute with `--single-transaction`, guaranteeing clean rollback on error. MySQL restores execute via a 4-phase isolated shadow database with atomic table swap.
 5. **Cold Disaster Recovery**
    Complete bare-metal runbook and operational sandbox drill scripts ensure platform recoverability from zero. Read [docs/en/disaster-recovery.md](docs/en/disaster-recovery.md).
+6. **Two-Stage Coordinated Purge**
+   The purge process operates in two coordinated stages to prevent orphan files in cloud storage and inconsistent entries in the control database. First, EnVault issues the physical deletion command to the object storage bucket. Once the cloud provider confirms remote object removal, the platform purges the corresponding job record from the control database.
+7. **Non-Destructive Dry-Run Simulation**
+   To validate retention policies before executing irreversible deletions, EnVault supports dry-run simulation mode. This operation computes configured retention rules and reports the exact list of candidate dumps, their IDs, and the total storage volume to be reclaimed, without modifying or deleting any remote objects.
+
+---
+
+## Asynchronous Processing Architecture with Redis and BullMQ
+
+EnVault decouples resource-intensive backup and restore operations from HTTP lifecycles using persistent queues powered by BullMQ and Redis 7.
+
+1. **HTTP Decoupling with 202 Accepted Status**
+   Requests to trigger backups return immediately with an HTTP 202 Accepted status code and a job identifier. The API registers the task in a PENDING state, publishes the job payload to Redis, and leaves execution to background workers. Clients track live execution progress through Server-Sent Events.
+
+2. **Per-Connection Concurrency Protection**
+   To safeguard target databases against connection saturation and CPU spikes, EnVault enforces connection-level isolation. Initiating a new backup while an existing job is PENDING or RUNNING on the same target database returns an HTTP 409 Conflict error. BullMQ workers process tasks with a strict concurrency ceiling of two concurrent jobs per worker instance.
+
+3. **High-Throughput Multipart Streaming to Cloudflare R2**
+   Backup execution pipes native dump streams (`pg_dump` and `mysqldump`) directly into Cloudflare R2 without staging intermediate files on local container disks. The multipart uploader divides data streams into 32MB chunks with an internal queue size of four concurrent parts. This design keeps container memory utilization under 128MB while raising single-backup storage ceilings up to 320GB.
+
+4. **Zero Orphan Parts and Backpressure Management**
+   Stream transformers enforce backpressure buffers to regulate throughput between database pipes and network sockets. When transfers fail or abort signals trigger, EnVault executes explicit multipart abort commands against the Cloudflare R2 API to immediately purge uncommitted chunks and prevent unreferenced storage costs.
+
+5. **Foundation for Asynchronous Restore Queues**
+   The queue architecture extends to disaster recovery workflows. Restore tasks run in isolated worker queues that verify local disk space via staging preflights, validate cryptographic checksums against manifest files, and execute atomic rollbacks upon error.
 
 ---
 
 ## Requirements (non-negotiable)
 
-The **control database** — the one EnVault Management uses to store its own state (registered connections, audit log, cronjobs, dump metadata) — **MUST be PostgreSQL 16 or higher**. This is hardcoded into the TypeORM configuration ([`apps/api/src/config/database.config.ts`](apps/api/src/config/database.config.ts)) and relies on Postgres-specific features (enum types, JSONB, defaults). Other engines are not supported and there is no plan to support them for the control DB.
+The **control database** (the one EnVault Management uses to store its own state, including registered connections, audit log, cronjobs, and dump metadata) **MUST be PostgreSQL 16 or higher**. This is hardcoded into the TypeORM configuration ([`apps/api/src/config/database.config.ts`](apps/api/src/config/database.config.ts)) and relies on Postgres-specific features (enum types, JSONB, defaults). Other engines are not supported and there is no plan to support them for the control DB.
 
-The **managed databases** — the ones your DevOps users register to back up — currently support PostgreSQL and MySQL. See [docs/en/connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md) and [docs/en/connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md) for connectivity options, SSL handling, and on-prem patterns.
+The **managed databases** (the ones your DevOps users register to back up) currently support PostgreSQL and MySQL. See [docs/en/connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md) and [docs/en/connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md) for connectivity options, SSL handling, and on-prem patterns.
 
 ---
 
-## Architecture — visual reference
+## Architecture and Visual Reference
 
-EnVault Management runs on any platform that can host Docker containers and a PostgreSQL 16+ instance — cloud PaaS, on-prem servers, air-gapped clusters, or a local workstation.
+EnVault Management runs on any platform that can host Docker containers, Redis 7, and a PostgreSQL 16+ instance (cloud PaaS, on-prem servers, air-gapped clusters, or a local workstation).
 
 ![Architecture overview](docs/assets/architecture-preview.png)
 

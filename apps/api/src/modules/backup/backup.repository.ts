@@ -80,6 +80,16 @@ export class BackupRepository {
     });
   }
 
+  findActiveJobForConnection(connectionId: string): Promise<BackupJobEntity | null> {
+    return this.repository.findOne({
+      where: {
+        connectionId,
+        status: In([JobStatus.PENDING, JobStatus.RUNNING]),
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   create(data: Partial<BackupJobEntity>): Promise<BackupJobEntity> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);

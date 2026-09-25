@@ -2,7 +2,7 @@
 
 > 🇬🇧 English version: [README.md](README.md)
 
-Plataforma de gestión centralizada de bases de datos. Permite administrar conexiones, ejecutar y programar backups, restaurar dumps, auditar operaciones y monitorear jobs en múltiples entornos desde una única interfaz web.
+Plataforma de gestión centralizada de bases de datos. Permite administrar conexiones, ejecutar y programar backups, restaurar copias de seguridad, auditar operaciones y monitorear jobs en múltiples entornos desde una única interfaz web.
 
 ---
 
@@ -21,6 +21,7 @@ Plataforma de gestión centralizada de bases de datos. Permite administrar conex
 | Auth            | Better Auth (nativo, sesiones por cookie) | —  |
 | Storage         | Cloudflare R2 (S3-compatible) | —       |
 | Base de datos   | PostgreSQL 16                 | —       |
+| Colas y tareas  | Redis 7 + BullMQ (^11.0.3)    | —       |
 | Tiempo real     | Server-Sent Events (SSE)      | —       |
 
 ---
@@ -39,12 +40,37 @@ EnVault Management implementa invariantes estrictos de integridad de datos para 
    En PostgreSQL se aplica `--single-transaction` para rollback total ante cualquier fallo. En MySQL se utiliza una restauración en 4 fases sobre base de datos sombra (*shadow swap*).
 5. **Recuperación ante Desastres en Frío**
    Runbook oficial de reconstrucción desde cero y simulacros periódicos en sandbox. Consulte [docs/es/disaster-recovery.md](docs/es/disaster-recovery.md).
+6. **Depuración Coordinada en Dos Etapas**
+   El proceso de purga opera en dos etapas coordinadas para garantizar que no permanezcan archivos huérfanos en la nube ni registros inconsistentes en la base de control. En primer lugar, se emite la orden de eliminación física hacia el bucket de almacenamiento de objetos, y una vez confirmada la supresión del archivo remoto, se purga el registro correspondiente en la base de datos de control.
+7. **Simulación Previa sin Impacto Destructivo**
+   Para validar el alcance de las políticas de retención antes de aplicar cambios irreversibles, EnVault permite ejecutar limpiezas en modo de simulación. Esta operación computa las reglas configuradas y reporta la relación exacta de copias candidatas a eliminación, sus identificadores y el volumen total de almacenamiento en bytes que se liberará, sin suprimir ningún dato del almacenamiento de objetos.
 
 ---
 
-## Arquitectura — referencia visual
+## Arquitectura de Procesamiento Asíncrono con Redis y BullMQ
 
-EnVault Management corre en cualquier plataforma que pueda hostear contenedores Docker y una instancia de PostgreSQL 16+ — PaaS en la nube, servidores on-prem, clusters air-gapped, o una workstation local.
+EnVault desacopla todas las operaciones pesadas de copias de seguridad y restauraciones mediante colas administradas por BullMQ y respaldadas por Redis 7.
+
+1. **Desacople HTTP con Respuesta 202 Accepted**
+   Las peticiones de creación de copias manuales o programadas no bloquean el ciclo de vida del servidor web. La API valida la conexión, registra el trabajo en estado PENDING, encola la tarea en Redis y responde inmediatamente con código HTTP 202 Accepted y el identificador del trabajo para seguimiento en vivo.
+
+2. **Control Estricto de Concurrencia por Conexión**
+   Para proteger la estabilidad operativa de los motores de bases de datos administrados, el sistema rechaza la ejecución simultánea de múltiples operaciones sobre una misma base de datos con un error HTTP 409 Conflict. Los workers de BullMQ procesan tareas en paralelo con un límite estricto de concurrencia de dos trabajos simultáneos por instancia.
+
+3. **Canalización Multipart Hacia Cloudflare R2**
+   La transferencia de las copias hacia el almacenamiento de objetos opera mediante streaming directo sin escribir archivos intermedios en el disco del contenedor. El cargador multipart divide el flujo en fragmentos de 32 MB con una cola interna de cuatro partes concurrentes. Este mecanismo mantiene el uso de memoria RAM por debajo de 128 MB y permite respaldar bases de datos de hasta 320 GB.
+
+4. **Prevención de Partes Huérfanas y Contrapresión**
+   El transformador de flujo regula la velocidad de lectura del motor de origen para evitar saturar los buffers de Node.js. Si ocurre un error de red o el usuario cancela la tarea, el sistema emite una orden de anulación inmediata en la API de Cloudflare R2 y elimina todas las partes cargadas hasta el momento para evitar costos por almacenamiento residual.
+
+5. **Preparación para Colas Asíncronas de Restauración**
+   Esta misma infraestructura de colas gobierna el flujo de recuperación de desastres. Cada restauración encola una tarea aislada que valida previamente el espacio en disco disponible en el directorio de staging y ejecuta verificaciones de integridad antes de iniciar la escritura en la base de datos de destino.
+
+---
+
+## Arquitectura y Referencia Visual
+
+EnVault Management corre en cualquier plataforma que pueda hostear contenedores Docker, Redis 7 y una instancia de PostgreSQL 16+ (PaaS en la nube, servidores on-prem, clusters air-gapped, o una workstation local).
 
 ![Vista general de la arquitectura](docs/assets/architecture-preview.png)
 
