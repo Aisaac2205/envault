@@ -1,41 +1,50 @@
 import { PageHeader } from "@/shared/ui/page-header";
-
 import { GlobalLoadingOverlay } from "@/shared/ui/TetrominoLoader";
 import { useTranslation } from "react-i18next";
 import { StoragePanel } from "./components/StoragePanel";
-import { ConnectionRetentionPanel } from "./components/ConnectionRetentionPanel";
 import { DbHygienePanel } from "./components/DbHygienePanel";
 import { ReconcilePanel } from "./components/ReconcilePanel";
 import { useStorageOverview } from "./hooks/useMaintenance";
 
 export default function CleanupPage() {
-  const { t } = useTranslation('cleanup');
+  const { t } = useTranslation("cleanup");
   const { isLoading } = useStorageOverview();
+
   return (
     <>
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         <PageHeader
-          title={t('page.title')}
-          subtitle={t('page.subtitle')}
+          title={t("page.title")}
+          subtitle={t("page.subtitle")}
         />
 
-        {/* ── Storage Overview & Connection Breakdown ── */}
+        {/* ── Storage Overview & Unified Retention Management ── */}
         <section>
           <StoragePanel />
         </section>
 
-        {/* ── Retention & System Maintenance 2-Column Grid ── */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <ConnectionRetentionPanel />
+        {/* ── System Maintenance & Health ── */}
+        <section className="space-y-4 pt-2">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">
+              {t("section.health.title")}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {t("section.health.description")}
+            </p>
+          </div>
 
-          <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
             <DbHygienePanel />
             <ReconcilePanel />
           </div>
-        </div>
+        </section>
       </div>
 
-      <GlobalLoadingOverlay open={isLoading} label={t('loading', { defaultValue: 'Cargando limpieza...' })} />
+      <GlobalLoadingOverlay
+        open={isLoading}
+        label={t("loading", { defaultValue: "Cargando limpieza..." })}
+      />
     </>
   );
 }

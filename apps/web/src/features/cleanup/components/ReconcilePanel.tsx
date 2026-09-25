@@ -88,7 +88,7 @@ export function ReconcilePanel() {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card variant="outlined">
         <CardContent className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           {t("reconcile.loading")}
@@ -99,7 +99,7 @@ export function ReconcilePanel() {
 
   if (isError) {
     return (
-      <Card>
+      <Card variant="outlined">
         <CardContent className="space-y-3 p-5 sm:p-6">
           <h3 className="text-sm font-semibold text-text-primary">
             {t("reconcile.title")}
@@ -119,7 +119,7 @@ export function ReconcilePanel() {
   if (!data) return null;
 
   return (
-    <Card>
+    <Card variant="outlined">
       <CardContent className="space-y-4 p-5 sm:p-6">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">

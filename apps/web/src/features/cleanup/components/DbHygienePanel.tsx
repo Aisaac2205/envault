@@ -33,7 +33,7 @@ export function DbHygienePanel() {
   } = useDbHygienePanel();
 
   return (
-    <Card>
+    <Card variant="outlined">
       <CardContent className="space-y-4 p-5 sm:p-6">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">

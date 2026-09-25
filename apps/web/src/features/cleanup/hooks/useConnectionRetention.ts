@@ -14,6 +14,8 @@ import type {
 
 const QUERY_KEY = ["connection-retention"] as const;
 
+export type RetentionPreset = "7" | "14" | "30" | "90" | "unlimited" | "custom";
+
 export function useRetentionPolicies(connectionSlug: string) {
   return useQuery({
     queryKey: [...QUERY_KEY, connectionSlug, "policies"],
@@ -33,6 +35,7 @@ export function useUpdateRetentionPolicies(connectionSlug: string) {
       void queryClient.invalidateQueries({
         queryKey: [...QUERY_KEY, connectionSlug],
       });
+      void queryClient.invalidateQueries({ queryKey: ["storage-overview"] });
     },
   });
 }
@@ -55,6 +58,7 @@ export function useRunRetention(connectionSlug: string) {
       void queryClient.invalidateQueries({
         queryKey: [...QUERY_KEY, connectionSlug, "preview"],
       });
+      void queryClient.invalidateQueries({ queryKey: ["storage-overview"] });
       void queryClient.invalidateQueries({ queryKey: ["dumps"] });
       void queryClient.invalidateQueries({ queryKey: ["r2-dumps"] });
     },
@@ -84,12 +88,28 @@ function buildInitialRows(
   });
 }
 
-export function useConnectionRetentionPanel() {
-  const { t } = useTranslation("cleanup");
-  const { data: connections = [], isLoading: connectionsLoading } =
-    useConnections();
+function computeActivePreset(rows: RowState[]): RetentionPreset {
+  if (rows.length === 0) return "custom";
+  const allKeepForever = rows.every((r) => r.keepForever);
+  if (allKeepForever) return "unlimited";
 
-  const [connectionSlug, setConnectionSlug] = useState<string>("");
+  const anyKeepForever = rows.some((r) => r.keepForever);
+  if (anyKeepForever) return "custom";
+
+  const firstDays = rows[0]?.days;
+  const allSameDays = rows.every((r) => r.days === firstDays);
+  if (!allSameDays) return "custom";
+
+  if (firstDays === "7") return "7";
+  if (firstDays === "14") return "14";
+  if (firstDays === "30") return "30";
+  if (firstDays === "90") return "90";
+
+  return "custom";
+}
+
+export function useConnectionRetention(connectionSlug: string) {
+  const { t } = useTranslation("cleanup");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -110,7 +130,6 @@ export function useConnectionRetentionPanel() {
     buildInitialRows(policies),
   );
 
-  // Sync rows when policies load or connection changes.
   const policyKey = useMemo(
     () => `${connectionSlug}-${policies.map((p) => p.category + p.retentionDays).join(",")}`,
     [connectionSlug, policies],
@@ -124,6 +143,28 @@ export function useConnectionRetentionPanel() {
     setValidationError(null);
   }
 
+  const activePreset = useMemo(() => computeActivePreset(rows), [rows]);
+
+  const applyPreset = (preset: "7" | "14" | "30" | "90" | "unlimited") => {
+    if (preset === "unlimited") {
+      setRows((prev) =>
+        prev.map((r) => ({
+          ...r,
+          keepForever: true,
+        })),
+      );
+    } else {
+      setRows((prev) =>
+        prev.map((r) => ({
+          ...r,
+          keepForever: false,
+          days: preset,
+        })),
+      );
+    }
+    setValidationError(null);
+  };
+
   const updateRow = (category: BackupCategory, patch: Partial<RowState>) => {
     setRows((prev) =>
       prev.map((r) => (r.category === category ? { ...r, ...patch } : r)),
@@ -131,7 +172,7 @@ export function useConnectionRetentionPanel() {
     setValidationError(null);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     for (const row of rows) {
       if (row.keepForever) continue;
       const parsed = Number(row.days);
@@ -139,7 +180,7 @@ export function useConnectionRetentionPanel() {
         setValidationError(
           t("toast.policyValidation", { category: t(`category.${row.category}`) }),
         );
-        return;
+        return false;
       }
     }
 
@@ -153,10 +194,12 @@ export function useConnectionRetentionPanel() {
       toast.success(t("toast.policySaved"), {
         description: t("toast.policySavedDesc"),
       });
+      return true;
     } catch (err) {
       const message =
         err instanceof Error ? err.message : t("toast.policyError");
       toast.error(t("toast.policyError"), { description: message });
+      return false;
     }
   };
 
@@ -182,8 +225,6 @@ export function useConnectionRetentionPanel() {
     }
   };
 
-  const connectionSelected = connectionSlug !== "";
-  const isLoading = connectionsLoading || policiesLoading;
   const prunable = preview.filter((i) => i.count > 0);
   const totalCount = prunable.reduce((s, i) => s + i.count, 0);
   const totalMb = prunable.reduce((s, i) => s + i.totalSizeMb, 0);
@@ -206,21 +247,16 @@ export function useConnectionRetentionPanel() {
   const hasSavedPolicy = policies.some((p) => p.retentionDays != null);
 
   return {
-    connections,
-    connectionsLoading,
-    connectionSlug,
-    setConnectionSlug,
-    confirmOpen,
-    setConfirmOpen,
-    validationError,
+    policies,
+    isLoading: policiesLoading,
+    isError: policiesError,
+    error: policiesErrorObj,
     rows,
+    activePreset,
+    applyPreset,
     updateRow,
     handleSave,
     handleRunCleanup,
-    connectionSelected,
-    isLoading,
-    policiesError,
-    policiesErrorObj,
     isDirty,
     hasSavedPolicy,
     prunable,
@@ -229,5 +265,28 @@ export function useConnectionRetentionPanel() {
     previewLoading,
     isSaving: updatePolicies.isPending,
     isRunning: runRetention.isPending,
+    confirmOpen,
+    setConfirmOpen,
+    validationError,
+  };
+}
+
+export function useConnectionRetentionPanel() {
+  const { data: connections = [], isLoading: connectionsLoading } =
+    useConnections();
+  const [connectionSlug, setConnectionSlug] = useState<string>("");
+
+  const retention = useConnectionRetention(connectionSlug);
+
+  return {
+    ...retention,
+    connections,
+    connectionsLoading,
+    connectionSlug,
+    setConnectionSlug,
+    connectionSelected: connectionSlug !== "",
+    isLoading: connectionsLoading || retention.isLoading,
+    policiesError: retention.isError,
+    policiesErrorObj: retention.error,
   };
 }
