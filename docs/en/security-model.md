@@ -153,17 +153,11 @@ Passwords of registered DBs are **encrypted at rest** using AES-256-GCM in the `
 
 ```typescript
 // apps/api/src/config/env.validation.ts
-CORS_ORIGIN: Joi.string().when('NODE_ENV', {
-  is: 'production',
-  then: Joi.string().required(),
-  otherwise: Joi.string().default('*'),
-}),
+CORS_ORIGIN: Joi.string().required(),
 ```
 
-- **Production**: if `CORS_ORIGIN` is not defined, **the app does not start**. No silent defaults.
-- **Development/test**: default `*` for no local friction.
-
-In production configure it with the exact frontend domain (e.g. `https://app.example.com`). No wildcards.
+If `CORS_ORIGIN` is not defined, **the app does not start**. No silent defaults or wildcards.
+Set it to the exact frontend origin (e.g. `http://localhost:5173` or `https://app.example.com`).
 
 ---
 

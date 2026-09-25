@@ -6,7 +6,9 @@ import {
   Logger,
   NotFoundException,
   OnApplicationBootstrap,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { CreateRestoreDto } from './dto/create-restore.dto';
 import { RestoreRepository } from './restore.repository';
@@ -34,7 +36,6 @@ import { Client } from 'pg';
 import { createConnection as createMysqlConnection, RowDataPacket } from 'mysql2/promise';
 
 const SNAPSHOT_TIMEOUT_MS = 10_000;
-const RESTORE_LEASE_DURATION_MS = 15 * 60_000;
 
 @Injectable()
 export class RestoreService implements OnApplicationBootstrap {
@@ -51,7 +52,15 @@ export class RestoreService implements OnApplicationBootstrap {
     private readonly sseService: SseService,
     @Inject('RESTORE_STRATEGIES')
     private readonly restoreStrategies: Map<DbTypeEnum, RestoreStrategy>,
+    @Optional()
+    private readonly configService?: ConfigService,
   ) {}
+
+  private get restoreLeaseDurationMs(): number {
+    const timeout =
+      this.configService?.get<number>('RESTORE_TIMEOUT_MS') ?? 1_800_000;
+    return timeout + 5 * 60_000;
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     await this.restoreStagingService.sweepOrphans();
@@ -148,7 +157,7 @@ export class RestoreService implements OnApplicationBootstrap {
       triggeredBy: user.id,
       startedAt: new Date(),
       leaseToken,
-      expiresAt: new Date(Date.now() + RESTORE_LEASE_DURATION_MS),
+      expiresAt: new Date(Date.now() + this.restoreLeaseDurationMs),
     });
 
     if (!admittedJobId) {

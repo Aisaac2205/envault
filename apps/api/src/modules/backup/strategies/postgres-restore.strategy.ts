@@ -1,14 +1,22 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { RestoreStrategy } from '../interfaces/restore-strategy.interface';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
 import { sanitizeMessage } from '../../../common/sanitization/sanitize-message';
 
-const RESTORE_TIMEOUT_MS = 300_000;
+const DEFAULT_RESTORE_TIMEOUT_MS = 1_800_000;
 
 @Injectable()
 export class PostgresRestoreStrategy implements RestoreStrategy {
   private readonly logger = new Logger(PostgresRestoreStrategy.name);
+  private readonly timeoutMs: number;
+
+  constructor(@Optional() configService?: ConfigService) {
+    this.timeoutMs =
+      configService?.get<number>('RESTORE_TIMEOUT_MS') ??
+      DEFAULT_RESTORE_TIMEOUT_MS;
+  }
 
   async execute(
     connection: ConnectionEntity,
@@ -55,8 +63,11 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
 
       const timeout = setTimeout(() => {
         pgRestore.kill();
-        settle(reject, new Error(`pg_restore exceeded ${RESTORE_TIMEOUT_MS}ms timeout`));
-      }, RESTORE_TIMEOUT_MS);
+        settle(
+          reject,
+          new Error(`pg_restore exceeded ${this.timeoutMs}ms timeout`),
+        );
+      }, this.timeoutMs);
 
       let stderrOutput = '';
 

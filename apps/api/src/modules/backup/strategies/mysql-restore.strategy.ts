@@ -1,15 +1,23 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { createReadStream } from 'fs';
 import { RestoreStrategy } from '../interfaces/restore-strategy.interface';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
 import { sanitizeMessage } from '../../../common/sanitization/sanitize-message';
 
-const RESTORE_TIMEOUT_MS = 300_000;
+const DEFAULT_RESTORE_TIMEOUT_MS = 1_800_000;
 
 @Injectable()
 export class MySQLRestoreStrategy implements RestoreStrategy {
   private readonly logger = new Logger(MySQLRestoreStrategy.name);
+  private readonly timeoutMs: number;
+
+  constructor(@Optional() configService?: ConfigService) {
+    this.timeoutMs =
+      configService?.get<number>('RESTORE_TIMEOUT_MS') ??
+      DEFAULT_RESTORE_TIMEOUT_MS;
+  }
 
   async execute(
     connection: ConnectionEntity,
@@ -83,8 +91,8 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
 
       const timeout = setTimeout(() => {
         child.kill();
-        settle(reject, new Error(`mysql SHOW TABLES exceeded ${RESTORE_TIMEOUT_MS}ms timeout`));
-      }, RESTORE_TIMEOUT_MS);
+        settle(reject, new Error(`mysql SHOW TABLES exceeded ${this.timeoutMs}ms timeout`));
+      }, this.timeoutMs);
 
       let stdout = '';
 
@@ -149,8 +157,8 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
 
       const timeout = setTimeout(() => {
         child.kill();
-        settle(reject, new Error(`mysql execute exceeded ${RESTORE_TIMEOUT_MS}ms timeout`));
-      }, RESTORE_TIMEOUT_MS);
+        settle(reject, new Error(`mysql execute exceeded ${this.timeoutMs}ms timeout`));
+      }, this.timeoutMs);
 
       let stderr = '';
 
@@ -221,8 +229,8 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
 
       const timeout = setTimeout(() => {
         mysqlChild.kill();
-        settle(reject, new Error(`mysql restore exceeded ${RESTORE_TIMEOUT_MS}ms timeout`));
-      }, RESTORE_TIMEOUT_MS);
+        settle(reject, new Error(`mysql restore exceeded ${this.timeoutMs}ms timeout`));
+      }, this.timeoutMs);
 
       mysqlChild.stderr.on('data', (chunk: Buffer) => {
         const lines = chunk
