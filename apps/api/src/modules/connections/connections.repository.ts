@@ -101,7 +101,7 @@ export class ConnectionsRepository {
     const leases = await manager.query<{ targetConnectionId: string }[]>(
       `SELECT "targetConnectionId"
        FROM restore_leases
-       WHERE "targetConnectionId" = $1
+       WHERE "targetConnectionId" = $1::uuid
          AND "expiresAt" > CURRENT_TIMESTAMP`,
       [id],
     );

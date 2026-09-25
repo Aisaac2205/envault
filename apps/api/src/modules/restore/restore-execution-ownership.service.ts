@@ -57,9 +57,9 @@ export class RestoreExecutionOwnershipService {
     const rows = await ownership.queryRunner.query(
       `SELECT "targetConnectionId"
        FROM restore_leases
-       WHERE "targetConnectionId" = $1
-         AND "restoreJobId" = $2
-         AND "leaseToken" = $3
+       WHERE "targetConnectionId" = $1::uuid
+         AND "restoreJobId" = $2::uuid
+         AND "leaseToken" = $3::uuid
          AND "expiresAt" > CURRENT_TIMESTAMP`,
       [ownership.targetConnectionId, restoreJobId, leaseToken],
     );

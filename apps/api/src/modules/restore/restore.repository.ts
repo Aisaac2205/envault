@@ -62,13 +62,13 @@ export class RestoreRepository {
       `WITH locked_target AS (
          SELECT id
          FROM connections
-         WHERE id = $4
+         WHERE id = $4::uuid
            AND "isActive" = TRUE
            AND environment <> $11
          FOR UPDATE
        ), lease AS (
          INSERT INTO restore_leases ("targetConnectionId", "restoreJobId", "leaseToken", "expiresAt")
-         SELECT id, $1, $8, $9
+         SELECT id, $1::uuid, $8::uuid, $9
          FROM locked_target
          ON CONFLICT ("targetConnectionId") DO UPDATE
          SET "restoreJobId" = EXCLUDED."restoreJobId",
@@ -78,7 +78,7 @@ export class RestoreRepository {
          RETURNING "restoreJobId"
        )
        INSERT INTO restore_jobs (id, "sourceBackupId", "r2Key", "targetConnectionId", "targetEnvironment", status, "isDryRun", "startedAt", "triggeredBy")
-       SELECT $1, $2, $3, $4, $5, $6, FALSE, $7, $10
+       SELECT $1::uuid, $2, $3, $4, $5, $6, FALSE, $7, $10
        FROM lease
        RETURNING id`,
       [
@@ -116,15 +116,15 @@ export class RestoreRepository {
     const result = await this.dataSource.query<RestoreMutationResult>(
       `UPDATE restore_jobs
        SET status = $4, "startedAt" = $5
-       WHERE id = $1
+       WHERE id = $1::uuid
          AND "targetConnectionId" = $2
          AND status = $3
          AND EXISTS (
            SELECT 1
            FROM restore_leases
-           WHERE "targetConnectionId" = $2
-             AND "restoreJobId" = $1
-             AND "leaseToken" = $6
+           WHERE "targetConnectionId" = $2::uuid
+             AND "restoreJobId" = $1::uuid
+             AND "leaseToken" = $6::uuid
              AND "expiresAt" > CURRENT_TIMESTAMP
          )
        RETURNING id`,
@@ -153,20 +153,20 @@ export class RestoreRepository {
          SET status = $5,
              "errorMessage" = $3,
              "completedAt" = $4
-         WHERE id = $1
+         WHERE id = $1::uuid
            AND "targetConnectionId" = $2
            AND status IN ($6, $7)
            AND NOT EXISTS (
              SELECT 1
              FROM restore_leases
-             WHERE "targetConnectionId" = $2
+             WHERE "targetConnectionId" = $2::uuid
                AND "expiresAt" > CURRENT_TIMESTAMP
            )
          RETURNING id
        ), released AS (
          DELETE FROM restore_leases
          USING recovered
-         WHERE restore_leases."targetConnectionId" = $2
+         WHERE restore_leases."targetConnectionId" = $2::uuid
            AND restore_leases."restoreJobId" = recovered.id
            AND restore_leases."expiresAt" <= CURRENT_TIMESTAMP
        )
@@ -197,15 +197,15 @@ export class RestoreRepository {
        SET status = $4,
            "errorMessage" = $5,
            "completedAt" = $6
-       WHERE id = $1
+       WHERE id = $1::uuid
          AND "targetConnectionId" = $2
          AND status = $3
          AND NOT EXISTS (
            SELECT 1
            FROM restore_leases
-           WHERE "targetConnectionId" = $2
-             AND "restoreJobId" = $1
-             AND "leaseToken" = $7
+           WHERE "targetConnectionId" = $2::uuid
+             AND "restoreJobId" = $1::uuid
+             AND "leaseToken" = $7::uuid
              AND "expiresAt" > CURRENT_TIMESTAMP
          )
        RETURNING id`,
