@@ -441,3 +441,144 @@ describe('RestoreService engine compatibility by sourceBackupId', () => {
   });
 });
 
+describe('RestoreService executeRestoreAsync lease renewal heartbeat', () => {
+  const targetConnectionId = '00000000-0000-0000-0000-000000000001';
+  const jobId = '00000000-0000-0000-0000-000000000002';
+  const leaseToken = '00000000-0000-0000-0000-000000000003';
+  const testUser: AuthUser = {
+    id: 'user-1',
+    email: 'admin@envault.local',
+    name: 'Admin',
+    role: 'admin',
+  };
+
+  it('renews lease periodically during executeRestoreAsync and cleans up timer on finish', async () => {
+    jest.useFakeTimers();
+
+    const target = {
+      id: targetConnectionId,
+      name: 'Test Target',
+      dbType: DbTypeEnum.POSTGRES,
+      environment: Environment.DEV,
+    };
+    const renewMock = jest.fn().mockResolvedValue(true);
+    const releaseMock = jest.fn().mockResolvedValue(true);
+
+    const restoreRepository = {
+      startIfLeaseActive: jest.fn().mockResolvedValue(true),
+      failPendingIfLeaseInactive: jest.fn().mockResolvedValue(undefined),
+      updateStatus: jest.fn().mockResolvedValue(undefined),
+    };
+
+    let finishExecution: () => void = () => {};
+    const executionPromise = new Promise<void>((resolve) => {
+      finishExecution = resolve;
+    });
+
+    const strategyExecute = jest.fn().mockImplementation(() => executionPromise);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RestoreService,
+        { provide: RestoreRepository, useValue: restoreRepository },
+        {
+          provide: RestoreLeaseRepository,
+          useValue: {
+            renew: renewMock,
+            release: releaseMock,
+          },
+        },
+        {
+          provide: RestoreExecutionOwnershipService,
+          useValue: {
+            tryAcquire: jest.fn().mockResolvedValue({ targetConnectionId }),
+            release: jest.fn().mockResolvedValue(undefined),
+            findActiveTarget: jest.fn().mockResolvedValue(target),
+            hasActiveLease: jest.fn().mockResolvedValue(true),
+          },
+        },
+        {
+          provide: RestoreStagingService,
+          useValue: {
+            create: jest.fn().mockResolvedValue({
+              directoryPath: 'staging',
+              dumpFilePath: 'staging/dump',
+            }),
+            writeDump: jest.fn().mockResolvedValue({ sha256: 'a'.repeat(64), bytes: 100 }),
+            cleanup: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: R2Service,
+          useValue: {
+            download: jest.fn().mockResolvedValue(Readable.from('dump content')),
+          },
+        },
+        {
+          provide: BackupService,
+          useValue: {
+            getBackupById: jest.fn().mockResolvedValue({
+              id: 'backup-1',
+              fileKey: 'backups/test.dump',
+              dbType: DbTypeEnum.POSTGRES,
+              status: JobStatus.COMPLETED,
+              sha256: 'a'.repeat(64),
+            }),
+          },
+        },
+        {
+          provide: ConnectionsService,
+          useValue: {
+            findById: jest.fn().mockResolvedValue(target),
+          },
+        },
+        {
+          provide: SseService,
+          useValue: {
+            emit: jest.fn(),
+            complete: jest.fn(),
+          },
+        },
+        {
+          provide: 'RESTORE_STRATEGIES',
+          useValue: new Map<DbTypeEnum, RestoreStrategy>([
+            [DbTypeEnum.POSTGRES, { execute: strategyExecute }],
+          ]),
+        },
+      ],
+    }).compile();
+
+    const service = module.get<RestoreService>(RestoreService);
+
+    const promise = service.executeRestoreAsync(
+      jobId,
+      { targetConnectionId, sourceBackupId: 'backup-1', isDryRun: false },
+      testUser,
+      leaseToken,
+    );
+
+    expect(renewMock).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(renewMock).toHaveBeenCalledTimes(1);
+    expect(renewMock).toHaveBeenCalledWith(
+      targetConnectionId,
+      jobId,
+      leaseToken,
+      expect.any(Date),
+    );
+
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(renewMock).toHaveBeenCalledTimes(2);
+
+    finishExecution();
+    await promise;
+
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(renewMock).toHaveBeenCalledTimes(2);
+    expect(releaseMock).toHaveBeenCalledWith(targetConnectionId, jobId, leaseToken);
+
+    jest.useRealTimers();
+  });
+});
+

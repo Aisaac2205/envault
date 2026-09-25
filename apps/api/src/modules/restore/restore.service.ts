@@ -186,6 +186,7 @@ export class RestoreService implements OnApplicationBootstrap {
     const startedAt = new Date();
     let staging: RestoreStaging | null = null;
     let ownership: RestoreExecutionOwnership | null = null;
+    let leaseRenewalTimer: NodeJS.Timeout | null = null;
 
     try {
       const started = await this.restoreRepository.startIfLeaseActive(
@@ -204,6 +205,29 @@ export class RestoreService implements OnApplicationBootstrap {
         );
         return;
       }
+
+      const renewalIntervalMs = Math.min(
+        60_000,
+        Math.max(5_000, Math.floor(this.restoreLeaseDurationMs / 4)),
+      );
+      leaseRenewalTimer = setInterval(() => {
+        const nextExpiresAt = new Date(Date.now() + this.restoreLeaseDurationMs);
+        this.restoreLeaseRepository
+          .renew(dto.targetConnectionId, jobId, leaseToken, nextExpiresAt)
+          .then((renewed) => {
+            if (!renewed) {
+              this.logger.warn(
+                `Lease renewal returned false for restore job ${jobId} — lease may have been lost`,
+              );
+            }
+          })
+          .catch((err: Error) => {
+            this.logger.error(
+              `Failed to renew restore lease for job ${jobId}: ${err.message}`,
+            );
+          });
+      }, renewalIntervalMs);
+      leaseRenewalTimer.unref?.();
 
       ownership = await this.restoreExecutionOwnershipService.tryAcquire(
         dto.targetConnectionId,
@@ -306,6 +330,9 @@ export class RestoreService implements OnApplicationBootstrap {
         payload: { jobId, error: errorMessage },
       });
     } finally {
+      if (leaseRenewalTimer) {
+        clearInterval(leaseRenewalTimer);
+      }
       if (staging) {
         try {
           await this.restoreStagingService.cleanup(staging);

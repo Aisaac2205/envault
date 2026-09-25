@@ -1,7 +1,7 @@
 import { envValidationSchema } from './env.validation';
 
 const validEnvironment = {
-  DATABASE_URL: 'postgresql://user:password@localhost:5432/vaultly',
+  DATABASE_URL: 'postgresql://user:password@localhost:5432/envault',
   BETTER_AUTH_SECRET: 'a-secure-test-secret',
   BETTER_AUTH_URL: 'http://localhost:3000',
   ENCRYPTION_KEY: 'a'.repeat(64),
@@ -33,5 +33,32 @@ describe('envValidationSchema auth rate limiting', () => {
     });
 
     expect(error).toBeDefined();
+  });
+});
+
+describe('envValidationSchema CORS_ORIGIN', () => {
+  it.each([
+    '*',
+    'http://localhost:5173,*',
+    '*.example.com',
+    'https://app.envault.com, *',
+  ])('rejects wildcard origin: %s', (corsOrigin) => {
+    const { error } = envValidationSchema.validate({
+      ...validEnvironment,
+      CORS_ORIGIN: corsOrigin,
+    });
+
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('wildcard');
+  });
+
+  it('accepts explicit comma-separated origins without wildcards', () => {
+    const { error, value } = envValidationSchema.validate({
+      ...validEnvironment,
+      CORS_ORIGIN: 'http://localhost:5173,https://app.envault.com',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.CORS_ORIGIN).toBe('http://localhost:5173,https://app.envault.com');
   });
 });
