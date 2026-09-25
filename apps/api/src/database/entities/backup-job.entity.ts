@@ -45,6 +45,22 @@ export class BackupJobEntity {
   @Column({ type: 'float', nullable: true })
   fileSizeMb!: number | null;
 
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  sha256!: string | null;
+
+  @Column({
+    type: 'bigint',
+    nullable: true,
+    transformer: {
+      to: (value: number | null): string | null =>
+        value !== null && value !== undefined ? String(value) : null,
+      from: (value: string | null): number | null =>
+        value !== null && value !== undefined ? Number(value) : null,
+    },
+  })
+  bytes!: number | null;
+
+
   @Column({ type: 'timestamp', nullable: true })
   startedAt!: Date | null;
 

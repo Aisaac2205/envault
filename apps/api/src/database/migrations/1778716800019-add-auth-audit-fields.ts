@@ -18,18 +18,18 @@ export class AddAuthAuditFields1778716800019 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      'ALTER TABLE "audit_logs" ADD "ipAddress" character varying',
+      'ALTER TABLE "audit_logs" ADD COLUMN IF NOT EXISTS "ipAddress" character varying',
     );
     await queryRunner.query(
-      'ALTER TABLE "audit_logs" ADD "userAgent" character varying',
+      'ALTER TABLE "audit_logs" ADD COLUMN IF NOT EXISTS "userAgent" character varying',
     );
     // Existing rows are resource mutations that were only ever written on a
     // completed request, so 'success' is the accurate backfill for them.
     await queryRunner.query(
-      `ALTER TABLE "audit_logs" ADD "outcome" character varying NOT NULL DEFAULT 'success'`,
+      `ALTER TABLE "audit_logs" ADD COLUMN IF NOT EXISTS "outcome" character varying NOT NULL DEFAULT 'success'`,
     );
     await queryRunner.query(
-      `ALTER TABLE "audit_logs" ADD "severity" character varying NOT NULL DEFAULT 'low'`,
+      `ALTER TABLE "audit_logs" ADD COLUMN IF NOT EXISTS "severity" character varying NOT NULL DEFAULT 'low'`,
     );
     await queryRunner.query(
       'ALTER TABLE "audit_logs" ALTER COLUMN "environment" DROP NOT NULL',
@@ -37,7 +37,7 @@ export class AddAuthAuditFields1778716800019 implements MigrationInterface {
     // Failed sign-ins are queried by address and recency when investigating
     // credential stuffing; without this the lookup is a full scan.
     await queryRunner.query(
-      'CREATE INDEX "IDX_audit_logs_outcome_created_at" ON "audit_logs" ("outcome", "createdAt")',
+      'CREATE INDEX IF NOT EXISTS "IDX_audit_logs_outcome_created_at" ON "audit_logs" ("outcome", "createdAt")',
     );
   }
 

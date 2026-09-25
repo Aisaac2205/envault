@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { SchedulerRegistry } from '@nestjs/schedule';
+import { Interval, SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import { CronjobsRepository } from './cronjobs.repository';
 import { BackupService } from '../backup/backup.service';
@@ -261,6 +261,46 @@ export class CronjobsService implements OnApplicationBootstrap {
       });
     }
   }
+
+  @Interval(300_000)
+  async handleWatchdog(): Promise<number> {
+    return this.checkWatchdog();
+  }
+
+
+  async checkWatchdog(): Promise<number> {
+    const active = await this.repository.findAllActive();
+    let overdueCount = 0;
+    const now = Date.now();
+
+    for (const cronjob of active) {
+      if (cronjob.lastStatus === JobStatus.RUNNING) continue;
+
+      const period = FREQUENCY_TO_PERIOD_MS[cronjob.frequency];
+      if (period) {
+        const reference = cronjob.lastRunAt ?? cronjob.createdAt;
+        const elapsed = now - reference.getTime();
+        if (elapsed > period * MISSED_TICK_TOLERANCE) {
+          overdueCount++;
+          this.logger.error(
+            `[WATCHDOG ALERT] Cronjob "${cronjob.name}" (${cronjob.id}) está vencido: han transcurrido ${Math.round(elapsed / 1000)}s para un período de ${period / 1000}s.`,
+          );
+          this.catchUpIfMissed(cronjob);
+          continue;
+        }
+      }
+
+      if (cronjob.nextRunAt && now > cronjob.nextRunAt.getTime() + 5 * 60_000) {
+        overdueCount++;
+        this.logger.error(
+          `[WATCHDOG ALERT] Cronjob "${cronjob.name}" (${cronjob.id}) superó su tiempo de ejecución programado (${cronjob.nextRunAt.toISOString()}).`,
+        );
+      }
+    }
+
+    return overdueCount;
+  }
+
 
   private unregisterCronJob(id: string): void {
     try {

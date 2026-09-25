@@ -99,15 +99,17 @@ export class BackupService {
       // Capture source snapshot BEFORE the dump starts
       const sourceSnapshot = await this.captureSourceSnapshot(connection);
 
-      const fileSizeMb = await strategy.execute(connection, fileKey, metadata);
+      const backupResult = await strategy.execute(connection, fileKey, metadata);
 
-      // Upload manifest alongside the dump
       const manifest: DumpManifest = {
-        version: 1,
+        version: 2,
         createdAt: startedAt.toISOString(),
         dbType: connection.dbType,
         database: connection.database,
         source: sourceSnapshot,
+        sha256: backupResult.sha256,
+        bytes: backupResult.bytes,
+        compression: 'none',
       };
       const manifestKey = fileKey.replace(/\.dump$/, '.manifest.json');
       try {
@@ -116,7 +118,6 @@ export class BackupService {
           Readable.from(JSON.stringify(manifest)),
         );
       } catch (manifestError) {
-        // Dump is orphaned without its manifest — clean it up
         await this.r2Service.delete(fileKey).catch(() => {});
         throw manifestError;
       }
@@ -124,14 +125,18 @@ export class BackupService {
       const completedAt = new Date();
 
       await this.backupRepository.updateStatus(job.id, JobStatus.COMPLETED, {
-        fileSizeMb,
+        fileSizeMb: backupResult.fileSizeMb,
+        sha256: backupResult.sha256,
+        bytes: backupResult.bytes,
         completedAt,
       });
 
       return {
         jobId: job.id,
         fileKey,
-        fileSizeMb,
+        fileSizeMb: backupResult.fileSizeMb,
+        sha256: backupResult.sha256,
+        bytes: backupResult.bytes,
         startedAt,
         completedAt,
       };

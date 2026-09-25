@@ -20,6 +20,7 @@ export class CreateRestoreLeases1778716800018 implements MigrationInterface {
           },
         ],
       }),
+      true,
     );
   }
 

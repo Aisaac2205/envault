@@ -64,14 +64,22 @@ describe('RestoreService finalizer', () => {
               if (failingStep === 'staging') throw new Error('staging cleanup failed');
             },
             create: async () => ({ directoryPath: 'staging', dumpFileHandle: null, dumpFilePath: 'staging/dump', metadataPath: 'staging/metadata' }),
-            writeDump: async () => undefined,
+            writeDump: async () => ({
+              sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+              bytes: 1024,
+            }),
           },
         },
-        { provide: R2Service, useValue: { download: async () => Readable.from('dump') } },
+        { provide: R2Service, useValue: { download: async () => Readable.from('dump'), downloadJson: async () => null } },
         {
           provide: BackupService,
           useValue: {
-            getBackupById: async () => ({ dbType: DbTypeEnum.POSTGRES, fileKey: 'source/manual/dump.dump', status: JobStatus.COMPLETED }),
+            getBackupById: async () => ({
+              dbType: DbTypeEnum.POSTGRES,
+              fileKey: 'source/manual/dump.dump',
+              status: JobStatus.COMPLETED,
+              sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            }),
           },
         },
         { provide: ConnectionsService, useValue: { findById: async () => target } },
@@ -118,6 +126,83 @@ describe('RestoreService finalizer', () => {
       );
     });
   }
+
+  it('rejects restore with BadRequestException if actual sha256 does not match DB digest', async () => {
+    const restoreRepository = {
+      failPendingIfLeaseInactive: jest.fn().mockResolvedValue(undefined),
+      startIfLeaseActive: jest.fn().mockResolvedValue(true),
+      updateStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const target = { dbType: DbTypeEnum.POSTGRES, environment: Environment.DEV };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RestoreService,
+        { provide: RestoreRepository, useValue: restoreRepository },
+        { provide: RestoreLeaseRepository, useValue: { release: async () => undefined } },
+        {
+          provide: RestoreExecutionOwnershipService,
+          useValue: {
+            findActiveTarget: async () => target,
+            hasActiveLease: async () => true,
+            release: async () => undefined,
+            tryAcquire: async () => ({ targetConnectionId }),
+          },
+        },
+        {
+          provide: RestoreStagingService,
+          useValue: {
+            cleanup: async () => undefined,
+            create: async () => ({ directoryPath: 'staging', dumpFileHandle: null, dumpFilePath: 'staging/dump', metadataPath: 'staging/metadata' }),
+            writeDump: async () => ({
+              sha256: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+              bytes: 1024,
+            }),
+          },
+        },
+        { provide: R2Service, useValue: { download: async () => Readable.from('dump'), downloadJson: async () => null } },
+        {
+          provide: BackupService,
+          useValue: {
+            getBackupById: async () => ({
+              dbType: DbTypeEnum.POSTGRES,
+              fileKey: 'source/manual/dump.dump',
+              status: JobStatus.COMPLETED,
+              sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+            }),
+          },
+        },
+        { provide: ConnectionsService, useValue: { findById: async () => target } },
+        { provide: SseService, useValue: { complete: () => undefined, emit: () => undefined } },
+        {
+          provide: 'RESTORE_STRATEGIES',
+          useValue: new Map<DbTypeEnum, RestoreStrategy>([
+            [DbTypeEnum.POSTGRES, { execute: async () => undefined }],
+          ]),
+        },
+      ],
+    }).compile();
+
+    const service = module.get<RestoreService>(RestoreService);
+
+    await expect(
+      service.executeRestoreAsync(
+        jobId,
+        { isDryRun: false, sourceBackupId: 'backup-1', targetConnectionId },
+        { email: 'admin@example.test', id: 'admin', name: 'Admin', role: 'admin' },
+        leaseToken,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.FAILED,
+      expect.objectContaining({
+        errorMessage: expect.stringContaining('digest criptográfico'),
+      }),
+    );
+  });
+
 });
 
 describe('RestoreService engine compatibility by sourceBackupId', () => {
