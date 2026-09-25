@@ -1,11 +1,16 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
 import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
 import { ConnectionsModule } from '../connections/connections.module';
+import { QueueModule } from '../queue/queue.module';
+import { SseModule } from '../../shared/sse/sse.module';
 import { BackupController } from './backup.controller';
 import { BackupService } from './backup.service';
 import { BackupRepository } from './backup.repository';
+import { BackupProcessor } from './backup.processor';
+import { BACKUP_QUEUE_NAME } from './backup.constants';
 import { R2Service } from './r2.service';
 import { PostgresBackupStrategy } from './strategies/postgres-backup.strategy';
 import { MySQLBackupStrategy } from './strategies/mysql-backup.strategy';
@@ -19,11 +24,17 @@ import { RestoreStrategy } from './interfaces/restore-strategy.interface';
   imports: [
     TypeOrmModule.forFeature([BackupJobEntity, ConnectionEntity]),
     ConnectionsModule,
+    QueueModule,
+    BullModule.registerQueue({
+      name: BACKUP_QUEUE_NAME,
+    }),
+    SseModule,
   ],
   controllers: [BackupController],
   providers: [
     BackupService,
     BackupRepository,
+    BackupProcessor,
     R2Service,
     PostgresBackupStrategy,
     MySQLBackupStrategy,
@@ -59,6 +70,7 @@ import { RestoreStrategy } from './interfaces/restore-strategy.interface';
   exports: [
     BackupService,
     BackupRepository,
+    BackupProcessor,
     R2Service,
     'BACKUP_STRATEGIES',
     'RESTORE_STRATEGIES',

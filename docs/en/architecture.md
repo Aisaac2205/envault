@@ -13,8 +13,9 @@ The API follows a **Modular Monolith** pattern: a single NestJS process split in
 | Module | Path | Responsibility |
 |--------|------|----------------|
 | `connections` | `src/modules/connections/` | CRUD for database connections (host, port, credentials, engine) |
-| `backup` | `src/modules/backup/` | On-demand dump execution and storage in R2 |
+| `backup` | `src/modules/backup/` | On-demand dump execution and streaming to Cloudflare R2 |
 | `restore` | `src/modules/restore/` | Download a dump from R2 and restore it into the target database |
+| `queue` | `src/modules/queue/` | Redis client and BullMQ asynchronous queue setup |
 | `jobs` | `src/modules/jobs/` | Backup job lifecycle management |
 | `cronjobs` | `src/modules/cronjobs/` | Scheduled backup definitions |
 | `audit` | `src/modules/audit/` | Immutable log of every executed operation |
@@ -114,7 +115,7 @@ src/shared/
 
 ---
 
-## Real-time — SSE (Server-Sent Events)
+## Real-Time Updates with Server-Sent Events (SSE)
 
 The API emits events from `src/shared/sse/` that the frontend consumes via the `useSSE` hook (`shared/hooks/`). This lets the UI track backup, restore and job state in real time without polling.
 
@@ -122,3 +123,25 @@ The hook handles:
 - Initial connection and automatic reconnection on drops
 - Dispatch of typed events to the matching features
 - Cleanup on component unmount
+
+---
+
+## Asynchronous Queues and Background Processing (Redis + BullMQ)
+
+EnVault processes compute-intensive database dumps and network transfers through BullMQ and Redis 7, fully decoupling execution from the HTTP request lifecycle.
+
+### 1. Decoupled Job Lifecycle
+Backup creation and database restore requests return immediately with an HTTP 202 Accepted status code. The API records the job in a PENDING state, publishes the payload to Redis, and delegates processing to dedicated workers. Clients observe real-time progress via Server-Sent Events.
+
+### 2. Connection-Level Concurrency Isolation
+Every job inspects active tasks for the target database. When an existing job is in a PENDING or RUNNING state for the same database, the API rejects the request with an HTTP 409 Conflict error to prevent lock contention and resource exhaustion.
+
+### 3. Direct Multipart Streaming to Cloudflare R2
+Native dump streams pipe directly into Cloudflare R2 without staging intermediate files on local container storage. The stream processor divides data into 32MB chunks with four concurrent part uploads. If an error occurs or a user cancels the task, EnVault issues an immediate abort signal to delete incomplete parts in object storage.
+
+### 4. Two-Stage Coordinated Purge
+The purge process operates in two coordinated stages to prevent orphan files in cloud storage and inconsistent entries in the control database. First, EnVault issues the physical deletion command to the object storage bucket. Once the cloud provider confirms remote object removal, the platform purges the corresponding job record from the control database.
+
+### 5. Non-Destructive Dry-Run Simulation
+To validate retention policies before executing irreversible deletions, EnVault supports dry-run simulation mode. This operation computes configured retention rules and reports the exact list of candidate dumps, their IDs, and the total storage volume to be reclaimed, without modifying or deleting any remote objects.
+

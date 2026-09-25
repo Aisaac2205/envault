@@ -114,9 +114,17 @@ export class R2Service {
   async upload(
     key: string,
     stream: Readable,
-    options?: { metadata?: Record<string, string> },
+    options?: {
+      metadata?: Record<string, string>;
+      partSize?: number;
+      queueSize?: number;
+      abortSignal?: AbortSignal;
+    },
   ): Promise<void> {
     this.logger.debug(`Uploading to R2: ${key}`);
+    const partSize = options?.partSize ?? 32 * 1024 * 1024;
+    const queueSize = options?.queueSize ?? 4;
+
     const upload = new Upload({
       client: this.client,
       params: {
@@ -125,8 +133,33 @@ export class R2Service {
         Body: stream,
         Metadata: options?.metadata,
       },
+      partSize,
+      queueSize,
+      leavePartsOnError: false,
     });
-    await upload.done();
+
+    try {
+      if (options?.abortSignal) {
+        options.abortSignal.addEventListener(
+          'abort',
+          () => {
+            upload.abort().catch((err) => {
+              this.logger.warn(`Failed to abort R2 upload for ${key}: ${err.message}`);
+            });
+          },
+          { once: true },
+        );
+      }
+
+      await upload.done();
+    } catch (error) {
+      try {
+        await upload.abort();
+      } catch (abortErr) {
+        this.logger.warn(`Error during upload.abort() for ${key}: ${abortErr}`);
+      }
+      throw error;
+    }
   }
 
   async download(key: string): Promise<Readable> {

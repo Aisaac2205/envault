@@ -7,25 +7,43 @@ import {
   Query,
   Req,
   UseGuards,
+  HttpCode,
+  HttpStatus,
+  Sse,
+  NotFoundException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { BetterAuthGuard } from '../../auth/auth.guard';
 import { RolesGuard, Roles } from '../../auth/roles.guard';
 import { CurrentUser, AuthUser } from '../../auth/decorators/current-user.decorator';
 import { setAuditContext } from '../../common/audit/audit-context';
 import { BackupService } from './backup.service';
+import { SseService, SseEvent } from '../../shared/sse/sse.service';
 import { CreateBackupDto } from './dto/create-backup.dto';
 import { ListEnrichedDumpsQueryDto } from './dto/list-enriched-dumps.query.dto';
 import { ListHistoryQueryDto } from './dto/list-history-query.dto';
 import { Environment } from '../../database/enums/environment.enum';
 
+interface MessageEvent {
+  data: string | object;
+  id?: string;
+  type?: string;
+  retry?: number;
+}
+
 @Controller('backups')
 @UseGuards(BetterAuthGuard, RolesGuard)
 @Roles('admin')
 export class BackupController {
-  constructor(private readonly service: BackupService) {}
+  constructor(
+    private readonly service: BackupService,
+    private readonly sseService: SseService,
+  ) {}
 
   @Post()
+  @HttpCode(HttpStatus.ACCEPTED)
   async createBackup(
     @Body() dto: CreateBackupDto,
     @CurrentUser() user: AuthUser,
@@ -57,6 +75,7 @@ export class BackupController {
   }
 
   @Post('trigger/:connectionId')
+  @HttpCode(HttpStatus.ACCEPTED)
   async triggerManual(
     @Param('connectionId') connectionId: string,
     @CurrentUser() user: AuthUser,
@@ -82,6 +101,18 @@ export class BackupController {
       metadata: { fileKey: result.fileKey },
     });
     return result;
+  }
+
+  @Sse(':id/stream')
+  async streamBackup(@Param('id') id: string): Promise<Observable<MessageEvent>> {
+    const job = await this.service.getBackupById(id);
+    if (!job) {
+      throw new NotFoundException(`Backup job con ID "${id}" no encontrado`);
+    }
+
+    return this.sseService.subscribe(id).pipe(
+      map((event: SseEvent): MessageEvent => ({ data: event })),
+    );
   }
 
   @Get()

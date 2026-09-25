@@ -25,7 +25,7 @@ export const es: Dictionary = {
     subtitle:
       'Despliega EnVault Management en minutos mediante Docker Compose o Railway. Control total sobre tus datos.',
     tabDocker: 'Docker Compose',
-    tabApiDump: 'API: Ejecutar Dump',
+    tabApiDump: 'API: Crear Copia',
     tabApiRestore: 'API: Restaurar Base de Datos',
     copyCode: 'Copiar código',
     copied: '¡Copiado!',
@@ -39,7 +39,7 @@ export const es: Dictionary = {
     legal: 'Legal',
     rightsReserved: 'Todos los derechos reservados.',
     productLinks: {
-      backups: 'Copias y Dumps',
+      backups: 'Copias de seguridad',
       restore: 'Restauración Segura',
       cronjobs: 'Copias Programadas',
       auditLogs: 'Registro de Auditoría',

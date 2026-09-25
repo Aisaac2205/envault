@@ -65,6 +65,7 @@ export class PostgresBackupStrategy implements BackupStrategy {
       let totalBytes = 0;
       const hash = createHash('sha256');
       const counter = new Transform({
+        highWaterMark: 64 * 1024,
         transform(chunk: Buffer, _enc, cb) {
           totalBytes += chunk.length;
           hash.update(chunk);
