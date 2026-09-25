@@ -48,25 +48,25 @@ function buildContent(): DocContent {
 
 describe('resolveDocContent', () => {
   it('replaces every occurrence of the API base URL token', () => {
-    const resolved = resolveDocContent(buildContent(), 'https://api.qably.dev');
+    const resolved = resolveDocContent(buildContent(), 'https://api.envault.dev');
     const [paragraph, list, code, codeGroup, table, faq] = resolved.sections[0]!.blocks;
 
-    expect(paragraph).toMatchObject({ text: 'Call https://api.qably.dev/runs/ingest' });
-    expect(list).toMatchObject({ items: ['See https://api.qably.dev/health'] });
-    expect(code).toMatchObject({ code: 'curl https://api.qably.dev/runs/ingest' });
+    expect(paragraph).toMatchObject({ text: 'Call https://api.envault.dev/runs/ingest' });
+    expect(list).toMatchObject({ items: ['See https://api.envault.dev/health'] });
+    expect(code).toMatchObject({ code: 'curl https://api.envault.dev/runs/ingest' });
     expect(codeGroup).toMatchObject({
-      label: 'POST https://api.qably.dev/runs/ingest',
+      label: 'POST https://api.envault.dev/runs/ingest',
       variants: [
-        { label: 'cURL', code: 'curl https://api.qably.dev/runs/ingest' },
-        { label: 'Python', code: 'requests.post("https://api.qably.dev/runs/ingest")' },
+        { label: 'cURL', code: 'curl https://api.envault.dev/runs/ingest' },
+        { label: 'Python', code: 'requests.post("https://api.envault.dev/runs/ingest")' },
       ],
     });
     expect(table).toMatchObject({
-      headers: ['https://api.qably.dev'],
-      rows: [['https://api.qably.dev/runs/ingest']],
+      headers: ['https://api.envault.dev'],
+      rows: [['https://api.envault.dev/runs/ingest']],
     });
     expect(faq).toMatchObject({
-      items: [{ answer: [{ text: 'https://api.qably.dev/runs/ingest' }] }],
+      items: [{ answer: [{ text: 'https://api.envault.dev/runs/ingest' }] }],
     });
   });
 
@@ -77,7 +77,7 @@ describe('resolveDocContent', () => {
       sections: [{ ...content.sections[0]!, blocks: [{ type: 'paragraph', text: 'No token here.' }] }],
     };
 
-    const resolved = resolveDocContent(withoutToken, 'https://api.qably.dev');
+    const resolved = resolveDocContent(withoutToken, 'https://api.envault.dev');
 
     expect(resolved.sections[0]!.blocks[0]).toMatchObject({ text: 'No token here.' });
   });

@@ -5,38 +5,6 @@
 
 export type Locale = 'es' | 'en';
 
-export interface NavTranslations {
-  gettingStarted: string;
-  features: string;
-  architecture: string;
-  documentation: string;
-  signIn: string;
-  signUp: string;
-}
-
-export interface DashboardTranslations {
-  navDashboard: string;
-  navConnections: string;
-  navDumps: string;
-  navCronjobs: string;
-  navRestore: string;
-  navAudit: string;
-  navSettings: string;
-  toggleSidebar: string;
-  accountRole: string;
-  headerSubtitle: string;
-  periodLabel: string;
-  kpiDumpsCount: string;
-  kpiStorageUsed: string;
-  kpiRestoreSuccess: string;
-  kpiActiveCrons: string;
-  recentDumpsTitle: string;
-  statusSuccess: string;
-  statusFailed: string;
-  statusRunning: string;
-  statusPending: string;
-}
-
 export interface FeaturesTranslations {
   title: string;
   subtitle: string;
@@ -91,8 +59,6 @@ export interface FooterTranslations {
 }
 
 export interface Dictionary {
-  nav: NavTranslations;
-  dashboard: DashboardTranslations;
   features: FeaturesTranslations;
   docs: DocumentationTranslations;
   footer: FooterTranslations;

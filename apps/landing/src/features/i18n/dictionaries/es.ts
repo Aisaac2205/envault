@@ -1,36 +1,6 @@
 import type { Dictionary } from '../types';
 
 export const es: Dictionary = {
-  nav: {
-    gettingStarted: 'Inicio',
-    features: 'Capacidades',
-    architecture: 'Arquitectura',
-    documentation: 'Documentación',
-    signIn: 'Iniciar Sesión',
-    signUp: 'Desplegar',
-  },
-  dashboard: {
-    navDashboard: 'Dashboard',
-    navConnections: 'Conexiones',
-    navDumps: 'Dumps y Copias',
-    navCronjobs: 'Cronjobs Programados',
-    navRestore: 'Restauración',
-    navAudit: 'Auditoría',
-    navSettings: 'Configuración',
-    toggleSidebar: 'Alternar barra lateral',
-    accountRole: 'Administrador',
-    headerSubtitle: 'Monitoreo de estado de conexiones, retención de almacenamiento y telemetría de jobs.',
-    periodLabel: 'Período',
-    kpiDumpsCount: 'Dumps generados',
-    kpiStorageUsed: 'Almacenamiento en R2/S3',
-    kpiRestoreSuccess: 'Tasa de éxito de restauración',
-    kpiActiveCrons: 'Cronjobs activos',
-    recentDumpsTitle: 'Actividad de dumps recientes',
-    statusSuccess: 'Completado',
-    statusFailed: 'Fallido',
-    statusRunning: 'En ejecución',
-    statusPending: 'Pendiente',
-  },
   features: {
     title: 'Copias de seguridad que simplemente funcionan, sin que tengas que estar encima',
     subtitle:

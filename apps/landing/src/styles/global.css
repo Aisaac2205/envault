@@ -98,13 +98,6 @@
   --app-heatmap-l3:        oklch(0.560 0.180 145);
   --app-heatmap-l4:        oklch(0.440 0.200 145);
 
-  --qb-chart-line:    var(--app-primary);
-  --qb-chart-grid:    var(--app-border);
-  --qb-chart-pass:    oklch(0.62 0.16 145);
-  --qb-chart-fail:    oklch(0.42 0.19 25);
-  --qb-chart-skip:    oklch(0.62 0.00 0);
-  --qb-chart-warn:    var(--app-status-warn);
-  --qb-chart-compare: var(--app-fg-muted);
 }
 
 @theme inline {
@@ -183,40 +176,6 @@
   --shadow-app-card:           0 1px 1px 0 oklch(0.185 0.004 85 / 0.025);
   --shadow-app-pop:            0 4px 12px -2px oklch(0.12 0 0 / 0.08), 0 2px 4px -2px oklch(0.12 0 0 / 0.04);
 
-  /* @qably/ui contract, bound to the app-* mirror so the shared dashboard
-     blocks render the product palette inside the dark landing. */
-  --color-qb-canvas:          var(--app-bg);
-  --color-qb-canvas-hover:    var(--app-surface-hover);
-  --color-qb-surface:         var(--app-surface);
-  --color-qb-surface-raised:  var(--app-surface-raised);
-  --color-qb-fg:              var(--app-fg);
-  --color-qb-muted:           var(--app-fg-muted);
-  --color-qb-border:          var(--app-border);
-  --color-qb-border-strong:   var(--app-border-strong);
-  --color-qb-primary:         var(--app-primary);
-  --color-qb-primary-hover:   var(--app-primary-hover);
-  --color-qb-primary-fg:      var(--app-primary-fg);
-  --color-qb-ai:              var(--app-accent-ai);
-  --color-qb-ai-bg:           var(--app-accent-ai-bg);
-  --color-qb-pass:            var(--app-status-pass);
-  --color-qb-pass-bg:         var(--app-status-pass-bg);
-  --color-qb-fail:            var(--app-status-fail);
-  --color-qb-fail-bg:         var(--app-status-fail-bg);
-  --color-qb-blocked:         var(--app-status-blocked);
-  --color-qb-blocked-bg:      var(--app-status-blocked-bg);
-  --color-qb-skip:            var(--app-status-skip);
-  --color-qb-skip-bg:         var(--app-status-skip-bg);
-  --color-qb-running:         var(--app-status-running);
-  --color-qb-running-bg:      var(--app-status-running-bg);
-  --color-qb-warn:            var(--app-status-warn);
-  --color-qb-warn-bg:         var(--app-status-warn-bg);
-  --color-qb-heatmap-l0:      var(--app-heatmap-l0);
-  --color-qb-heatmap-l1:      var(--app-heatmap-l1);
-  --color-qb-heatmap-l2:      var(--app-heatmap-l2);
-  --color-qb-heatmap-l3:      var(--app-heatmap-l3);
-  --color-qb-heatmap-l4:      var(--app-heatmap-l4);
-  --shadow-qb-card:           var(--shadow-app-card);
-  --shadow-qb-pop:            var(--shadow-app-pop);
 }
 
 *,

@@ -1,6 +1,4 @@
 ---
-import { getDictionary } from '../../i18n/get-dictionary';
-import { getAuthUrl } from '../../../lib/auth-config';
 import type { Locale } from '../../i18n/types';
 
 interface Props {
@@ -8,9 +6,7 @@ interface Props {
 }
 
 const { locale = 'es' } = Astro.props;
-const dict = getDictionary(locale);
 const isEn = locale === 'en';
-const authUrl = getAuthUrl('/');
 ---
 
 <section class="py-24 px-6 max-w-5xl mx-auto font-sans" aria-label="Llamada a la acción">

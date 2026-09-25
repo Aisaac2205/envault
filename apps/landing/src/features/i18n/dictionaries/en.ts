@@ -1,36 +1,6 @@
 import type { Dictionary } from '../types';
 
 export const en: Dictionary = {
-  nav: {
-    gettingStarted: 'Home',
-    features: 'Features',
-    architecture: 'Architecture',
-    documentation: 'Documentation',
-    signIn: 'Sign In',
-    signUp: 'Deploy',
-  },
-  dashboard: {
-    navDashboard: 'Dashboard',
-    navConnections: 'Connections',
-    navDumps: 'Dumps & Backups',
-    navCronjobs: 'Scheduled Cronjobs',
-    navRestore: 'Restore',
-    navAudit: 'Audit Log',
-    navSettings: 'Settings',
-    toggleSidebar: 'Toggle sidebar',
-    accountRole: 'Administrator',
-    headerSubtitle: 'Monitor connection health, storage retention policies, and real-time job execution telemetry.',
-    periodLabel: 'Period',
-    kpiDumpsCount: 'Dumps Generated',
-    kpiStorageUsed: 'R2 / S3 Storage Used',
-    kpiRestoreSuccess: 'Restore Success Rate',
-    kpiActiveCrons: 'Active Cronjobs',
-    recentDumpsTitle: 'Recent dump activity',
-    statusSuccess: 'Completed',
-    statusFailed: 'Failed',
-    statusRunning: 'Running',
-    statusPending: 'Pending',
-  },
   features: {
     title: 'Backups that just work, without the babysitting',
     subtitle:
