@@ -12,6 +12,7 @@ export interface JobFilters {
   environment?: Environment;
   from?: Date;
   to?: Date;
+  limit?: number;
 }
 
 @Injectable()
@@ -27,7 +28,11 @@ export class JobsRepository {
 
   async findAllBackupJobs(filters?: JobFilters): Promise<(BackupJobEntity & { connectionName: string | null })[]> {
     const where = this.buildBackupWhere(filters);
-    const jobs = await this.backupJobRepository.find({ where, order: { createdAt: 'DESC' } });
+    const jobs = await this.backupJobRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: filters?.limit,
+    });
 
     if (jobs.length === 0) return [];
 
@@ -40,7 +45,11 @@ export class JobsRepository {
 
   findAllRestoreJobs(filters?: JobFilters): Promise<RestoreJobEntity[]> {
     const where = this.buildRestoreWhere(filters);
-    return this.restoreJobRepository.find({ where, order: { createdAt: 'DESC' } });
+    return this.restoreJobRepository.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: filters?.limit,
+    });
   }
 
   findBackupJobById(id: string): Promise<BackupJobEntity | null> {

@@ -17,6 +17,7 @@ describe('envValidationSchema auth rate limiting', () => {
     expect(value.AUTH_RATE_MAX).toBe(10);
     expect(value.AUTH_RATE_MAX_KEYS).toBe(10_000);
     expect(value.AUTH_RATE_SWEEP_INTERVAL_MS).toBe(60_000);
+    expect(value.RESTORE_TIMEOUT_MS).toBe(1_800_000);
   });
 
   it.each([
@@ -24,6 +25,7 @@ describe('envValidationSchema auth rate limiting', () => {
     ['AUTH_RATE_MAX', 0],
     ['AUTH_RATE_MAX_KEYS', 99],
     ['AUTH_RATE_SWEEP_INTERVAL_MS', 999],
+    ['RESTORE_TIMEOUT_MS', 9_999],
   ])('rejects an unsafe %s value', (name, unsafeValue) => {
     const { error } = envValidationSchema.validate({
       ...validEnvironment,

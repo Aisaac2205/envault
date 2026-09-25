@@ -39,6 +39,10 @@ R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
 R2_BUCKET_NAME=vaultly-control-dumps
 R2_PUBLIC_BASE_URL=
 
+# ── Restore (opcional) ─────────────────────────────────────────
+# Timeout en milisegundos para restauraciones (default: 1800000 = 30 min).
+RESTORE_TIMEOUT_MS=1800000
+
 # ── Seed script (vars individuales para dev local) ─────────────
 # Nota: DB_NAME/DB_USER usan underscore porque PostgreSQL no acepta
 # guiones en identifiers unquoted.

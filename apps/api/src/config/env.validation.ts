@@ -36,4 +36,6 @@ export const envValidationSchema = Joi.object({
     .integer()
     .min(1_000)
     .default(60_000),
+  // Command timeout for pg_restore / mysql CLI in ms (dimensioned for up to 5 GB dumps).
+  RESTORE_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
 });

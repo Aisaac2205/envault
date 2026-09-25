@@ -82,33 +82,45 @@ Excepción consciente: `/health` no requiere auth (lo consume el K8s probe).
 
 ### ¿Qué se audita?
 
-Cualquier request HTTP con método `POST`, `PUT`, `PATCH` o `DELETE` que pase por el `AuditInterceptor` global.
+Dos fuentes independientes escriben en la misma tabla append-only `audit_logs`:
 
-**Se auditan tanto los éxitos como los errores** (`tap({ next, error })`). Un intento fallido de borrar PROD también queda registrado.
+1. **Mutaciones de recursos** — cualquier request HTTP con método `POST`, `PUT`, `PATCH` o `DELETE` que pase por el `AuditInterceptor` global. **Se auditan tanto los éxitos como los errores** (`tap({ next, error })`). Un intento fallido de borrar PROD también queda registrado.
+
+2. **Eventos de autenticación** — login, logout y cambio de contraseña, capturados por el middleware `hooks.after` de Better Auth (`apps/api/src/auth/audit/`). El `AuditInterceptor` no los ve porque `auth.controller.ts` usa `@Res()` y descarta el handler con `void`, dejando al pipeline de Nest sin observar el resultado.
+
+Los endpoints de autenticación auditados son un **allowlist** (`AUDITED_PATHS`), no un denylist. `hooks.after` dispara en todos los endpoints incluido `/get-session`, que la SPA consulta constantemente; los endpoints no listados se descartan para no saturar la tabla.
+
+El hook escribe a través del pool de `pg` (`authPool`) que Better Auth ya posee. Toda escritura va en `try/catch`: un fallo de auditoría **nunca debe interrumpir el login de un usuario**.
 
 ### Estructura de un registro
 
 ```typescript
 {
   id: uuid,
-  action: "DELETE /connections/abc-123",
-  userId: "user-sub-from-jwt",
-  userEmail: "user@example.com" | "anonymous",
-  resourceType: "ConnectionsController",
-  resourceId: "abc-123",
-  metadata: { ...body... },
-  environment: "prod" | "dev" | "sqa",
+  action: "DELETE /connections/abc-123" | "auth.sign-in.email",
+  userId: "user-id" | "anonymous",
+  username: "user@example.com" | "anonymous",
+  resourceType: "ConnectionsController" | "Auth",
+  resourceId: "abc-123" | "sign-in/email",
+  metadata: { ...redacted body... },
+  environment: "prod" | "dev" | "qa" | null,
+  ipAddress: "203.0.113.7" | null,
+  userAgent: string | null,
+  outcome: "success" | "failure",
+  severity: "low" | "medium" | "high" | "critical",
   createdAt: timestamp
 }
 ```
 
+`ipAddress`, `userAgent`, `outcome` y `severity` se agregaron siguiendo el OWASP Logging Cheat Sheet. La IP se lee de `x-real-ip` (nginx sobrescribe con un valor validado, ignorando la cadena multi-hop spoofable de `X-Forwarded-For`).
+
+`environment` es `null` para eventos de autenticación: el enum describe el entorno de una conexión ERP auditada, y un inicio de sesión no pertenece a ninguno.
+
 ### Limitaciones conocidas
 
-1. **`environment` defaultea a `dev`** cuando la request no incluye un campo `environment` ni en body ni en params. Esto contamina el dashboard con falsos DEV. Para arreglarlo de raíz hay que hacer `AuditLogEntity.environment` nullable (requiere migración).
+1. **Los cronjobs no se auditan en `audit_logs`.** Corren in-process, no por HTTP, así que el interceptor no los ve. Su trazabilidad vive en `backup_jobs.triggeredBy = 'system-cronjob'`.
 
-2. **Los cronjobs no se auditan en `audit_logs`.** Corren in-process, no por HTTP, así que el interceptor no los ve. Su trazabilidad vive en `backup_jobs.triggeredBy = 'system-cronjob'`. Si necesitás auditoría unificada, hay que invocar manualmente el log desde `CronjobsService.executeCronjob`.
-
-3. **Los logs son append-only a nivel DB.** Un trigger (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE` en la tabla `audit_logs`. Esto previene adulteración incluso por usuarios con acceso directo a la DB. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
+2. **Los logs son append-only a nivel DB.** Un trigger (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE` en la tabla `audit_logs`. Esto previene adulteración incluso por usuarios con acceso directo a la DB. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
 
 ---
 
@@ -139,17 +151,11 @@ Las contraseñas de las DBs registradas se **cifran en reposo** usando AES-256-G
 
 ```typescript
 // apps/api/src/config/env.validation.ts
-CORS_ORIGIN: Joi.string().when('NODE_ENV', {
-  is: 'production',
-  then: Joi.string().required(),
-  otherwise: Joi.string().default('*'),
-}),
+CORS_ORIGIN: Joi.string().required(),
 ```
 
-- **Producción**: si `CORS_ORIGIN` no está definido, **la app no arranca**. Sin defaults silenciosos.
-- **Desarrollo/test**: default `*` para no fricción local.
-
-Configurar en producción con el dominio exacto del frontend (ej: `https://app.example.com`). No usar wildcards.
+Si `CORS_ORIGIN` no está definido, **la app no arranca**. Sin defaults silenciosos ni wildcards.
+Configurar con el origen exacto del frontend (ej: `http://localhost:5173` o `https://app.example.com`).
 
 ---
 
