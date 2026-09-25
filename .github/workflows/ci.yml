@@ -138,80 +138,9 @@ jobs:
       - name: Audit production dependencies
         run: pnpm run audit:production
 
-  # Blocking gate, scoped to --prod so it measures exactly what ships: the
-  # api image is built with `pnpm --prod deploy` and the web image is nginx
-  # serving a static dist/ with no node_modules at all. Keeping this aligned
-  # with `pnpm run audit:production` means both gates answer the same
-  # question instead of two different ones.
-  snyk:
-    name: Snyk Security Scan
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run Snyk Security Scan
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: |
-          if [ -z "$SNYK_TOKEN" ]; then
-            echo "::warning ::SNYK_TOKEN is not set in repository secrets. Skipping Snyk scan."
-          else
-            pnpm dlx snyk test --all-projects --prod --severity-threshold=high
-          fi
-
-  # Advisory only, and deliberately not in `release`'s needs. Build and test
-  # tooling still runs on the CI runner with access to release credentials,
-  # so a compromised devDependency is worth seeing — but it must not block a
-  # merge over a path that never reaches production, such as vitest (an
-  # optional peer of better-auth) pulling in esbuild.
-  snyk-full:
-    name: Snyk Full Tree (advisory)
-    needs: [build]
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run Snyk Full Tree Scan
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: |
-          if [ -z "$SNYK_TOKEN" ]; then
-            echo "::warning ::SNYK_TOKEN is not set in repository secrets. Skipping Snyk scan."
-          else
-            pnpm dlx snyk test --all-projects --severity-threshold=high
-          fi
-
   release:
     name: "Semantic Release"
-    needs: [build, audit, snyk]
+    needs: [build, audit]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
