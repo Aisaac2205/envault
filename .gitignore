@@ -68,3 +68,7 @@ settings.json
 .agents/
 .claude/
 openspec/
+
+# UI/UX
+PRODUCT.md
+DESIGN.md
