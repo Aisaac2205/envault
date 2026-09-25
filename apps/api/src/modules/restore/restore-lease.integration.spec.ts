@@ -89,7 +89,7 @@ integration('restore lease PostgreSQL integration', () => {
         id uuid PRIMARY KEY,
         "sourceBackupId" varchar NULL,
         "r2Key" varchar NULL,
-        "targetConnectionId" uuid NOT NULL,
+        "targetConnectionId" varchar NOT NULL,
         "targetEnvironment" varchar NOT NULL,
         status varchar NOT NULL,
         "isDryRun" boolean NOT NULL,
