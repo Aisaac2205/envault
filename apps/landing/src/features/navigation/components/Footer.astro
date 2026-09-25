@@ -36,7 +36,7 @@ const isEn = locale === 'en';
       <h3 class="text-sm font-semibold text-white">{footer.product}</h3>
       <ul class="space-y-2.5 text-sm text-zinc-400 font-sans">
         <li><a href={isEn ? '/en#scheduler-locks' : '/#scheduler-locks'} class="hover:text-white transition-colors">{footer.productLinks.cronjobs}</a></li>
-        <li><a href={isEn ? '/en#safe-restore' : '/#safe-restore'} class="hover:text-white transition-colors">{footer.productLinks.restore}</a></li>
+        <li><a href={isEn ? '/en#features' : '/#features'} class="hover:text-white transition-colors">{footer.productLinks.restore}</a></li>
         <li><a href={isEn ? '/en#storage-r2' : '/#storage-r2'} class="hover:text-white transition-colors">{footer.productLinks.backups}</a></li>
         <li><a href={isEn ? '/en#audit-log' : '/#audit-log'} class="hover:text-white transition-colors">{footer.productLinks.auditLogs}</a></li>
       </ul>
@@ -46,7 +46,7 @@ const isEn = locale === 'en';
     <div class="space-y-4">
       <h3 class="text-sm font-semibold text-white">{footer.resources}</h3>
       <ul class="space-y-2.5 text-sm text-zinc-400 font-sans">
-        <li><a href={isEn ? "/en/docs" : "/docs"} class="hover:text-white transition-colors">{footer.resourceLinks.docs}</a></li>
+        <li><a href={isEn ? "https://github.com/Aisaac2205/envault/tree/main/docs/en" : "https://github.com/Aisaac2205/envault/tree/main/docs/es"} target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">{footer.resourceLinks.docs}</a></li>
         <li><a href={isEn ? "https://github.com/Aisaac2205/envault/blob/main/docs/en/architecture.md" : "https://github.com/Aisaac2205/envault/blob/main/docs/es/architecture.md"} target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">{footer.resourceLinks.apiKeys}</a></li>
         <li><a href={isEn ? "https://github.com/Aisaac2205/envault/blob/main/docs/en/deployment-self-host.md" : "https://github.com/Aisaac2205/envault/blob/main/docs/es/deployment-self-host.md"} target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">{footer.resourceLinks.dockerGuide}</a></li>
         <li><a href="https://github.com/Aisaac2205/envault" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">{footer.resourceLinks.githubRepo}</a></li>
@@ -67,6 +67,6 @@ const isEn = locale === 'en';
 
   <div class="max-w-7xl mx-auto pt-8 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs sm:text-sm text-zinc-500 font-sans">
     <p>© {new Date().getFullYear()} EnVault Management. {footer.rightsReserved}</p>
-    <p class="font-mono text-xs text-zinc-600">PostgreSQL 16+ · MySQL 8+ · NestJS 11 · React 19</p>
+    <p class="font-mono text-xs text-zinc-600">PostgreSQL · MySQL</p>
   </div>
 </footer>

@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { AsciiGardenCanvas } from './AsciiGardenCanvas';
-import { getDictionary } from '../../features/i18n/get-dictionary';
 import type { Locale } from '../../features/i18n/types';
 
 export const Hero = React.memo(({ locale = 'es' }: { locale?: Locale }) => {
-  const dict = getDictionary(locale);
   const isEn = locale === 'en';
   const [mounted, setMounted] = useState(false);
 
@@ -69,8 +67,8 @@ export const Hero = React.memo(({ locale = 'es' }: { locale?: Locale }) => {
           className="text-base sm:text-lg md:text-xl text-zinc-200 font-normal max-w-md sm:max-w-lg leading-relaxed font-sans"
         >
           {isEn
-            ? 'Centralized database control, automated dumps, and zero-loss recovery platform.'
-            : 'Control centralizado de bases de datos, backups automatizados y restauración sin pérdida de datos.'}
+            ? 'Your databases, backed up automatically and ready to restore whenever you need them. No scripts, no surprises.'
+            : 'Tus bases de datos, respaldadas automáticamente y listas para restaurar cuando las necesites. Sin scripts ni sorpresas.'}
         </motion.p>
       </div>
     </section>

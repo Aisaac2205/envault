@@ -14,24 +14,6 @@ export interface NavTranslations {
   signUp: string;
 }
 
-export interface HeroTranslations {
-  badgeText: string;
-  badgeLink: string;
-  headingPart1: string;
-  headingPart2: string;
-  subtitle: string;
-  ctaPrimary: string;
-  ctaSecondary: string;
-  canvasTitle: string;
-  canvasStatus: string;
-  stats: {
-    postgresVersion: string;
-    targetDbs: string;
-    storageSync: string;
-    telemetry: string;
-  };
-}
-
 export interface DashboardTranslations {
   navDashboard: string;
   navConnections: string;
@@ -56,25 +38,17 @@ export interface DashboardTranslations {
 }
 
 export interface FeaturesTranslations {
-  sectionBadge: string;
   title: string;
   subtitle: string;
   feature1Title: string;
   feature1Desc: string;
-  feature2Title: string;
-  feature2Desc: string;
   feature3Title: string;
   feature3Desc: string;
   feature4Title: string;
   feature4Desc: string;
   feature5Title: string;
   feature5Desc: string;
-  codeCardLabel: string;
-  codeCardConfidence: string;
-  cardStatusApproved: string;
   cardIngestionSpeedLabel: string;
-  cardRestoreRequirements: string;
-  cardStorageCoverage: string;
 }
 
 export interface DocumentationTranslations {
@@ -118,7 +92,6 @@ export interface FooterTranslations {
 
 export interface Dictionary {
   nav: NavTranslations;
-  hero: HeroTranslations;
   dashboard: DashboardTranslations;
   features: FeaturesTranslations;
   docs: DocumentationTranslations;

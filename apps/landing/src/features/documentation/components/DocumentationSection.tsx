@@ -59,12 +59,12 @@ export function DocumentationSection({ locale = 'es' }: DocumentationSectionProp
       {/* Direct, Clean Section Title — No Pill Badges */}
       <div className="text-center max-w-3xl mx-auto mb-14">
         <h2 id="docs-heading" className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-white mb-4">
-          {isEn ? 'Infrastructure & Deployment' : 'Infraestructura y Despliegue'}
+          {isEn ? 'Run it on your own servers' : 'Córrelo en tus propios servidores'}
         </h2>
         <p className="text-sm sm:text-base text-zinc-400 leading-relaxed">
           {isEn
-            ? 'Copy-paste ready configs for Docker Compose and Railway, matching what actually ships in this repository.'
-            : 'Configuraciones listas para copiar y pegar de Docker Compose y Railway, iguales a lo que corre en este repositorio.'}
+            ? 'Ready-to-use setup for Docker Compose and Railway, the same one this project actually runs on.'
+            : 'Configuración lista para usar en Docker Compose y Railway, la misma con la que corre este proyecto.'}
         </p>
       </div>
 
@@ -104,9 +104,9 @@ export function DocumentationSection({ locale = 'es' }: DocumentationSectionProp
       <div className="rounded-xl border border-white/10 bg-zinc-950 shadow-2xl overflow-hidden mb-12">
         <div className="flex items-center justify-between border-b border-white/[0.08] bg-zinc-900/60 px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="size-2.5 rounded-full bg-zinc-700" />
-            <span className="size-2.5 rounded-full bg-zinc-700" />
-            <span className="size-2.5 rounded-full bg-zinc-700" />
+            <span className="size-2.5 rounded-full bg-[#ff5f57]" />
+            <span className="size-2.5 rounded-full bg-[#febc2e]" />
+            <span className="size-2.5 rounded-full bg-[#28c840]" />
             <span className="ml-2 text-xs font-mono text-zinc-400">
               {activeTab === 'docker' ? 'docker-compose.yml' : 'railway environment variables'}
             </span>
@@ -150,7 +150,7 @@ export function DocumentationSection({ locale = 'es' }: DocumentationSectionProp
       </div>
 
       <p className="mt-4 text-xs text-zinc-500 font-sans">
-        {isEn ? 'Need Kubernetes or a full self-host walkthrough?' : '¿Necesitás Kubernetes o una guía completa de self-hosting?'}{' '}
+        {isEn ? 'Need Kubernetes or a full self-host walkthrough?' : '¿Necesitas Kubernetes o una guía completa de self-hosting?'}{' '}
         <a
           href={
             isEn

@@ -9,24 +9,6 @@ export const en: Dictionary = {
     signIn: 'Sign In',
     signUp: 'Deploy',
   },
-  hero: {
-    badgeText: 'EnVault Management v2.4 · PostgreSQL 16+ Control Plane & Distributed Locks',
-    badgeLink: 'View architecture',
-    headingPart1: 'Centralized database control',
-    headingPart2: '& automated backup platform',
-    subtitle:
-      'Register PostgreSQL and MySQL connections, schedule automated dumps without race conditions, perform verified point-in-time restores, and stream live job telemetry via Server-Sent Events (SSE).',
-    ctaPrimary: 'Start Deployment',
-    ctaSecondary: 'Explore Documentation',
-    canvasTitle: 'envault-management, ink-garden-ascii.canvas',
-    canvasStatus: 'ONLINE · 21ST.DEV ENGINE · 60 FPS',
-    stats: {
-      postgresVersion: 'PostgreSQL 16+',
-      targetDbs: 'PostgreSQL & MySQL',
-      storageSync: 'Cloudflare R2 & S3',
-      telemetry: 'Real-Time SSE Streaming',
-    },
-  },
   dashboard: {
     navDashboard: 'Dashboard',
     navConnections: 'Connections',
@@ -50,31 +32,22 @@ export const en: Dictionary = {
     statusPending: 'Pending',
   },
   features: {
-    sectionBadge: 'Industrial Capabilities',
-    title: 'Resilient database operations engineered for DevOps and SRE teams',
+    title: 'Backups that just work, without the babysitting',
     subtitle:
-      'Eliminate brittle bash scripts and unmonitored server crontabs. EnVault Management orchestrates the entire database lifecycle with transactional consistency and zero data loss.',
-    feature1Title: 'Scheduled backups, safe across replicas',
+      'No more scripts to babysit or manual checklists before every restore. EnVault handles your database backups from start to finish, so nothing gets lost.',
+    feature1Title: 'Backups on autopilot, even if you scale up',
     feature1Desc:
-      'Cron expressions with timezone support for hourly, daily, weekly, or custom schedules, powered by @nestjs/schedule. Each run acquires a PostgreSQL advisory lock before executing, so multiple replicas never duplicate a backup.',
-    feature2Title: 'Safe restore & point-in-time recovery',
-    feature2Desc:
-      'Restore dumps to new or existing databases with pre-flight connectivity verification, schema compatibility checks, and non-destructive dry runs.',
-    feature3Title: 'Live job telemetry streamed via SSE',
+      'Set the schedule you want, hourly, daily, weekly, whatever fits your timezone, and forget about it. Even if you run more than one server, only one of them ever runs the backup, so you never end up with duplicates.',
+    feature3Title: 'Watch every restore happen live',
     feature3Desc:
-      'Stream raw stdout and progress metrics from pg_dump and mysqldump directly to your browser without backend polling overload. Inspect duration and error logs instantly.',
-    feature4Title: 'Streaming backups to Cloudflare R2',
+      "See exactly what's happening while a restore runs, right in your browser, in real time. No refreshing the page or wondering if it's still working.",
+    feature4Title: 'Your backups live safely in the cloud',
     feature4Desc:
-      'Multipart streaming directly to Cloudflare R2 (S3-compatible API), configurable retention windows, and automatic pruning of orphaned dumps.',
-    feature5Title: 'Immutable audit logging & role-based access',
+      "Every backup goes straight to Cloudflare's storage. Nothing sits on a local disk where it could get lost, and old backups clean themselves up once you decide how long to keep them.",
+    feature5Title: 'A record nobody can quietly change',
     feature5Desc:
-      'Every dump trigger, download, configuration change, and restore attempt is written to a log a PostgreSQL trigger blocks from being updated or deleted. Access follows two roles: admin and user.',
-    codeCardLabel: 'Cron schedule example',
-    codeCardConfidence: 'Distributed lock acquired',
-    cardStatusApproved: 'Completed',
-    cardIngestionSpeedLabel: 'Delivery',
-    cardRestoreRequirements: 'Schema compatibility',
-    cardStorageCoverage: 'PostgreSQL & MySQL → Cloudflare R2',
+      "Every backup, download, setting change, and restore gets logged automatically. That record can't be edited or deleted afterward, not even by an administrator. Access stays simple too, just admins and regular users.",
+    cardIngestionSpeedLabel: 'Status',
   },
   docs: {
     sectionBadge: 'Rapid Deployment',
@@ -88,7 +61,7 @@ export const en: Dictionary = {
     copied: 'Copied!',
   },
   footer: {
-    tagline: 'Centralized database management, automated backup pipelines, and verified disaster recovery platform.',
+    tagline: 'The simple way to keep your databases backed up and easy to restore.',
     systemsOperational: 'All systems operational',
     product: 'Product',
     resources: 'Resources',

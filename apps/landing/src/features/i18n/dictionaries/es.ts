@@ -9,28 +9,10 @@ export const es: Dictionary = {
     signIn: 'Iniciar Sesión',
     signUp: 'Desplegar',
   },
-  hero: {
-    badgeText: 'EnVault Management v2.4 · Control Plane en PostgreSQL 16+ & Locks Distribuidos',
-    badgeLink: 'Ver arquitectura',
-    headingPart1: 'Control centralizado de bases de datos',
-    headingPart2: '& backups automatizados',
-    subtitle:
-      'Registra conexiones PostgreSQL y MySQL, programa dumps automáticos sin fallos de concurrencia, restaura con verificación de integridad y monitorea jobs en vivo mediante Server-Sent Events (SSE).',
-    ctaPrimary: 'Comenzar despliegue',
-    ctaSecondary: 'Explorar Documentación',
-    canvasTitle: 'envault-management, ink-garden-ascii.canvas',
-    canvasStatus: 'ONLINE · 21ST.DEV ENGINE · 60 FPS',
-    stats: {
-      postgresVersion: 'PostgreSQL 16+',
-      targetDbs: 'PostgreSQL & MySQL',
-      storageSync: 'Cloudflare R2 & S3',
-      telemetry: 'SSE en Tiempo Real',
-    },
-  },
   dashboard: {
     navDashboard: 'Dashboard',
     navConnections: 'Conexiones',
-    navDumps: 'Dumps & Backups',
+    navDumps: 'Dumps y Copias',
     navCronjobs: 'Cronjobs Programados',
     navRestore: 'Restauración',
     navAudit: 'Auditoría',
@@ -50,31 +32,22 @@ export const es: Dictionary = {
     statusPending: 'Pendiente',
   },
   features: {
-    sectionBadge: 'Capacidades Industriales',
-    title: 'Infraestructura de datos resiliente para equipos de DevOps y SRE',
+    title: 'Copias de seguridad que simplemente funcionan, sin que tengas que estar encima',
     subtitle:
-      'Elimina scripts bash frágiles y crontabs sin supervisión. EnVault Management orquesta el ciclo de vida completo de tus respaldos con consistencia transaccional y control de accesos.',
-    feature1Title: 'Backups programados, seguros entre réplicas',
+      'Sin scripts que vigilar ni listas de verificación antes de cada restauración. EnVault se encarga de tus copias de seguridad de principio a fin, para que no pierdas nada.',
+    feature1Title: 'Copias de seguridad en piloto automático, incluso si escalas',
     feature1Desc:
-      'Expresiones cron con soporte de zona horaria para frecuencias horaria, diaria, semanal o personalizada, con @nestjs/schedule. Cada ejecución adquiere un advisory lock de PostgreSQL antes de correr, así ninguna réplica duplica un backup.',
-    feature2Title: 'Restauración segura y Point-in-Time Recovery',
-    feature2Desc:
-      'Restaura dumps hacia bases de datos nuevas o existentes con validación previa de conectividad, comprobación de compatibilidad de esquemas y dry-run de seguridad.',
-    feature3Title: 'Telemetría de jobs en vivo vía SSE',
+      'Elige el horario que quieras, por hora, diario, semanal, lo que se ajuste a tu zona horaria, y olvídate del resto. Aunque tengas más de un servidor corriendo, solo uno hace la copia, así que nunca terminas con copias duplicadas.',
+    feature3Title: 'Sigue cada restauración en vivo',
     feature3Desc:
-      'Supervisa la salida de streaming de pg_dump y mysqldump en tiempo real sin saturar el backend con polling. Recibe duración y alertas instantáneas.',
-    feature4Title: 'Backups en streaming hacia Cloudflare R2',
+      'Mira en tiempo real qué está pasando mientras se ejecuta una restauración, directo en tu navegador, sin recargar la página ni quedarte adivinando si sigue funcionando.',
+    feature4Title: 'Tus copias de seguridad viven a salvo en la nube',
     feature4Desc:
-      'Streaming multipart directo hacia Cloudflare R2 (API compatible con S3), ventanas de retención configurables y auto-pruning de dumps huérfanos.',
-    feature5Title: 'Registro de auditoría inmutable y control de acceso',
+      'Cada copia va directo al almacenamiento de Cloudflare. Nada queda guardado en un disco local donde se podría perder, y las copias viejas se limpian solas una vez que decides cuánto tiempo conservarlas.',
+    feature5Title: 'Un registro que nadie puede alterar en silencio',
     feature5Desc:
-      'Cada backup, descarga, cambio de configuración y restauración queda registrado en un log que un trigger de PostgreSQL bloquea de ser modificado o borrado. El acceso sigue dos roles: admin y user.',
-    codeCardLabel: 'Ejemplo de programación cron',
-    codeCardConfidence: 'Lock distribuido activo',
-    cardStatusApproved: 'Completado',
-    cardIngestionSpeedLabel: 'Entrega',
-    cardRestoreRequirements: 'Compatibilidad de esquema',
-    cardStorageCoverage: 'PostgreSQL y MySQL → Cloudflare R2',
+      'Cada copia de seguridad, descarga, cambio de configuración y restauración queda registrado automáticamente. Ese registro no se puede editar ni borrar después, ni siquiera un administrador puede hacerlo. El acceso también es simple, solo hay administradores y usuarios.',
+    cardIngestionSpeedLabel: 'Estado',
   },
   docs: {
     sectionBadge: 'Despliegue Rápido',
@@ -88,7 +61,7 @@ export const es: Dictionary = {
     copied: '¡Copiado!',
   },
   footer: {
-    tagline: 'Plataforma centralizada de gestión de bases de datos, backups automatizados y restauración segura.',
+    tagline: 'La forma más simple de mantener copias de seguridad de tus bases de datos, listas para restaurar cuando las necesites.',
     systemsOperational: 'Todos los servicios operacionales',
     product: 'Producto',
     resources: 'Recursos',
@@ -96,9 +69,9 @@ export const es: Dictionary = {
     legal: 'Legal',
     rightsReserved: 'Todos los derechos reservados.',
     productLinks: {
-      backups: 'Backups & Dumps',
+      backups: 'Copias y Dumps',
       restore: 'Restauración Segura',
-      cronjobs: 'Backups Programados',
+      cronjobs: 'Copias Programadas',
       auditLogs: 'Registro de Auditoría',
     },
     resourceLinks: {
