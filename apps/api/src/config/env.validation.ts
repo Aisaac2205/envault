@@ -49,4 +49,13 @@ export const envValidationSchema = Joi.object({
     .default(60_000),
   // Command timeout for pg_restore / mysql CLI in ms (dimensioned for up to 5 GB dumps).
   RESTORE_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
+  // Command timeout for pg_dump / mysqldump CLI in ms (dimensioned for massive dumps).
+  BACKUP_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
+  // Redis configuration for asynchronous BullMQ processing queues.
+  REDIS_HOST: Joi.string().default('localhost'),
+  REDIS_PORT: Joi.number().integer().min(1).max(65535).default(6379),
+  REDIS_PASSWORD: Joi.string().allow('').optional(),
+  REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).optional(),
+  REDIS_TLS: Joi.boolean().default(false),
 });
+

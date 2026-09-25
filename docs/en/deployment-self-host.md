@@ -34,10 +34,17 @@ Both Dockerfiles expect the monorepo root as the build context because they read
 
 ### Individual Container Deployment
 
-If you prefer to deploy the API and Web applications on separate hosts or standalone containers without Docker Compose:
+If you prefer to deploy the API, Web, and infrastructure services on separate hosts or standalone containers without Docker Compose:
 
 ```bash
-# 1. API Container (on backend host)
+# 1. Redis Container (with AOF persistence and mandatory authentication)
+docker run -d \
+  --name envault-redis \
+  --restart unless-stopped \
+  -v redis_data:/data \
+  redis:7-alpine redis-server --appendonly yes --requirepass "your-secure-password"
+
+# 2. API Container (on backend host)
 docker run -d \
   --name envault-api \
   --restart unless-stopped \
@@ -45,7 +52,7 @@ docker run -d \
   --env-file .env.api \
   envault-api:local
 
-# 2. Web Container (on frontend host)
+# 3. Web Container (on frontend host)
 docker run -d \
   --name envault-web \
   --restart unless-stopped \
@@ -74,10 +81,16 @@ Full reference in [environment-variables.md](environment-variables.md). The tabl
 | `BETTER_AUTH_URL` | yes | Public base URL of the API |
 | `BETTER_AUTH_ADMIN_EMAIL` | yes | Seed administrator email (used on initial boot) |
 | `BETTER_AUTH_ADMIN_PASSWORD` | yes | Seed administrator password |
+| `REDIS_HOST` | conditional | Redis host (for example `redis` in Docker Compose or `localhost`). Alternatively provide `REDIS_URL` |
+| `REDIS_PORT` | no (default `6379`) | Redis TCP port |
+| `REDIS_PASSWORD` | yes in production | Password to authenticate with Redis via requirepass |
+| `REDIS_URL` | optional | Full Redis URL (`redis://...` or `rediss://...`). Takes precedence when provided |
+| `REDIS_TLS` | no (default `false`) | Enables TLS when connecting to an external managed Redis cluster |
 | `R2_ACCOUNT_ID` | yes in production | Cloudflare account identifier (32-character hexadecimal) |
 | `R2_ACCESS_KEY_ID` | yes in production | Generated from Cloudflare R2 API Tokens |
 | `R2_SECRET_ACCESS_KEY` | yes in production | Generated from Cloudflare R2 API Tokens |
 | `R2_BUCKET_NAME` | yes in production | Cloudflare R2 bucket designated for backups |
+| `BACKUP_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for database dump execution (30 minutes) |
 | `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for restore executions |
 
 ### Web (build-time AND runtime)
@@ -126,11 +139,12 @@ Honest baseline numbers. **Validate against your own workload** — they are sta
 | API | 100m | 500m | 256 MiB | 512 MiB |
 | Web (nginx) | 25m | 100m | 32 MiB | 128 MiB |
 | Control DB (Postgres 16) | 250m | 1000m | 512 MiB | 2 GiB |
+| Redis (BullMQ) | 50m | 200m | 64 MiB | 256 MiB |
 
 **Scaling drivers**:
 - API memory grows with **dump size during streaming**. `pg_dump` of a 50GB DB does not load it all into memory (streaming), but parts of the multipart R2 upload do buffer. If you back up large DBs (>20GB), bump API memory to 1 GiB.
 - API CPU spikes during dump compression and restore. Brief spikes are fine; sustained pressure means you're undersized.
-- Web is essentially free — nginx serving static files. If you have thousands of concurrent users, that's another conversation, but for an internal DevOps tool, the defaults are generous.
+- Web is essentially free (nginx serving static files). If you have thousands of concurrent users, that's another conversation, but for an internal DevOps tool, the defaults are generous.
 
 ---
 
@@ -140,7 +154,8 @@ Honest baseline numbers. **Validate against your own workload** — they are sta
 |-----------|---------------------------|-----|
 | API | **No** | Stateless. Dumps stream to R2, nothing on local disk. |
 | Web | **No** | Stateless. Just serves static files. |
-| Control DB | **Yes** | This is the source of truth — back it up too (see [devops-runbook.md §5](devops-runbook.md#5-backup-of-the-control-database-itself)). |
+| Control DB | **Yes** | This is the source of truth (back it up too, see [devops-runbook.md §5](devops-runbook.md#5-backup-of-the-control-database-itself)). |
+| Redis | **Yes** | AOF persistence for BullMQ queues and job state. |
 
 For the control DB, use the volume strategy of your platform: PVC on K8s, EBS on EC2, local SSD with daily snapshots on VPS, etc. **Minimum 20 GiB** for the control DB volume; grows slowly (audit logs are the main driver).
 

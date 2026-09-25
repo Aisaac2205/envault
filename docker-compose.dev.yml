@@ -69,6 +69,12 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    # Re-exponer puerto en dev para herramientas locales e inspección de colas.
+    ports:
+      - "6379:6379"
+
+
   # ── DBs de testing (opt-in con --profile test) ───────────────
   # Sirven para validar el flow de connections.test-raw contra
   # motores reales antes de tocar bases productivas. Antes vivían

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { Transform } from 'stream';
@@ -9,11 +10,20 @@ import {
 import { R2Service } from '../r2.service';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
 
-const BACKUP_TIMEOUT_MS = 600_000;
+const DEFAULT_BACKUP_TIMEOUT_MS = 1_800_000;
 
 @Injectable()
 export class MySQLBackupStrategy implements BackupStrategy {
-  constructor(private readonly r2Service: R2Service) {}
+  private readonly timeoutMs: number;
+
+  constructor(
+    private readonly r2Service: R2Service,
+    @Optional() configService?: ConfigService,
+  ) {
+    this.timeoutMs =
+      configService?.get<number>('BACKUP_TIMEOUT_MS') ??
+      DEFAULT_BACKUP_TIMEOUT_MS;
+  }
 
   execute(
     connection: ConnectionEntity,
@@ -54,8 +64,8 @@ export class MySQLBackupStrategy implements BackupStrategy {
 
       const timeout = setTimeout(() => {
         mySqlDump.kill();
-        settle(reject, new Error(`mysqldump exceeded ${BACKUP_TIMEOUT_MS}ms timeout`));
-      }, BACKUP_TIMEOUT_MS);
+        settle(reject, new Error(`mysqldump exceeded ${this.timeoutMs}ms timeout`));
+      }, this.timeoutMs);
 
       let totalBytes = 0;
       const hash = createHash('sha256');
