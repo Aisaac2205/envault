@@ -73,3 +73,6 @@ openspec/
 PRODUCT.md
 DESIGN.md
 plan-ejecucion*.md
+
+# Local agent instructions
+AGENTS.md
