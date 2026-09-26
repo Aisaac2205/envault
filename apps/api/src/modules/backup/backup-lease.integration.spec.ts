@@ -1,6 +1,5 @@
+import { join } from 'node:path';
 import { DataSource } from 'typeorm';
-import { CreateBackupLeases1778716800021 } from '../../database/migrations/1778716800021-create-backup-leases';
-import { BackupJobsPendingUnique1778716800022 } from '../../database/migrations/1778716800022-backup-jobs-pending-unique';
 import { BackupJobEntity, STORAGE_KEY_VERSION } from '../../database/entities/backup-job.entity';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { BackupCategory } from '../../database/enums/backup-category.enum';
@@ -8,85 +7,92 @@ import { Environment } from '../../database/enums/environment.enum';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { BackupLeaseRepository } from './backup-lease.repository';
 import { BackupRepository } from './backup.repository';
+import { BackupJobsPendingUnique1778716800022 } from '../../database/migrations/1778716800022-backup-jobs-pending-unique';
 
-function resolveTestDatabaseUrl(): string | null {
+function resolveAdminDatabaseUrl(): string | null {
   const value = process.env.BACKUP_LEASE_TEST_DATABASE_URL;
   if (!value) return null;
 
   const url = new URL(value);
-  const isTestDatabase =
+  const isTestServer =
     (url.protocol === 'postgres:' || url.protocol === 'postgresql:') &&
     url.hostname === 'localhost' &&
     url.port === '5434' &&
     url.pathname === '/testdb' &&
     url.username === 'test_user';
 
-  if (!isTestDatabase) {
+  if (!isTestServer) {
     throw new Error('BACKUP_LEASE_TEST_DATABASE_URL must target the local test database');
   }
 
   return value;
 }
 
-const databaseUrl = resolveTestDatabaseUrl();
-const integration = databaseUrl ? describe : describe.skip;
-const testDatabaseUrl = databaseUrl ?? '';
+/** Builds a connection URL to another database on the same Postgres server. */
+function withDatabaseName(adminUrl: string, databaseName: string): string {
+  const url = new URL(adminUrl);
+  url.pathname = `/${databaseName}`;
+  return url.toString();
+}
+
+const adminDatabaseUrl = resolveAdminDatabaseUrl();
+const integration = adminDatabaseUrl ? describe : describe.skip;
 
 integration('backup lease PostgreSQL integration', () => {
-  const firstDataSource = new DataSource({
-    type: 'postgres',
-    url: testDatabaseUrl,
-    entities: [BackupJobEntity],
-  });
-  const secondDataSource = new DataSource({
-    type: 'postgres',
-    url: testDatabaseUrl,
-    entities: [BackupJobEntity],
-  });
+  // A uniquely-named throwaway database per run: this suite builds its own
+  // schema from the real migration chain (see beforeAll), so it no longer
+  // needs an empty shared `/testdb` and can never collide with the
+  // restore-lease/audit integration suites that also run against that server.
+  const databaseName = `backup_lease_it_${process.pid}_${Date.now()}`;
+  const connectionId = '00000000-0000-0000-0000-000000000301';
+  const pendingUniqueMigration = new BackupJobsPendingUnique1778716800022();
+
+  let adminDataSource: DataSource;
+  let firstDataSource: DataSource;
+  let secondDataSource: DataSource;
   let firstRepository: BackupLeaseRepository;
   let secondRepository: BackupLeaseRepository;
   let firstBackupRepository: BackupRepository;
   let secondBackupRepository: BackupRepository;
-  const migration = new CreateBackupLeases1778716800021();
-  const pendingUniqueMigration = new BackupJobsPendingUnique1778716800022();
-  const connectionId = '00000000-0000-0000-0000-000000000301';
-  let createdBackupJobs = false;
 
   beforeAll(async () => {
+    const url = adminDatabaseUrl ?? '';
+    adminDataSource = new DataSource({ type: 'postgres', url });
+    await adminDataSource.initialize();
+    // CREATE DATABASE cannot run inside a transaction block; DataSource#query
+    // issues it as a standalone statement, which is what we need here.
+    await adminDataSource.query(`CREATE DATABASE "${databaseName}"`);
+
+    const testDatabaseUrl = withDatabaseName(url, databaseName);
+
+    // Build the schema from the REAL migration chain (never hand-written
+    // DDL) so this suite validates the raw SQL in BackupRepository/
+    // BackupLeaseRepository against the exact column types production has —
+    // enum-typed `status`/`category`, varchar `connectionId`, NOT NULL
+    // constraints, etc. The glob picks up every migration file, so a future
+    // migration is automatically included without touching this test.
+    const migrationsDataSource = new DataSource({
+      type: 'postgres',
+      url: testDatabaseUrl,
+      migrations: [join(__dirname, '../../database/migrations/*{.ts,.js}')],
+    });
+    await migrationsDataSource.initialize();
+    await migrationsDataSource.runMigrations();
+    await migrationsDataSource.destroy();
+
+    firstDataSource = new DataSource({
+      type: 'postgres',
+      url: testDatabaseUrl,
+      entities: [BackupJobEntity],
+    });
+    secondDataSource = new DataSource({
+      type: 'postgres',
+      url: testDatabaseUrl,
+      entities: [BackupJobEntity],
+    });
     await firstDataSource.initialize();
     await secondDataSource.initialize();
-    const runner = firstDataSource.createQueryRunner();
-    await runner.connect();
-    try {
-      const [leases] = await runner.query("SELECT to_regclass('public.backup_leases') AS name");
-      const [jobs] = await runner.query("SELECT to_regclass('public.backup_jobs') AS name");
-      if (leases.name || jobs.name) {
-        throw new Error('Backup lease integration test requires an empty local test database');
-      }
-      await runner.query(`CREATE TABLE backup_jobs (
-        id uuid PRIMARY KEY,
-        "connectionId" uuid NOT NULL,
-        environment varchar NOT NULL DEFAULT 'prod',
-        "dbType" varchar NULL,
-        status varchar NOT NULL,
-        "fileKey" varchar NULL,
-        "storageKeyVersion" integer NOT NULL DEFAULT 1,
-        category varchar NULL,
-        "fileSizeMb" float NULL,
-        sha256 varchar NULL,
-        bytes bigint NULL,
-        "startedAt" timestamp NULL,
-        "completedAt" timestamp NULL,
-        "errorMessage" text NULL,
-        "triggeredBy" varchar NOT NULL,
-        "createdAt" timestamp NOT NULL DEFAULT now()
-      )`);
-      createdBackupJobs = true;
-      await migration.up(runner);
-      await pendingUniqueMigration.up(runner);
-    } finally {
-      await runner.release();
-    }
+
     firstRepository = new BackupLeaseRepository(firstDataSource);
     secondRepository = new BackupLeaseRepository(secondDataSource);
     firstBackupRepository = new BackupRepository(
@@ -106,20 +112,13 @@ integration('backup lease PostgreSQL integration', () => {
 
   afterAll(async () => {
     try {
-      if (firstDataSource.isInitialized) {
-        const runner = firstDataSource.createQueryRunner();
-        await runner.connect();
-        try {
-          await pendingUniqueMigration.down(runner);
-          await migration.down(runner);
-          if (createdBackupJobs) await runner.query('DROP TABLE backup_jobs');
-        } finally {
-          await runner.release();
-        }
-      }
+      if (secondDataSource?.isInitialized) await secondDataSource.destroy();
+      if (firstDataSource?.isInitialized) await firstDataSource.destroy();
     } finally {
-      if (secondDataSource.isInitialized) await secondDataSource.destroy();
-      if (firstDataSource.isInitialized) await firstDataSource.destroy();
+      if (adminDataSource?.isInitialized) {
+        await adminDataSource.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
+        await adminDataSource.destroy();
+      }
     }
   });
 
@@ -128,10 +127,13 @@ integration('backup lease PostgreSQL integration', () => {
     jobConnectionId: string,
     status: JobStatus.PENDING | JobStatus.RUNNING,
   ): Promise<void> {
+    // "environment" and "triggeredBy" are NOT NULL in the real schema (no
+    // default for environment), unlike the hand-written table this suite
+    // used to create.
     await firstDataSource.query(
-      `INSERT INTO backup_jobs (id, "connectionId", status, "fileKey", "triggeredBy")
-       VALUES ($1, $2, $3, 'conn/manual/fencing.dump', 'fencing-test')`,
-      [id, jobConnectionId, status],
+      `INSERT INTO backup_jobs (id, "connectionId", environment, status, "fileKey", "triggeredBy")
+       VALUES ($1, $2, $3, $4, 'conn/manual/fencing.dump', 'fencing-test')`,
+      [id, jobConnectionId, Environment.PROD, status],
     );
   }
 
@@ -348,14 +350,14 @@ integration('backup lease PostgreSQL integration', () => {
         const olderId = '00000000-0000-0000-0000-000000000501';
         const newerId = '00000000-0000-0000-0000-000000000502';
         await firstDataSource.query(
-          `INSERT INTO backup_jobs (id, "connectionId", status, category, "fileKey", "triggeredBy", "createdAt")
-           VALUES ($1, $2, 'pending', $3, 'older.dump', 'dedupe-test', now() - interval '1 hour')`,
-          [olderId, connId, BackupCategory.HOURLY],
+          `INSERT INTO backup_jobs (id, "connectionId", environment, status, category, "fileKey", "triggeredBy", "createdAt")
+           VALUES ($1, $2, $3, 'pending', $4, 'older.dump', 'dedupe-test', now() - interval '1 hour')`,
+          [olderId, connId, Environment.PROD, BackupCategory.HOURLY],
         );
         await firstDataSource.query(
-          `INSERT INTO backup_jobs (id, "connectionId", status, category, "fileKey", "triggeredBy", "createdAt")
-           VALUES ($1, $2, 'pending', $3, 'newer.dump', 'dedupe-test', now())`,
-          [newerId, connId, BackupCategory.HOURLY],
+          `INSERT INTO backup_jobs (id, "connectionId", environment, status, category, "fileKey", "triggeredBy", "createdAt")
+           VALUES ($1, $2, $3, 'pending', $4, 'newer.dump', 'dedupe-test', now())`,
+          [newerId, connId, Environment.PROD, BackupCategory.HOURLY],
         );
 
         await pendingUniqueMigration.up(runner);
