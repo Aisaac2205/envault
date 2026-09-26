@@ -6,7 +6,10 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  OnApplicationBootstrap,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Readable } from 'stream';
@@ -39,9 +42,11 @@ import {
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 
 @Injectable()
-export class BackupService {
+export class BackupService implements OnApplicationBootstrap {
   private readonly logger = new Logger(BackupService.name);
   private readonly activeBackups = new Map<string, AbortController>();
+  private readonly activeConnectionDumps = new Set<string>();
+  private readonly backupTimeoutMs: number;
 
   constructor(
     private readonly backupRepository: BackupRepository,
@@ -52,7 +57,42 @@ export class BackupService {
     private readonly backupQueue: Queue,
     @Inject('BACKUP_STRATEGIES')
     private readonly backupStrategies: Map<DbTypeEnum, BackupStrategy>,
-  ) {}
+    @Optional()
+    private readonly configService?: ConfigService,
+  ) {
+    this.backupTimeoutMs =
+      this.configService?.get<number>('BACKUP_TIMEOUT_MS') ?? 1_800_000;
+  }
+
+  async onApplicationBootstrap(): Promise<void> {
+    await this.sweepOrphans();
+  }
+
+  async sweepOrphans(): Promise<void> {
+    try {
+      const unfinished = await this.backupRepository.findAllUnfinished();
+      if (unfinished.length === 0) {
+        return;
+      }
+
+      this.logger.warn(
+        `Detectados ${unfinished.length} respaldos sin finalizar al iniciar el proceso. Limpiando huérfanos...`,
+      );
+
+      for (const job of unfinished) {
+        await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
+          errorMessage: 'Respaldo interrumpido por reinicio o detención del servicio',
+          completedAt: new Date(),
+        });
+        this.logger.warn(
+          `Respaldo huérfano ${job.id} (conexión ${job.connectionId}) marcado como FAILED`,
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Error en sweepOrphans de BackupService: ${message}`);
+    }
+  }
 
   async createBackup(
     dto: CreateBackupDto,
@@ -76,9 +116,29 @@ export class BackupService {
 
     const activeJob = await this.backupRepository.findActiveJobForConnection(connection.id);
     if (activeJob) {
-      throw new ConflictException(
-        `Ya existe un respaldo activo para la conexión "${connection.name}" (Job: ${activeJob.id}).`,
-      );
+      const jobAgeMs = Date.now() - (activeJob.startedAt ?? activeJob.createdAt).getTime();
+      if (jobAgeMs > this.backupTimeoutMs) {
+        this.logger.warn(
+          `Respaldo activo previo ${activeJob.id} superó el timeout (${jobAgeMs}ms > ${this.backupTimeoutMs}ms). Marcando como FAILED.`,
+        );
+        await this.backupRepository.updateStatus(activeJob.id, JobStatus.FAILED, {
+          errorMessage: 'Respaldo superó el tiempo límite de ejecución (timeout)',
+          completedAt: new Date(),
+        });
+      } else if (activeJob.status === JobStatus.PENDING) {
+        this.logger.log(
+          `Ya existe un respaldo en cola para la conexión "${connection.name}" (Job: ${activeJob.id}). Reutilizando ticket de cola.`,
+        );
+        return {
+          jobId: activeJob.id,
+          fileKey: activeJob.fileKey ?? '',
+          status: JobStatus.PENDING,
+        };
+      } else {
+        this.logger.log(
+          `Conexión "${connection.name}" tiene un respaldo en ejecución (Job: ${activeJob.id}). Encolando nuevo respaldo para ejecución secuencial.`,
+        );
+      }
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -176,13 +236,25 @@ export class BackupService {
       );
     }
 
+    const abortController = new AbortController();
+    this.activeBackups.set(job.id, abortController);
+
+    while (this.activeConnectionDumps.has(connection.id)) {
+      if (abortController.signal.aborted) {
+        throw new Error('Operación cancelada por el usuario');
+      }
+      this.logger.log(
+        `Conexión "${connection.name}" está ejecutando otro volcado. Esperando liberación de conexión para job ${job.id}...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
+    this.activeConnectionDumps.add(connection.id);
+
     const startedAt = new Date();
     await this.backupRepository.updateStatus(job.id, JobStatus.RUNNING, {
       startedAt,
     });
-
-    const abortController = new AbortController();
-    this.activeBackups.set(job.id, abortController);
 
     this.sseService.register(job.id);
     this.sseService.emit(job.id, {
@@ -332,6 +404,7 @@ export class BackupService {
         `Backup failed for job ${job.id}: ${errorMessage}`,
       );
     } finally {
+      this.activeConnectionDumps.delete(connection.id);
       this.activeBackups.delete(job.id);
     }
   }
