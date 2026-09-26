@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Queue, UnrecoverableError } from 'bullmq';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { Client } from 'pg';
@@ -265,7 +265,7 @@ export class BackupService implements OnApplicationBootstrap {
     const job = await this.backupRepository.findById(jobId);
     if (!job) {
       this.logger.error(`Backup job ${jobId} not found in database`);
-      throw new NotFoundException(`Backup job "${jobId}" no encontrado`);
+      throw new UnrecoverableError(`Backup job "${jobId}" no encontrado`);
     }
 
     if (job.status === JobStatus.COMPLETED) {
@@ -291,9 +291,14 @@ export class BackupService implements OnApplicationBootstrap {
     }
 
     const connection = await this.connectionsService.findById(job.connectionId);
+    if (connection.environment !== Environment.PROD) {
+      throw new UnrecoverableError(
+        `Solo se permiten backups del entorno de producción. Conexión "${connection.name}" es "${connection.environment}".`,
+      );
+    }
     const strategy = this.backupStrategies.get(connection.dbType);
     if (!strategy) {
-      throw new BadRequestException(
+      throw new UnrecoverableError(
         `No hay estrategia de backup configurada para tipo "${connection.dbType}"`,
       );
     }
@@ -322,6 +327,7 @@ export class BackupService implements OnApplicationBootstrap {
     this.activeBackups.set(job.id, { controller: abortController, abort });
 
     let heartbeatTimer: NodeJS.Timeout | null = null;
+    let timeoutTimer: NodeJS.Timeout | null = null;
 
     try {
       if (abortController.signal.aborted) {
@@ -362,6 +368,11 @@ export class BackupService implements OnApplicationBootstrap {
           });
       }, BACKUP_LEASE_HEARTBEAT_MS);
       heartbeatTimer.unref?.();
+
+      timeoutTimer = setTimeout(() => {
+        abort({ kind: 'timeout', timeoutMs: this.backupTimeoutMs });
+      }, this.backupTimeoutMs);
+      timeoutTimer.unref?.();
 
       this.sseService.register(job.id);
       this.sseService.emit(job.id, {
@@ -522,10 +533,13 @@ export class BackupService implements OnApplicationBootstrap {
       });
       this.sseService.complete(job.id);
 
-      if (
-        abortState.reason?.kind === 'cancelled' ||
-        rawMessage.includes('Operación cancelada por el usuario')
-      ) {
+      // Classify strictly by the closure-held `abortState.reason`, never by
+      // `rawMessage`: every strategy rejects an aborted signal with the same
+      // hardcoded "Operación cancelada por el usuario" message regardless of
+      // WHY the signal fired (cancel, timeout, or a lost lease), so matching
+      // on the message would misclassify a timeout or lease-lost dump as a
+      // user cancel and swallow a retry it should get.
+      if (abortState.reason?.kind === 'cancelled') {
         return {
           kind: 'finished',
           result: {
@@ -536,12 +550,21 @@ export class BackupService implements OnApplicationBootstrap {
         };
       }
 
+      if (abortState.reason?.kind === 'timeout') {
+        throw new UnrecoverableError(
+          `Backup job ${job.id} excedió el tiempo límite de ejecución (${abortState.reason.timeoutMs}ms)`,
+        );
+      }
+
       throw new InternalServerErrorException(
         `Backup failed for job ${job.id}: ${errorMessage}`,
       );
     } finally {
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
+      }
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
       }
       this.activeBackups.delete(job.id);
       await this.backupLeaseRepository

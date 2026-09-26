@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
+import { UnrecoverableError } from 'bullmq';
 import { BackupService } from './backup.service';
 import { BackupRepository } from './backup.repository';
 import { BackupLeaseRepository } from './backup-lease.repository';
@@ -588,7 +589,12 @@ describe('BackupService', () => {
       );
     });
 
-    it('aborts the dump when a heartbeat renewal returns false (lease lost)', async () => {
+    it('rethrows for BullMQ retry when a heartbeat renewal returns false (lease lost), instead of treating it like a cancel', async () => {
+      // Regression test for the classification bug fixed by reusing
+      // `abortState.reason` (see the removed `rawMessage.includes(...)`
+      // fallback below): BullMQ's strategies reject with the SAME hardcoded
+      // message for every abort reason, so matching on the message alone
+      // misclassified a lost lease as a user cancel and swallowed the retry.
       jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
       try {
         mockBackupRepository.findById.mockResolvedValue({
@@ -601,10 +607,8 @@ describe('BackupService', () => {
         });
         mockBackupLeaseRepository.renew.mockResolvedValue(false);
 
-        let rejectDump: (err: Error) => void = () => undefined;
         mockStrategy.execute.mockImplementation((_conn, _key, _meta, options) => {
           return new Promise((_resolve, reject) => {
-            rejectDump = reject;
             options?.abortSignal?.addEventListener('abort', () => {
               reject(new Error('Operación cancelada por el usuario'));
             });
@@ -612,10 +616,13 @@ describe('BackupService', () => {
         });
 
         const pending = service.executeQueuedBackup('job-lease-lost');
+        // Attach the rejection assertion synchronously, before advancing
+        // timers, so Node never sees an unhandled rejection window.
+        const assertion = expect(pending).rejects.toThrow();
         await Promise.resolve();
         await jest.advanceTimersByTimeAsync(60_000);
 
-        const outcome = await pending;
+        await assertion;
 
         expect(mockBackupLeaseRepository.renew).toHaveBeenCalledWith(
           'conn-1',
@@ -623,18 +630,112 @@ describe('BackupService', () => {
           expect.any(String),
           expect.any(Number),
         );
-        expect(outcome.kind).toBe('finished');
-        if (outcome.kind !== 'finished') throw new Error('expected finished outcome');
-        expect(outcome.result.status).toBe(JobStatus.FAILED);
+        expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
+          'job-lease-lost',
+          'conn-1',
+          expect.any(String),
+          expect.any(String),
+          expect.any(Date),
+        );
         expect(mockBackupLeaseRepository.release).toHaveBeenCalledWith(
           'conn-1',
           'job-lease-lost',
           expect.any(String),
         );
-        void rejectDump;
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it('aborts on BACKUP_TIMEOUT_MS, marks the row FAILED, and throws UnrecoverableError instead of retrying', async () => {
+      // 30 heartbeat ticks (1_800_000ms / 60_000ms) each flushing a real
+      // Promise under fake timers pushes this past Jest's 5s default.
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+      try {
+        mockBackupRepository.findById.mockResolvedValue({
+          id: 'job-timeout',
+          connectionId: 'conn-1',
+          status: JobStatus.PENDING,
+          fileKey: 'prod-db/manual/timeout.dump',
+          category: BackupCategory.MANUAL,
+          triggeredBy: mockUser.id,
+        });
+
+        mockStrategy.execute.mockImplementation((_conn, _key, _meta, options) => {
+          return new Promise((_resolve, reject) => {
+            options?.abortSignal?.addEventListener('abort', () => {
+              reject(new Error('Operación cancelada por el usuario'));
+            });
+          });
+        });
+
+        const pending = service.executeQueuedBackup('job-timeout');
+        const assertion = expect(pending).rejects.toBeInstanceOf(UnrecoverableError);
+        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1_800_000);
+
+        await assertion;
+
+        expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
+          'job-timeout',
+          'conn-1',
+          expect.any(String),
+          expect.any(String),
+          expect.any(Date),
+        );
+        expect(mockBackupLeaseRepository.release).toHaveBeenCalledWith(
+          'conn-1',
+          'job-timeout',
+          expect.any(String),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    }, 20_000);
+
+    it('throws UnrecoverableError when the backup job row no longer exists', async () => {
+      mockBackupRepository.findById.mockResolvedValue(null);
+
+      await expect(service.executeQueuedBackup('missing-job')).rejects.toBeInstanceOf(
+        UnrecoverableError,
+      );
+      expect(mockBackupLeaseRepository.tryAcquire).not.toHaveBeenCalled();
+    });
+
+    it('throws UnrecoverableError when the connection targeted by the job is not in PROD', async () => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-nonprod',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/nonprod.dump',
+      });
+      mockConnectionsService.findById.mockResolvedValue({
+        ...mockConnection,
+        environment: Environment.DEV,
+      });
+
+      await expect(service.executeQueuedBackup('job-nonprod')).rejects.toBeInstanceOf(
+        UnrecoverableError,
+      );
+      expect(mockBackupLeaseRepository.tryAcquire).not.toHaveBeenCalled();
+    });
+
+    it('throws UnrecoverableError when no backup strategy is configured for the dbType', async () => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-nostrategy',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/nostrategy.dump',
+      });
+      mockConnectionsService.findById.mockResolvedValue({
+        ...mockConnection,
+        dbType: DbTypeEnum.MYSQL,
+      });
+
+      await expect(service.executeQueuedBackup('job-nostrategy')).rejects.toBeInstanceOf(
+        UnrecoverableError,
+      );
+      expect(mockBackupLeaseRepository.tryAcquire).not.toHaveBeenCalled();
     });
 
     it('does not delete R2 or emit failed SSE when the failure write is fenced out by another lease owner', async () => {
