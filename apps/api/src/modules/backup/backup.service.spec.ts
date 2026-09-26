@@ -22,6 +22,8 @@ describe('BackupService', () => {
     findById: jest.Mock;
     findActiveJobForConnection: jest.Mock;
     findAllUnfinished: jest.Mock;
+    failPendingStale: jest.Mock;
+    failRunningWithoutLease: jest.Mock;
   };
   let mockR2Service: {
     upload: jest.Mock;
@@ -38,6 +40,7 @@ describe('BackupService', () => {
   let mockQueue: {
     add: jest.Mock;
     getJob?: jest.Mock;
+    getJobState: jest.Mock;
   };
   let mockStrategy: {
     execute: jest.Mock;
@@ -66,6 +69,8 @@ describe('BackupService', () => {
       findById: jest.fn(),
       findActiveJobForConnection: jest.fn().mockResolvedValue(null),
       findAllUnfinished: jest.fn().mockResolvedValue([]),
+      failPendingStale: jest.fn().mockResolvedValue(false),
+      failRunningWithoutLease: jest.fn().mockResolvedValue(false),
     };
     mockR2Service = {
       upload: jest.fn().mockResolvedValue(undefined),
@@ -81,6 +86,7 @@ describe('BackupService', () => {
     };
     mockQueue = {
       add: jest.fn().mockResolvedValue({ id: 'bull-1' }),
+      getJobState: jest.fn().mockResolvedValue('unknown'),
     };
     mockStrategy = {
       execute: jest.fn().mockResolvedValue({
@@ -207,28 +213,100 @@ describe('BackupService', () => {
     expect(mockQueue.add).toHaveBeenCalled();
   });
 
-  it('sweepOrphans marks unfinished jobs as FAILED on startup', async () => {
-    mockBackupRepository.findAllUnfinished.mockResolvedValue([
-      { id: 'orphaned-1', connectionId: 'conn-1', status: JobStatus.RUNNING },
-      { id: 'orphaned-2', connectionId: 'conn-2', status: JobStatus.PENDING },
-    ]);
+  describe('sweepOrphans', () => {
+    it('leaves a RUNNING job alone when its lease is still live', async () => {
+      mockBackupRepository.findAllUnfinished.mockResolvedValue([
+        { id: 'running-1', connectionId: 'conn-1', status: JobStatus.RUNNING },
+      ]);
+      mockBackupRepository.failRunningWithoutLease.mockResolvedValue(false);
 
-    await service.sweepOrphans();
+      await service.sweepOrphans();
 
-    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
-      'orphaned-1',
-      JobStatus.FAILED,
-      expect.objectContaining({
-        errorMessage: expect.stringContaining('interrumpido'),
-      }),
-    );
-    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
-      'orphaned-2',
-      JobStatus.FAILED,
-      expect.objectContaining({
-        errorMessage: expect.stringContaining('interrumpido'),
-      }),
-    );
+      expect(mockBackupRepository.failRunningWithoutLease).toHaveBeenCalledWith(
+        'running-1',
+        expect.any(String),
+        expect.any(Date),
+      );
+      expect(mockQueue.getJobState).not.toHaveBeenCalled();
+      expect(mockBackupRepository.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('fails a RUNNING job with no live lease', async () => {
+      mockBackupRepository.findAllUnfinished.mockResolvedValue([
+        { id: 'running-2', connectionId: 'conn-1', status: JobStatus.RUNNING },
+      ]);
+      mockBackupRepository.failRunningWithoutLease.mockResolvedValue(true);
+
+      await service.sweepOrphans();
+
+      expect(mockBackupRepository.failRunningWithoutLease).toHaveBeenCalledWith(
+        'running-2',
+        expect.stringContaining('interrumpido'),
+        expect.any(Date),
+      );
+    });
+
+    it('leaves a PENDING job alone when its BullMQ job still exists', async () => {
+      mockBackupRepository.findAllUnfinished.mockResolvedValue([
+        { id: 'pending-1', connectionId: 'conn-1', status: JobStatus.PENDING },
+      ]);
+      mockQueue.getJobState.mockResolvedValue('delayed');
+
+      await service.sweepOrphans();
+
+      expect(mockQueue.getJobState).toHaveBeenCalledWith('pending-1');
+      expect(mockBackupRepository.failPendingStale).not.toHaveBeenCalled();
+    });
+
+    it('defers to the 60s grace period when a PENDING job has no matching BullMQ job', async () => {
+      mockBackupRepository.findAllUnfinished.mockResolvedValue([
+        { id: 'pending-2', connectionId: 'conn-1', status: JobStatus.PENDING },
+      ]);
+      mockQueue.getJobState.mockResolvedValue('unknown');
+      mockBackupRepository.failPendingStale.mockResolvedValue(false);
+
+      await service.sweepOrphans();
+
+      expect(mockBackupRepository.failPendingStale).toHaveBeenCalledWith(
+        'pending-2',
+        expect.stringContaining('interrumpido'),
+        expect.any(Date),
+      );
+    });
+
+    it('fails a stale PENDING job once the grace period has elapsed', async () => {
+      mockBackupRepository.findAllUnfinished.mockResolvedValue([
+        { id: 'pending-3', connectionId: 'conn-1', status: JobStatus.PENDING },
+      ]);
+      mockQueue.getJobState.mockResolvedValue('failed');
+      mockBackupRepository.failPendingStale.mockResolvedValue(true);
+
+      await service.sweepOrphans();
+
+      expect(mockBackupRepository.failPendingStale).toHaveBeenCalledWith(
+        'pending-3',
+        expect.stringContaining('interrumpido'),
+        expect.any(Date),
+      );
+    });
+
+    it('skips a row and continues when checking its BullMQ state fails', async () => {
+      mockBackupRepository.findAllUnfinished.mockResolvedValue([
+        { id: 'pending-4', connectionId: 'conn-1', status: JobStatus.PENDING },
+        { id: 'running-3', connectionId: 'conn-2', status: JobStatus.RUNNING },
+      ]);
+      mockQueue.getJobState.mockRejectedValue(new Error('Redis unavailable'));
+      mockBackupRepository.failRunningWithoutLease.mockResolvedValue(true);
+
+      await expect(service.sweepOrphans()).resolves.not.toThrow();
+
+      expect(mockBackupRepository.failPendingStale).not.toHaveBeenCalled();
+      expect(mockBackupRepository.failRunningWithoutLease).toHaveBeenCalledWith(
+        'running-3',
+        expect.any(String),
+        expect.any(Date),
+      );
+    });
   });
 
   it('executeQueuedBackup uploads manifest v2 and updates DB with sha256 and bytes upon completion', async () => {
