@@ -9,6 +9,7 @@ import { SseModule } from '../../shared/sse/sse.module';
 import { BackupController } from './backup.controller';
 import { BackupService } from './backup.service';
 import { BackupRepository } from './backup.repository';
+import { BackupLeaseRepository } from './backup-lease.repository';
 import { BackupProcessor } from './backup.processor';
 import { BACKUP_QUEUE_NAME } from './backup.constants';
 import { R2Service } from './r2.service';
@@ -34,6 +35,7 @@ import { RestoreStrategy } from './interfaces/restore-strategy.interface';
   providers: [
     BackupService,
     BackupRepository,
+    BackupLeaseRepository,
     BackupProcessor,
     R2Service,
     PostgresBackupStrategy,
@@ -70,6 +72,7 @@ import { RestoreStrategy } from './interfaces/restore-strategy.interface';
   exports: [
     BackupService,
     BackupRepository,
+    BackupLeaseRepository,
     BackupProcessor,
     R2Service,
     'BACKUP_STRATEGIES',
