@@ -44,7 +44,7 @@ describe("Sidebar", () => {
   it("renders all navigation items for admin user", () => {
     renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Dumps")).toBeInTheDocument();
+    expect(screen.getByText("Respaldos")).toBeInTheDocument();
     expect(screen.getByText("Limpieza")).toBeInTheDocument();
     expect(screen.getByText("Restaurar")).toBeInTheDocument();
     expect(screen.getByText("Cronjobs")).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe("Sidebar", () => {
     const nonAdmin: AuthUser = { ...mockUser, role: "user" };
     renderWithRouter(<Sidebar user={nonAdmin} onLogout={mockLogout} />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.queryByText("Dumps")).not.toBeInTheDocument();
+    expect(screen.queryByText("Respaldos")).not.toBeInTheDocument();
     expect(screen.queryByText("Usuarios")).not.toBeInTheDocument();
     expect(screen.getByText("Auditoría")).toBeInTheDocument();
   });
@@ -71,7 +71,7 @@ describe("Sidebar", () => {
     renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
     const userButton = screen.getByRole("button", { name: /Admin/i });
     fireEvent.click(userButton);
-    expect(screen.getByText("Cerrar Sesión")).toBeInTheDocument();
+    expect(screen.getByText("Cerrar sesión")).toBeInTheDocument();
   });
 
   it("renders EnVault Management branding", () => {
@@ -178,7 +178,7 @@ describe("SidebarUser", () => {
     expect(screen.getByText("Administrador")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Admin/i }));
-    expect(screen.getByText("Cerrar Sesión")).toBeInTheDocument();
+    expect(screen.getByText("Cerrar sesión")).toBeInTheDocument();
   });
 });
 
@@ -297,7 +297,7 @@ describe("Sidebar — collapsible icon mode", () => {
     });
     // All labels should be visible
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Dumps")).toBeInTheDocument();
+    expect(screen.getByText("Respaldos")).toBeInTheDocument();
     expect(screen.getByAltText("EnVault Management")).toBeInTheDocument();
     expect(screen.getByText("Administrador")).toBeInTheDocument();
   });
@@ -308,12 +308,12 @@ describe("Sidebar — collapsible icon mode", () => {
     });
     // Labels are hidden
     expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
-    expect(screen.queryByText("Dumps")).not.toBeInTheDocument();
+    expect(screen.queryByText("Respaldos")).not.toBeInTheDocument();
     // Logout text hidden, but the icon button still exists
-    expect(screen.queryByText("Cerrar Sesión")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cerrar sesión")).not.toBeInTheDocument();
     // The nav links exist (icons rendered with aria-label)
     expect(screen.getByLabelText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByLabelText("Dumps")).toBeInTheDocument();
+    expect(screen.getByLabelText("Respaldos")).toBeInTheDocument();
   });
 
   it("uses 56px width when collapsed, 216px when expanded", () => {
@@ -340,7 +340,7 @@ describe("Sidebar — collapsible icon mode", () => {
 
     // Each nav item should have an aria-label when collapsed
     expect(screen.getByLabelText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByLabelText("Dumps")).toBeInTheDocument();
+    expect(screen.getByLabelText("Respaldos")).toBeInTheDocument();
     expect(screen.getByLabelText("Auditoría")).toBeInTheDocument();
   });
 

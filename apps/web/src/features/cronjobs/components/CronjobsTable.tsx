@@ -58,7 +58,7 @@ export default function CronjobsTable({
             {formatEnvironment(env)}
           </span>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-muted-foreground">-</span>
         );
       },
     },
@@ -88,7 +88,7 @@ export default function CronjobsTable({
         cronjob.lastStatus ? (
           <StatusBadge status={cronjob.lastStatus} />
         ) : (
-          <span className="text-xs text-muted-foreground">—</span>
+          <span className="text-xs text-muted-foreground">-</span>
         ),
     },
     {

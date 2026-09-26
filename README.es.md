@@ -18,11 +18,11 @@ Plataforma de gestión centralizada de bases de datos. Permite administrar conex
 | Frontend        | React                         | ^19.1.0 |
 | Build tool      | Vite                          | ^6.3.3  |
 | Router          | React Router                  | ^7.5.0  |
-| Auth            | Better Auth (nativo, sesiones por cookie) | —  |
-| Storage         | Cloudflare R2 (S3-compatible) | —       |
-| Base de datos   | PostgreSQL 16                 | —       |
-| Colas y tareas  | Redis 7 + BullMQ (^11.0.3)    | —       |
-| Tiempo real     | Server-Sent Events (SSE)      | —       |
+| Auth            | Better Auth (nativo, sesiones por cookie) | -  |
+| Storage         | Cloudflare R2 (S3-compatible) | -       |
+| Base de datos   | PostgreSQL 16                 | -       |
+| Colas y tareas  | Redis 7 + BullMQ (^11.0.3)    | -       |
+| Tiempo real     | Server-Sent Events (SSE)      | -       |
 
 ---
 

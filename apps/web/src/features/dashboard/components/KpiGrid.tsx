@@ -34,7 +34,7 @@ export function KpiGrid({ stats, connections, dailyCounts }: KpiGridProps) {
       <StaggerItem>
         <StatCard
           label={t('kpi.successRate')}
-          value={stats ? `${stats.successRate30d}%` : "—"}
+          value={stats ? `${stats.successRate30d}%` : "-"}
           icon={<CheckCircle className="h-4 w-4" />}
           variant="outlined"
         />

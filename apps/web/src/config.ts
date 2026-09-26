@@ -12,13 +12,13 @@ export function createAppConfig(rawApiUrl?: string): AppConfig {
       pathname = new URL(apiUrl).pathname;
     } catch {
       throw new Error(
-        `VITE_API_URL is not a valid absolute URL: "${apiUrl}". It must be a bare origin, e.g. "https://api.example.com" — or empty for a same-origin deployment.`,
+        `VITE_API_URL is not a valid absolute URL: "${apiUrl}". It must be a bare origin, e.g. "https://api.example.com", or empty for a same-origin deployment.`,
       );
     }
     if (pathname !== "" && pathname !== "/") {
       throw new Error(
         `VITE_API_URL must be a bare origin with no path, got "${apiUrl}". ` +
-          `Better Auth appends its own /api/auth to this value — a path here (like "/api") ` +
+          `Better Auth appends its own /api/auth to this value. A path here (like "/api") ` +
           `makes it skip that and silently breaks every auth request.`,
       );
     }

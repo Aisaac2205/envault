@@ -149,7 +149,7 @@ describe("Restore Feature", () => {
 
     renderWithProviders();
 
-    expect(screen.getByText("El restore se completó exitosamente")).toBeInTheDocument();
+    expect(screen.getByText("La restauración se completó correctamente")).toBeInTheDocument();
     const backBtn = screen.getByRole("button", { name: "Volver al inicio" });
     expect(backBtn).toBeInTheDocument();
   });

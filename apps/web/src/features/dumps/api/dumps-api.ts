@@ -41,4 +41,9 @@ export const dumpsApi = {
     apiClient
       .post<{ url: string; fileKey: string }>(`/backups/${id}/download-url`)
       .then((r) => r.data),
+
+  cancelBackup: (id: string) =>
+    apiClient
+      .post<{ message: string; jobId?: string }>(`/backups/${id}/cancel`)
+      .then((r) => r.data),
 };

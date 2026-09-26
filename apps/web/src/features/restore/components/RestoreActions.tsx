@@ -27,7 +27,7 @@ export function RestoreActions({
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
           <p className="leading-relaxed text-text-secondary">
             <span className="font-semibold text-destructive">
-              {t("dryRun.warningPrefix", "Precaución:")}
+              {t("dryRun.warningPrefix", "Precaución")}.
             </span>{" "}
             {t("dryRun.warningText")}
           </p>

@@ -75,22 +75,22 @@ export function DryRunResult({
       {/* Connection info */}
       <div className="grid gap-3 sm:grid-cols-2">
         {result.sourceConnection && (
-          <ConnectionCard conn={result.sourceConnection} label="Source" />
+          <ConnectionCard conn={result.sourceConnection} label={t("dryRun.sourceLabel")} />
         )}
-        <ConnectionCard conn={result.targetConnection} label="Target" />
+        <ConnectionCard conn={result.targetConnection} label={t("dryRun.targetLabel")} />
       </div>
 
       <div className="flex gap-4 text-sm">
         <div className="flex-1 rounded-lg bg-muted/40 px-3 py-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Dump (source)</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("dryRun.sourceLabel")}</p>
           <p className="font-mono font-semibold">
-            {source.tableCount} tablas, ~{formatNumber(source.estimatedRows)} filas
+            {t("dryRun.sourceSummary", { tables: source.tableCount, rows: formatNumber(source.estimatedRows) })}
           </p>
         </div>
         <div className="flex-1 rounded-lg bg-muted/40 px-3 py-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Destino (target)</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("dryRun.targetLabel")}</p>
           <p className="font-mono font-semibold">
-            {target.tableCount} tablas, ~{formatNumber(target.estimatedRows)} filas
+            {t("dryRun.targetSummary", { tables: target.tableCount, rows: formatNumber(target.estimatedRows) })}
           </p>
         </div>
       </div>
@@ -101,16 +101,16 @@ export function DryRunResult({
             <tr>
               <th className="w-10 px-3 py-2.5"></th>
               <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Tabla
+                {t("dryRun.columnTable")}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {result.sourceConnection?.environment?.toUpperCase() ?? "Source"}
+                {result.sourceConnection?.environment?.toUpperCase() ?? t("dryRun.sourceLabel")}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {result.targetConnection.environment.toUpperCase()}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Diferencia
+                {t("dryRun.columnDiff")}
               </th>
             </tr>
           </thead>
@@ -121,8 +121,8 @@ export function DryRunResult({
                   <button
                     type="button"
                     onClick={() => toggleTable(name)}
-                    className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent"
-                    aria-label={`Excluir tabla ${name}`}
+                    className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={t("dryRun.excludeAria", { name })}
                   >
                     {excludedTables.has(name) ? (
                       <X className="h-3 w-3 text-muted-foreground" />
@@ -137,8 +137,8 @@ export function DryRunResult({
                 <td className="px-3 py-2.5 text-right font-mono text-xs">
                   {formatNumber(source.tables.find((row) => row.name === name)?.estimatedRows ?? 0)}
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground">—</td>
-                <td className="px-3 py-2.5 text-right text-xs text-emerald-600">new</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground">-</td>
+                <td className="px-3 py-2.5 text-right text-xs text-emerald-600">{t("dryRun.statusNew")}</td>
               </tr>
             ))}
             {diff.common.map((row) => {
@@ -150,8 +150,8 @@ export function DryRunResult({
                     <button
                       type="button"
                       onClick={() => toggleTable(row.name)}
-                      className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent"
-                      aria-label={`Excluir tabla ${row.name}`}
+                      className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      aria-label={t("dryRun.excludeAria", { name: row.name })}
                     >
                       {isExcluded ? (
                         <X className="h-3 w-3 text-muted-foreground" />
@@ -179,8 +179,8 @@ export function DryRunResult({
                   <button
                     type="button"
                     onClick={() => toggleTable(name)}
-                    className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent"
-                    aria-label={`Excluir tabla ${name}`}
+                    className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label={t("dryRun.excludeAria", { name })}
                   >
                     {excludedTables.has(name) ? (
                       <X className="h-3 w-3 text-muted-foreground" />
@@ -192,11 +192,11 @@ export function DryRunResult({
                 <td className="px-3 py-2.5">
                   <span className="mr-1.5 text-xs text-red-500">−</span>{name}
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground">—</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground">-</td>
                 <td className="px-3 py-2.5 text-right font-mono text-xs">
                   {formatNumber(target.tables.find((t) => t.name === name)?.estimatedRows ?? 0)}
                 </td>
-                <td className="px-3 py-2.5 text-right text-xs text-red-500">drop</td>
+                <td className="px-3 py-2.5 text-right text-xs text-red-500">{t("dryRun.statusDrop")}</td>
               </tr>
             ))}
           </tbody>
@@ -206,14 +206,14 @@ export function DryRunResult({
       <div className="flex items-center justify-between pt-2">
         <span className="text-xs text-muted-foreground">
           {excludedTables.size > 0
-            ? `${excludedTables.size} tabla(s) excluida(s)`
+            ? t("dryRun.excludedCount", { count: excludedTables.size })
             : t("dryRun.allTables")}
         </span>
         <div className="flex gap-3">
-          <Button onClick={onCancel} disabled={isLoading} variant="ghost">
+          <Button onClick={onCancel} disabled={isLoading} variant="ghost" size="sm">
             {t("cancel")}
           </Button>
-          <Button onClick={() => onConfirm(Array.from(excludedTables))} disabled={isLoading} className="bg-black text-white hover:bg-black/90">
+          <Button onClick={() => onConfirm(Array.from(excludedTables))} disabled={isLoading} size="sm">
             {isLoading ? t("action.processing") : t("action.confirm")}
           </Button>
         </div>
@@ -235,15 +235,17 @@ function TargetOnlyView({
   onCancel: () => void;
   isLoading: boolean;
 }) {
+  const { t } = useTranslation("restore");
+
   return (
     <div className="space-y-4">
-      <ConnectionCard conn={targetConnection} label="Target" />
+      <ConnectionCard conn={targetConnection} label={t("dryRun.targetLabel")} />
 
       <p className="text-sm">
-        <span className="text-xs text-amber-600">(manifest no disponible)</span>{" "}
-        Destino actual:{" "}
+        <span className="text-xs text-amber-600">({t("dryRun.noManifest")})</span>{" "}
+        {t("dryRun.currentTarget")}:{" "}
         <span className="font-mono font-semibold">
-          {target.tableCount} tablas, ~{formatNumber(target.estimatedRows)} filas
+          {t("dryRun.targetSummary", { tables: target.tableCount, rows: formatNumber(target.estimatedRows) })}
         </span>
       </p>
 
@@ -252,10 +254,10 @@ function TargetOnlyView({
           <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
             <tr>
               <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Tabla
+                {t("dryRun.columnTable")}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Filas estimadas
+                {t("dryRun.estimatedRows")}
               </th>
             </tr>
           </thead>
@@ -272,12 +274,12 @@ function TargetOnlyView({
         </table>
       </div>
 
-      <div className="flex gap-3 pt-2">
-        <Button onClick={onCancel} disabled={isLoading} variant="ghost">
-          Cancelar
+      <div className="flex gap-3 pt-2 justify-end">
+        <Button onClick={onCancel} disabled={isLoading} variant="ghost" size="sm">
+          {t("cancel")}
         </Button>
-        <Button onClick={onConfirm} disabled={isLoading} className="bg-black text-white hover:bg-black/90">
-          {isLoading ? "Procesando…" : "Confirmar restore"}
+        <Button onClick={onConfirm} disabled={isLoading} size="sm">
+          {isLoading ? t("action.processing") : t("action.confirm")}
         </Button>
       </div>
     </div>

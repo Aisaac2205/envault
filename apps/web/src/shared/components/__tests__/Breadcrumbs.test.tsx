@@ -18,7 +18,7 @@ describe("Breadcrumbs", () => {
   it("renders breadcrumb trail for nested path", () => {
     renderWithRouter(<Breadcrumbs />, { route: "/dumps" });
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Dumps")).toBeInTheDocument();
+    expect(screen.getByText("Respaldos")).toBeInTheDocument();
     // Dashboard should be a link
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
     expect(dashboardLink).toHaveAttribute("href", "/");

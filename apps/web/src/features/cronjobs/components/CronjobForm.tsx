@@ -144,9 +144,9 @@ export default function CronjobForm({
                       let disambiguator = "";
                       if (isDuplicate) {
                         if (conn.host && conn.database) {
-                          disambiguator = ` — ${conn.host}/${conn.database}`;
+                          disambiguator = ` - ${conn.host}/${conn.database}`;
                         } else if (conn.database) {
-                          disambiguator = ` — ${conn.database}`;
+                          disambiguator = ` - ${conn.database}`;
                         } else {
                           disambiguator = ` (#${conn.id.slice(0, 6)})`;
                         }

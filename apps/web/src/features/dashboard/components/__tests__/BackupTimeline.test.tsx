@@ -89,7 +89,7 @@ describe("BackupTimeline", () => {
   it("renders status indicators", () => {
     renderTimeline();
 
-    // Status dot elements — at minimum the two backup status dots
+    // Status dot elements - at minimum the two backup status dots
     const statusDots = document.querySelectorAll(".rounded-full");
     expect(statusDots.length).toBeGreaterThanOrEqual(2);
   });
@@ -105,6 +105,6 @@ describe("BackupTimeline", () => {
 
   it("renders empty state when no backups", () => {
     renderTimeline([]);
-    expect(screen.getByText(/Sin backups recientes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sin respaldos recientes/i)).toBeInTheDocument();
   });
 });

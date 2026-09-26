@@ -18,11 +18,11 @@ Centralized database management platform. Register database connections, run and
 | Frontend        | React                         | ^19.1.0 |
 | Build tool      | Vite                          | ^6.3.3  |
 | Router          | React Router                  | ^7.5.0  |
-| Auth            | Better Auth (native, cookie sessions) | —  |
-| Storage         | Cloudflare R2 (S3-compatible) | —       |
-| Control DB      | **PostgreSQL 16+ (required)** | —       |
-| Queues & Jobs   | Redis 7 + BullMQ (^11.0.3)    | —       |
-| Real-time       | Server-Sent Events (SSE)      | —       |
+| Auth            | Better Auth (native, cookie sessions) | -  |
+| Storage         | Cloudflare R2 (S3-compatible) | -       |
+| Control DB      | **PostgreSQL 16+ (required)** | -       |
+| Queues & Jobs   | Redis 7 + BullMQ (^11.0.3)    | -       |
+| Real-time       | Server-Sent Events (SSE)      | -       |
 
 ---
 
