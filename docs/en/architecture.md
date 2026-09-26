@@ -145,3 +145,11 @@ The purge process operates in two coordinated stages to prevent orphan files in 
 ### 5. Non-Destructive Dry-Run Simulation
 To validate retention policies before executing irreversible deletions, EnVault supports dry-run simulation mode. This operation computes configured retention rules and reports the exact list of candidate dumps, their IDs, and the total storage volume to be reclaimed, without modifying or deleting any remote objects.
 
+### 6. Storage Capacity and Cloudflare R2 Limits
+Cloudflare R2 integration provides a generous free tier of ten gigabytes of monthly storage at zero cost with zero egress bandwidth fees. In addition, it includes one million Class A write operations and ten million Class B read operations every month without charge.
+
+The maximum individual object size supported by Cloudflare R2 is five terabytes. EnVault streams dumps using 32MB multipart parts, enabling single continuous archive streams of up to 320 GB without exceeding the ten thousand part ceiling of the S3 protocol.
+
+For restores requiring local decompression and processing, the staging service validates that local storage maintains a safety margin of twenty percent above the dump size plus a minimum floor of 50 MB, blocking execution early if available disk space is insufficient to prevent disk exhaustion errors (ENOSPC).
+
+

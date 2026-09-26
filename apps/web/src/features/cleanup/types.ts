@@ -70,10 +70,23 @@ export interface ConnectionRetentionPolicyInput {
   retentionDays: number | null;
 }
 
+export interface DryRunCandidate {
+  fileKey: string;
+  sizeBytes: number;
+  lastModified: string;
+  category: BackupCategory;
+  reason: string;
+  jobId: string | null;
+  isProtected: boolean;
+}
+
 export interface RetentionPreviewItem {
   category: BackupCategory;
   count: number;
   totalSizeMb: number;
+  totalBytes?: number;
+  protectedCount?: number;
+  candidates?: DryRunCandidate[];
 }
 
 export interface RetentionRunItem {

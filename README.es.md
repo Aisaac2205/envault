@@ -66,6 +66,12 @@ EnVault desacopla todas las operaciones pesadas de copias de seguridad y restaur
 5. **Preparación para Colas Asíncronas de Restauración**
    Esta misma infraestructura de colas gobierna el flujo de recuperación de desastres. Cada restauración encola una tarea aislada que valida previamente el espacio en disco disponible en el directorio de staging y ejecuta verificaciones de integridad antes de iniciar la escritura en la base de datos de destino.
 
+6. **Depuración Coordinada en Dos Etapas y Simulación Previa**
+   Las políticas de retención y limpiezas manuales operan en dos fases secuenciales. Primero se suprime físicamente la copia y su archivo de manifiesto en Cloudflare R2, y únicamente tras confirmar dicha supresión se purga el registro de la base de control. Adicionalmente, el modo de simulación previa computa las copias candidatas, los bytes exactos a liberar y los motivos antes de realizar alteraciones definitivas.
+
+7. **Capacidad de Almacenamiento y Capa Gratuita de Cloudflare R2**
+   Cloudflare R2 incluye una capa gratuita permanente de diez gigabytes mensuales sin costos por transferencia saliente hacia internet, lo que permite operar EnVault a costo cero para entornos medianos. El límite por archivo alcanza cinco terabytes, y la división en partes de 32 MB permite transferir copias de hasta 320 GB dentro del límite de diez mil partes del protocolo S3.
+
 ---
 
 ## Arquitectura y Referencia Visual

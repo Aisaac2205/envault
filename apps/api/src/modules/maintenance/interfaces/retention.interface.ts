@@ -16,10 +16,23 @@ export interface RetentionPolicy {
   maxTotalSizeMb?: number;
 }
 
+export interface DryRunCandidate {
+  fileKey: string;
+  sizeBytes: number;
+  lastModified: string;
+  category: BackupCategory;
+  reason: string;
+  jobId: string | null;
+  isProtected: boolean;
+}
+
 export interface CleanupPreview {
   items: EnrichedR2Object[];
   count: number;
   totalSizeMb: number;
+  totalBytes: number;
+  protectedCount: number;
+  candidates: DryRunCandidate[];
 }
 
 export interface CleanupError {
@@ -50,6 +63,9 @@ export interface RetentionPreviewItem {
   category: BackupCategory;
   count: number;
   totalSizeMb: number;
+  totalBytes: number;
+  protectedCount: number;
+  candidates: DryRunCandidate[];
 }
 
 /** Result of running retention for one category. */

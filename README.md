@@ -66,6 +66,12 @@ EnVault decouples resource-intensive backup and restore operations from HTTP lif
 5. **Foundation for Asynchronous Restore Queues**
    The queue architecture extends to disaster recovery workflows. Restore tasks run in isolated worker queues that verify local disk space via staging preflights, validate cryptographic checksums against manifest files, and execute atomic rollbacks upon error.
 
+6. **Two-Stage Coordinated Purging and Non-Destructive Dry Run**
+   Automated retention policies and manual cleanups execute through a coordinated two-stage sequence. The physical dump archive and its manifest metadata are permanently deleted from Cloudflare R2 first, and only upon confirmed deletion is the database record purged from the control database. A non-destructive dry-run simulation calculates candidate files, exact byte totals, and reasons before applying permanent changes.
+
+7. **Storage Capacity and Cloudflare R2 Free Tier**
+   Cloudflare R2 provides a permanent free tier offering 10 GB of monthly storage and zero egress bandwidth fees, making EnVault highly cost-effective for small to medium deployments. Single-object limits reach 5 TB, and EnVault's 32MB multipart chunking supports up to 320 GB per archive within S3's 10,000 part limit.
+
 ---
 
 ## Requirements (non-negotiable)

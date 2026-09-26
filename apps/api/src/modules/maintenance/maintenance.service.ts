@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 import { BackupService } from '../backup/backup.service';
 import { BackupRepository } from '../backup/backup.repository';
@@ -21,6 +23,7 @@ import {
   CleanupResult,
   ConnectionRetentionPolicy,
   ConnectionRetentionPolicyInput,
+  DryRunCandidate,
   RetentionPolicy,
   RetentionPreviewItem,
   RetentionRunItem,
@@ -40,6 +43,7 @@ import {
   ReconcileResult,
   StaleDbRow,
 } from './interfaces/reconcile.interface';
+import { RETENTION_JOB_NAME, RETENTION_QUEUE_NAME } from './maintenance.constants';
 
 const BYTES_PER_MB = 1024 * 1024;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -61,14 +65,17 @@ export class MaintenanceService {
     private readonly retentionPolicyRepo: Repository<ConnectionRetentionPolicyEntity>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    @Optional()
+    @InjectQueue(RETENTION_QUEUE_NAME)
+    private readonly retentionQueue?: Queue,
   ) {}
 
   // --- Ad-hoc cleanup (manual UI) -----------------------------------------
 
   async previewCleanup(params: CleanupParamsDto): Promise<CleanupPreview> {
     this.assertHasCriterion(params);
-    const items = await this.selectForDeletion(params.connectionSlug, params.category, params);
-    return this.toPreview(items);
+    const dryRun = await this.computeDryRun(params.connectionSlug, params.category, params);
+    return this.toPreview(dryRun);
   }
 
   async runCleanup(params: CleanupParamsDto): Promise<CleanupResult> {
@@ -165,16 +172,25 @@ export class MaintenanceService {
 
             const policy: RetentionPolicy = { maxAgeDays: days };
             try {
-              const result = await this.applyRetention(
-                connection.slug,
-                BackupCategory.MANUAL,
-                policy,
-              );
-              processedCount++;
-              if (result.deleted > 0) {
-                this.logger.log(
-                  `Manual sweep "${connection.slug}": pruned ${result.deleted} (${result.freedMb} MB)`,
+              if (this.retentionQueue) {
+                await this.retentionQueue.add(
+                  RETENTION_JOB_NAME,
+                  { connectionSlug: connection.slug, category: BackupCategory.MANUAL, policy },
+                  { removeOnComplete: true },
                 );
+                processedCount++;
+              } else {
+                const result = await this.applyRetention(
+                  connection.slug,
+                  BackupCategory.MANUAL,
+                  policy,
+                );
+                processedCount++;
+                if (result.deleted > 0) {
+                  this.logger.log(
+                    `Manual sweep "${connection.slug}": pruned ${result.deleted} (${result.freedMb} MB)`,
+                  );
+                }
               }
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
@@ -197,7 +213,7 @@ export class MaintenanceService {
               [MANUAL_SWEEP_LOCK_ID],
               queryRunner,
             );
-            if (!unlockResult[0]?.released) {
+            if (!unlockResult?.[0]?.released) {
               this.logger.error('Manual retention advisory lock release failed');
             }
           } catch (error) {
@@ -300,16 +316,18 @@ export class MaintenanceService {
     for (const policy of policies) {
       if (policy.retentionDays == null) continue;
       const dto: RetentionPolicy = { maxAgeDays: policy.retentionDays };
-      const dumps = await this.selectForDeletion(
+      const dryRun = await this.computeDryRun(
         connectionSlug,
         policy.category,
         dto,
       );
-      const totalBytes = dumps.reduce((sum, d) => sum + d.size, 0);
       items.push({
         category: policy.category,
-        count: dumps.length,
-        totalSizeMb: this.bytesToMb(totalBytes),
+        count: dryRun.items.length,
+        totalSizeMb: this.bytesToMb(dryRun.totalBytes),
+        totalBytes: dryRun.totalBytes,
+        protectedCount: dryRun.protectedCount,
+        candidates: dryRun.candidates,
       });
     }
 
@@ -510,22 +528,40 @@ export class MaintenanceService {
 
   // --- Core engine --------------------------------------------------------
 
+  async enqueueRetention(
+    connectionSlug: string,
+    category: BackupCategory,
+    policy: RetentionPolicy,
+  ): Promise<{ enqueued: boolean; jobId?: string }> {
+    if (this.retentionQueue) {
+      const job = await this.retentionQueue.add(
+        RETENTION_JOB_NAME,
+        { connectionSlug, category, policy },
+        { removeOnComplete: true },
+      );
+      return { enqueued: true, jobId: job.id };
+    }
+    await this.applyRetention(connectionSlug, category, policy);
+    return { enqueued: false };
+  }
+
   private async prune(
     connectionSlug: string,
     category: BackupCategory,
     policy: RetentionPolicy,
   ): Promise<CleanupResult> {
-    const items = await this.selectForDeletion(connectionSlug, category, policy);
+    const { items } = await this.computeDryRun(connectionSlug, category, policy);
 
     const errors: CleanupError[] = [];
-    const deletedKeys: string[] = [];
+    const successfulKeys: string[] = [];
     let freedBytes = 0;
 
+    // Stage 1: Coordinated physical deletion in remote object storage (Cloudflare R2)
     for (const item of items) {
+      let dumpDeleted = false;
       try {
         await this.r2Service.delete(item.key);
-        deletedKeys.push(item.key);
-        freedBytes += item.size;
+        dumpDeleted = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push({ key: item.key, message });
@@ -533,63 +569,155 @@ export class MaintenanceService {
       }
 
       const manifestKey = item.key.replace(/\.dump$/, '.manifest.json');
+      let manifestDeleted = false;
       try {
         await this.r2Service.delete(manifestKey);
+        manifestDeleted = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push({ key: manifestKey, message });
       }
+
+      // Both remote files must be confirmed deleted before database record purge
+      if (dumpDeleted && manifestDeleted) {
+        successfulKeys.push(item.key);
+        freedBytes += item.size;
+      }
     }
 
-    await this.backupRepository.deleteByFileKeys(deletedKeys);
+    // Stage 2: Purge corresponding records from control database
+    if (successfulKeys.length > 0) {
+      await this.backupRepository.deleteByFileKeys(successfulKeys);
+    }
 
     return {
-      deleted: deletedKeys.length,
+      deleted: successfulKeys.length,
       freedMb: this.bytesToMb(freedBytes),
       errors,
     };
   }
 
   /**
-   * Resolves which dumps to delete. Dumps arrive newest-first.
-   * Hard floor: never delete the newest `max(keepLast, 1)` nor any dump that is
-   * the source of a running restore. Beyond the floor a dump is deleted when it
-   * matches any active trigger (age / size), or unconditionally if keepLast is
-   * the only criterion.
+   * Computes the non-destructive Dry Run simulation for retention evaluation.
+   * Reports candidate dumps, exact sizes, protected floor items, and reasons without mutating storage or DB.
    */
-  private async selectForDeletion(
+  async computeDryRun(
     connectionSlug: string,
     category: BackupCategory,
     policy: RetentionPolicy,
-  ): Promise<EnrichedR2Object[]> {
+  ): Promise<{
+    candidates: DryRunCandidate[];
+    items: EnrichedR2Object[];
+    protectedCount: number;
+    totalBytes: number;
+  }> {
     const dumps = await this.backupService.listEnrichedDumps(connectionSlug, category);
-    if (dumps.length === 0) return [];
+    if (dumps.length === 0) {
+      return { candidates: [], items: [], protectedCount: 0, totalBytes: 0 };
+    }
 
     const inUse = await this.getInUseFileKeys();
+    const dbJobs = await this.backupRepository.findByFileKeys(dumps.map((d) => d.key));
+    const jobByFileKey = new Map(dbJobs.map((j) => [j.fileKey, j.id]));
 
-    const protectedCount = Math.max(policy.keepLast ?? 0, 1);
+    const protectedFloor = Math.max(policy.keepLast ?? 0, 1);
     const cutoff =
       policy.maxAgeDays != null ? Date.now() - policy.maxAgeDays * MS_PER_DAY : null;
     const capBytes =
       policy.maxTotalSizeMb != null ? policy.maxTotalSizeMb * BYTES_PER_MB : null;
     const keepLastOnly = policy.maxAgeDays == null && policy.maxTotalSizeMb == null;
 
-    const toDelete: EnrichedR2Object[] = [];
+    const candidates: DryRunCandidate[] = [];
+    const toDeleteItems: EnrichedR2Object[] = [];
     let cumulative = 0;
+    let freedBytes = 0;
+    let actualProtected = 0;
 
     dumps.forEach((dump, index) => {
       cumulative += dump.size;
-      if (index < protectedCount) return; // hard floor, keeps >= 1
-      if (inUse.has(dump.key)) return; // restore-aware
+      const jobId = jobByFileKey.get(dump.key) ?? null;
+
+      if (index < protectedFloor) {
+        actualProtected++;
+        candidates.push({
+          fileKey: dump.key,
+          sizeBytes: dump.size,
+          lastModified: dump.lastModified.toISOString(),
+          category: dump.category,
+          reason: 'protected_floor',
+          jobId,
+          isProtected: true,
+        });
+        return;
+      }
+
+      if (inUse.has(dump.key)) {
+        actualProtected++;
+        candidates.push({
+          fileKey: dump.key,
+          sizeBytes: dump.size,
+          lastModified: dump.lastModified.toISOString(),
+          category: dump.category,
+          reason: 'protected_active_restore',
+          jobId,
+          isProtected: true,
+        });
+        return;
+      }
 
       const tooOld = cutoff != null && dump.lastModified.getTime() < cutoff;
       const overCap = capBytes != null && cumulative > capBytes;
+
       if (keepLastOnly || tooOld || overCap) {
-        toDelete.push(dump);
+        let reason = 'exceeds_keep_last';
+        if (tooOld) {
+          reason = 'exceeds_max_age';
+        } else if (overCap) {
+          reason = 'exceeds_max_total_size';
+        }
+
+        candidates.push({
+          fileKey: dump.key,
+          sizeBytes: dump.size,
+          lastModified: dump.lastModified.toISOString(),
+          category: dump.category,
+          reason,
+          jobId,
+          isProtected: false,
+        });
+        toDeleteItems.push(dump);
+        freedBytes += dump.size;
+      } else {
+        candidates.push({
+          fileKey: dump.key,
+          sizeBytes: dump.size,
+          lastModified: dump.lastModified.toISOString(),
+          category: dump.category,
+          reason: 'within_retention_window',
+          jobId,
+          isProtected: true,
+        });
       }
     });
 
-    return toDelete;
+    return {
+      candidates,
+      items: toDeleteItems,
+      protectedCount: actualProtected,
+      totalBytes: freedBytes,
+    };
+  }
+
+  /**
+   * Resolves which dumps to delete. Preserved for backward-compatibility.
+   */
+  async selectForDeletion(
+    connectionSlug: string,
+    category: BackupCategory,
+    policy: RetentionPolicy,
+  ): Promise<EnrichedR2Object[]> {
+    const dryRun = await this.computeDryRun(connectionSlug, category, policy);
+    return dryRun.items;
   }
 
   /** File keys that are the source of a RUNNING restore — must never be pruned. */
@@ -607,9 +735,20 @@ export class MaintenanceService {
     return keys;
   }
 
-  private toPreview(items: EnrichedR2Object[]): CleanupPreview {
-    const totalBytes = items.reduce((sum, item) => sum + item.size, 0);
-    return { items, count: items.length, totalSizeMb: this.bytesToMb(totalBytes) };
+  private toPreview(dryRun: {
+    candidates: DryRunCandidate[];
+    items: EnrichedR2Object[];
+    protectedCount: number;
+    totalBytes: number;
+  }): CleanupPreview {
+    return {
+      items: dryRun.items,
+      count: dryRun.items.length,
+      totalSizeMb: this.bytesToMb(dryRun.totalBytes),
+      totalBytes: dryRun.totalBytes,
+      protectedCount: dryRun.protectedCount,
+      candidates: dryRun.candidates,
+    };
   }
 
   private hasCriterion(policy: RetentionPolicy): boolean {

@@ -103,6 +103,12 @@ export class BackupRepository {
     await this.repository.update(id, { status, ...updates });
   }
 
+  /** Finds job rows whose fileKey is in the given list. */
+  findByFileKeys(fileKeys: string[]): Promise<BackupJobEntity[]> {
+    if (fileKeys.length === 0) return Promise.resolve([]);
+    return this.repository.find({ where: { fileKey: In(fileKeys) } });
+  }
+
   /** Deletes job rows whose fileKey is in the given list. Returns rows removed. */
   async deleteByFileKeys(fileKeys: string[]): Promise<number> {
     if (fileKeys.length === 0) return 0;
