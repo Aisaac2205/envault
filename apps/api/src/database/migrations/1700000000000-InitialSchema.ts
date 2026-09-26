@@ -41,6 +41,17 @@ export class InitialSchema1700000000000 implements MigrationInterface {
     await queryRunner.query(
       `CREATE TABLE IF NOT EXISTS "backup_jobs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "connectionId" character varying NOT NULL, "environment" "public"."backup_jobs_environment_enum" NOT NULL, "dbType" "public"."backup_jobs_dbtype_enum", "status" "public"."backup_jobs_status_enum" NOT NULL DEFAULT 'pending', "fileKey" character varying, "storageKeyVersion" integer NOT NULL DEFAULT '1', "category" "public"."backup_jobs_category_enum", "fileSizeMb" double precision, "sha256" character varying(64), "bytes" bigint, "startedAt" TIMESTAMP, "completedAt" TIMESTAMP, "errorMessage" text, "triggeredBy" character varying NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_d63aa10bc561df545b6532201c6" PRIMARY KEY ("id"))`,
     );
+    // Enforces exactly one PENDING backup job per (connectionId, category).
+    // Folded forward from migration 1778716800022 (see that migration for why
+    // it dedupes existing rows before creating this index on a pre-existing
+    // database — a fresh install never has any rows to dedupe).
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "UQ_backup_jobs_pending_connection_category" ON "backup_jobs" ("connectionId", "category") WHERE status = 'pending'`,
+    );
+
+    await queryRunner.query(
+      `CREATE TABLE IF NOT EXISTS "backup_leases" ("connectionId" uuid NOT NULL, "backupJobId" uuid NOT NULL, "leaseToken" uuid NOT NULL, "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL, "acquiredAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), CONSTRAINT "PK_backup_leases" PRIMARY KEY ("connectionId"), CONSTRAINT "UQ_backup_leases_backupJobId" UNIQUE ("backupJobId"))`,
+    );
 
     await queryRunner.query(
       `DO $$ BEGIN CREATE TYPE "public"."audit_logs_environment_enum" AS ENUM('prod', 'dev', 'sqa'); EXCEPTION WHEN duplicate_object THEN null; END $$;`,
@@ -178,6 +189,10 @@ export class InitialSchema1700000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."connections_environment_enum"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "audit_logs"`);
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."audit_logs_environment_enum"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "backup_leases"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "public"."UQ_backup_jobs_pending_connection_category"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "backup_jobs"`);
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."backup_jobs_category_enum"`);
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."backup_jobs_status_enum"`);

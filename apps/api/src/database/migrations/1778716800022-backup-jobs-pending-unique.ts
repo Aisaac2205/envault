@@ -30,7 +30,7 @@ export class BackupJobsPendingUnique1778716800022 implements MigrationInterface 
     `);
 
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "UQ_backup_jobs_pending_connection_category"
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_backup_jobs_pending_connection_category"
       ON backup_jobs ("connectionId", category)
       WHERE status = 'pending'
     `);

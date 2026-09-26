@@ -235,7 +235,7 @@ export class BackupRepository {
       `UPDATE backup_jobs
        SET status = $2, "startedAt" = $3
        WHERE id = $1::uuid
-         AND status = ANY($4::text[])
+         AND status = ANY($4::backup_jobs_status_enum[])
        RETURNING id`,
       [id, JobStatus.RUNNING, startedAt, statuses],
     );
@@ -257,7 +257,7 @@ export class BackupRepository {
       `UPDATE backup_jobs
        SET status = $2, "errorMessage" = $3, "completedAt" = $4
        WHERE id = $1::uuid
-         AND status = ANY($5::text[])
+         AND status = ANY($5::backup_jobs_status_enum[])
        RETURNING id`,
       [
         id,
@@ -312,7 +312,7 @@ export class BackupRepository {
       `UPDATE backup_jobs
        SET status = $2, "errorMessage" = $3, "completedAt" = $4
        WHERE id = $1::uuid
-         AND status = ANY($5::text[])
+         AND status = ANY($5::backup_jobs_status_enum[])
          AND EXISTS (
            SELECT 1 FROM backup_leases l
            WHERE l."connectionId" = $6::uuid
@@ -349,7 +349,7 @@ export class BackupRepository {
       `UPDATE backup_jobs
        SET status = $2, "fileSizeMb" = $3, "sha256" = $4, "bytes" = $5, "completedAt" = $6
        WHERE id = $1::uuid
-         AND status = ANY($7::text[])
+         AND status = ANY($7::backup_jobs_status_enum[])
          AND EXISTS (
            SELECT 1 FROM backup_leases l
            WHERE l."connectionId" = $8::uuid

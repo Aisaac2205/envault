@@ -186,6 +186,23 @@ describe('BackupProcessor', () => {
       expect(mockBackupRepository.markFailedIfUnfinished).not.toHaveBeenCalled();
     });
 
+    it('does not throw and logs when the repository call itself fails', async () => {
+      mockBackupRepository.markFailedIfUnfinished.mockRejectedValue(
+        new Error('connection terminated unexpectedly'),
+      );
+      const job = makeJob({ jobId: 'job-db-blip', attemptsMade: 2, attempts: 2 });
+
+      await expect(
+        processor.onFailed(job, new Error('pg_dump connection lost')),
+      ).resolves.toBeUndefined();
+
+      expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+        'job-db-blip',
+        expect.any(String),
+        expect.any(Date),
+      );
+    });
+
     it('logs a stalled job without throwing', () => {
       expect(() => processor.onStalled('job-stalled', 'active')).not.toThrow();
     });

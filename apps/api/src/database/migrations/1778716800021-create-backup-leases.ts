@@ -25,6 +25,6 @@ export class CreateBackupLeases1778716800021 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query('DROP TABLE "backup_leases"');
+    await queryRunner.query('DROP TABLE IF EXISTS "backup_leases"');
   }
 }

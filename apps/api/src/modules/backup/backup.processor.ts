@@ -74,14 +74,26 @@ export class BackupProcessor extends WorkerHost {
     const exhausted = error instanceof UnrecoverableError || job.attemptsMade >= attempts;
     if (!exhausted) return;
 
-    const markedFailed = await this.backupRepository.markFailedIfUnfinished(
-      job.data.jobId,
-      `Backup worker reportó una falla final tras ${job.attemptsMade} intento(s): ${error.message}`,
-      new Date(),
-    );
-    if (markedFailed) {
-      this.logger.warn(
-        `Backup job ${job.data.jobId} quedó PENDING/RUNNING y fue marcado FAILED por el handler 'failed' del worker.`,
+    try {
+      const markedFailed = await this.backupRepository.markFailedIfUnfinished(
+        job.data.jobId,
+        `Backup worker reportó una falla final tras ${job.attemptsMade} intento(s): ${error.message}`,
+        new Date(),
+      );
+      if (markedFailed) {
+        this.logger.warn(
+          `Backup job ${job.data.jobId} quedó PENDING/RUNNING y fue marcado FAILED por el handler 'failed' del worker.`,
+        );
+      }
+    } catch (repositoryError) {
+      // This handler has no caller to propagate to — BullMQ just emits the
+      // 'failed' event — so letting the repository error escape here becomes
+      // an unhandled rejection that can crash the process. Log it and leave
+      // the row for the next boot sweep (sweepOrphans) to reconcile instead.
+      const message =
+        repositoryError instanceof Error ? repositoryError.message : String(repositoryError);
+      this.logger.error(
+        `Failed to mark backup job ${job.data.jobId} as FAILED after its worker gave up: ${message}`,
       );
     }
   }
