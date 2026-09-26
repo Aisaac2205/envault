@@ -23,8 +23,6 @@
   --color-warning-bg: var(--color-warning-bg);
   --color-error: var(--color-error);
   --color-error-bg: var(--color-error-bg);
-  --color-chart-scheduled: var(--color-chart-scheduled);
-  --color-chart-manual: var(--color-chart-manual);
   /* dashboard-charts-web: bklit chart tokens (see `--chart-*` bare vars in
      :root / [data-theme="dark"] — the vendored charts read those directly). */
   --color-chart-1: var(--color-chart-1);
@@ -90,8 +88,6 @@
   --color-warning-bg: #FFFBEB;
   --color-error: #DC2626;
   --color-error-bg: #FEF2F2;
-  --color-chart-scheduled: #6B7280;
-  --color-chart-manual: #A1A1AA;
   /* dashboard-charts-web tokens */
   --chart-1: #5B8C00;
   --chart-2: #4F6BB8;
@@ -179,8 +175,6 @@
   --color-error: #F87171;
   --color-warning: #FBBF24;
   --color-info: #3B82F6;
-  --color-chart-scheduled: #9CA3AF;
-  --color-chart-manual: #D4D4D8;
   /* dashboard-charts-web tokens */
   --chart-1: #78A300;
   --chart-2: #6F8AD6;
