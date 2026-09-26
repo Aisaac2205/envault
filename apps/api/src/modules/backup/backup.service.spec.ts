@@ -167,7 +167,7 @@ describe('BackupService', () => {
     expect(mockSseService.register).toHaveBeenCalledWith('job-123');
   });
 
-  it('createBackup reuses the existing PENDING ticket when the atomic insert coalesces', async () => {
+  it('createBackup reuses the existing PENDING ticket when the atomic insert coalesces onto a live BullMQ job', async () => {
     mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
       created: false,
       job: {
@@ -177,10 +177,76 @@ describe('BackupService', () => {
         createdAt: new Date(),
       },
     });
+    mockQueue.getJobState.mockResolvedValue('waiting');
 
     const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
 
     expect(result.jobId).toBe('active-job-pending');
+    expect(result.status).toBe(JobStatus.PENDING);
+    expect(mockQueue.add).not.toHaveBeenCalled();
+    expect(mockBackupRepository.markFailedIfUnfinished).not.toHaveBeenCalled();
+  });
+
+  describe.each(['unknown', 'failed', 'completed'] as const)(
+    'createBackup coalescing onto a dead pending job (BullMQ state: %s)',
+    (deadState: 'unknown' | 'failed' | 'completed') => {
+      it('marks the dead ticket FAILED and re-enqueues a fresh PENDING job instead of returning it', async () => {
+        mockBackupRepository.insertPendingOrFindExisting
+          .mockResolvedValueOnce({
+            created: false,
+            job: {
+              id: 'dead-pending-job',
+              status: JobStatus.PENDING,
+              fileKey: 'prod-db/manual/dead.dump',
+              createdAt: new Date(),
+            },
+          })
+          .mockResolvedValueOnce({
+            created: true,
+            job: {
+              id: 'fresh-job-789',
+              status: JobStatus.PENDING,
+              fileKey: 'prod-db/manual/fresh.dump',
+            },
+          });
+        mockQueue.getJobState.mockResolvedValue(deadState);
+
+        const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
+
+        expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+          'dead-pending-job',
+          expect.any(String),
+          expect.any(Date),
+        );
+        expect(mockBackupRepository.insertPendingOrFindExisting).toHaveBeenCalledTimes(2);
+        expect(result.jobId).toBe('fresh-job-789');
+        expect(result.status).toBe(JobStatus.PENDING);
+        expect(mockQueue.add).toHaveBeenCalledWith(
+          'process-backup',
+          { jobId: 'fresh-job-789' },
+          expect.anything(),
+        );
+      });
+    },
+  );
+
+  it('createBackup gives up retrying after one dead-job replacement and returns the second coalesced ticket as-is', async () => {
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: false,
+      job: {
+        id: 'still-dead-job',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/still-dead.dump',
+        createdAt: new Date(),
+      },
+    });
+    mockQueue.getJobState.mockResolvedValue('unknown');
+
+    const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
+
+    expect(mockBackupRepository.insertPendingOrFindExisting).toHaveBeenCalledTimes(2);
+    expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledTimes(1);
+    expect(result.jobId).toBe('still-dead-job');
     expect(result.status).toBe(JobStatus.PENDING);
     expect(mockQueue.add).not.toHaveBeenCalled();
   });

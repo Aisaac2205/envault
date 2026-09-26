@@ -162,19 +162,58 @@ export class BackupService implements OnApplicationBootstrap {
       );
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const uniqueSuffix = Math.random().toString(36).slice(2, 8);
-    const fileKey = `${connection.slug}/${category}/${timestamp}-${uniqueSuffix}.dump`;
+    let job: BackupJobEntity | undefined;
+    let created = false;
 
-    const { job, created } = await this.backupRepository.insertPendingOrFindExisting({
-      connectionId: connection.id,
-      environment: connection.environment,
-      dbType: connection.dbType,
-      fileKey,
-      triggeredBy: user.id,
-      category,
-      storageKeyVersion: STORAGE_KEY_VERSION.NEW,
-    });
+    // Up to 2 attempts: a coalesced PENDING row whose BullMQ job is gone
+    // (unknown/failed/completed — exactly what an unhandled-rejection or
+    // enqueue failure leaves behind) would otherwise be handed back to the
+    // caller as "in the queue" forever. Mark that dead ticket FAILED and
+    // retry the insert once so a fresh PENDING row (with its own BullMQ job)
+    // gets created instead.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const uniqueSuffix = Math.random().toString(36).slice(2, 8);
+      const fileKey = `${connection.slug}/${category}/${timestamp}-${uniqueSuffix}.dump`;
+
+      const result = await this.backupRepository.insertPendingOrFindExisting({
+        connectionId: connection.id,
+        environment: connection.environment,
+        dbType: connection.dbType,
+        fileKey,
+        triggeredBy: user.id,
+        category,
+        storageKeyVersion: STORAGE_KEY_VERSION.NEW,
+      });
+
+      if (result.created) {
+        job = result.job;
+        created = true;
+        break;
+      }
+
+      const state = await this.backupQueue.getJobState(result.job.id);
+      const isDead = state === 'unknown' || state === 'failed' || state === 'completed';
+      if (!isDead || attempt === 1) {
+        job = result.job;
+        break;
+      }
+
+      this.logger.warn(
+        `Backup en cola coalesció con el ticket ${result.job.id} cuyo job de BullMQ está "${state}"; marcándolo FAILED y reintentando encolar uno nuevo.`,
+      );
+      await this.backupRepository.markFailedIfUnfinished(
+        result.job.id,
+        `Ticket de backup en cola quedó huérfano (BullMQ: ${state}); reemplazado por un nuevo intento de encolado.`,
+        new Date(),
+      );
+    }
+
+    if (!job) {
+      throw new InternalServerErrorException(
+        `No se pudo determinar el trabajo de backup a encolar para la conexión "${connection.name}"`,
+      );
+    }
 
     if (!created) {
       this.logger.log(
@@ -236,7 +275,7 @@ export class BackupService implements OnApplicationBootstrap {
 
     return {
       jobId: job.id,
-      fileKey,
+      fileKey: job.fileKey ?? '',
       status: JobStatus.PENDING,
     };
   }
