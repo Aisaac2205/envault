@@ -69,15 +69,6 @@ export class JobsRepository {
       .getRawMany();
   }
 
-  countRestoreJobsByStatus(): Promise<{ status: JobStatus; count: string }[]> {
-    return this.restoreJobRepository
-      .createQueryBuilder('restore_job')
-      .select('restore_job.status', 'status')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('restore_job.status')
-      .getRawMany();
-  }
-
   async getStats(): Promise<{
     successRate30d: number;
     backupsToday: number;

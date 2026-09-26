@@ -74,6 +74,7 @@ jobs:
       RESTORE_LEASE_TEST_DATABASE_URL: postgresql://test_user:test_pass123@localhost:5434/testdb
       AUDIT_TEST_DATABASE_URL: postgresql://test_user:test_pass123@localhost:5434/testdb
       BACKUP_LEASE_TEST_DATABASE_URL: postgresql://test_user:test_pass123@localhost:5434/testdb
+      JOBS_ANALYTICS_TEST_DATABASE_URL: postgresql://test_user:test_pass123@localhost:5434/testdb
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
