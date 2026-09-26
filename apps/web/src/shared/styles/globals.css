@@ -25,6 +25,13 @@
   --color-error-bg: var(--color-error-bg);
   --color-chart-scheduled: var(--color-chart-scheduled);
   --color-chart-manual: var(--color-chart-manual);
+  /* dashboard-charts-web: bklit chart tokens (see `--chart-*` bare vars in
+     :root / [data-theme="dark"] — the vendored charts read those directly). */
+  --color-chart-1: var(--color-chart-1);
+  --color-chart-2: var(--color-chart-2);
+  --color-chart-running: var(--color-chart-running);
+  --color-chart-pending: var(--color-chart-pending);
+  --color-hairline: var(--color-hairline);
   --color-popover: var(--color-popover);
   --color-popover-foreground: var(--color-popover-foreground);
   --color-card: var(--color-card);
@@ -85,6 +92,24 @@
   --color-error-bg: #FEF2F2;
   --color-chart-scheduled: #6B7280;
   --color-chart-manual: #A1A1AA;
+  /* dashboard-charts-web tokens */
+  --chart-1: #5B8C00;
+  --chart-2: #4F6BB8;
+  --chart-status-running: #5F5E59;
+  --chart-status-pending: #8F8E88;
+  --color-hairline: rgba(0, 0, 0, 0.06);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-running: var(--chart-status-running);
+  --color-chart-pending: var(--chart-status-pending);
+  /* bklit vendored chart chrome — see src/shared/ui/charts/chart-context.tsx */
+  --chart-background: var(--color-card);
+  --chart-foreground: var(--color-text-primary);
+  --chart-foreground-muted: var(--color-text-secondary);
+  --chart-crosshair: var(--color-text-secondary);
+  --chart-grid: var(--color-border);
+  --chart-line-primary: var(--chart-1);
+  --chart-line-secondary: var(--chart-2);
   --color-popover: #FFFFFF;
   --color-popover-foreground: #1C1C1A;
   --color-card: #FFFFFF;
@@ -156,6 +181,24 @@
   --color-info: #3B82F6;
   --color-chart-scheduled: #9CA3AF;
   --color-chart-manual: #D4D4D8;
+  /* dashboard-charts-web tokens */
+  --chart-1: #78A300;
+  --chart-2: #6F8AD6;
+  --chart-status-running: #A3A3A8;
+  --chart-status-pending: #75757A;
+  --color-hairline: rgba(255, 255, 255, 0.08);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-running: var(--chart-status-running);
+  --color-chart-pending: var(--chart-status-pending);
+  /* bklit vendored chart chrome — see src/shared/ui/charts/chart-context.tsx */
+  --chart-background: var(--color-card);
+  --chart-foreground: var(--color-text-primary);
+  --chart-foreground-muted: var(--color-text-secondary);
+  --chart-crosshair: var(--color-text-secondary);
+  --chart-grid: var(--color-border);
+  --chart-line-primary: var(--chart-1);
+  --chart-line-secondary: var(--chart-2);
 
   --background: 240 6% 7%;
   --foreground: 0 0% 93%;

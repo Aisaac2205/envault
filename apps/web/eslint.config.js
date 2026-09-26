@@ -44,4 +44,29 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Vendored bklit chart source (installed via `shadcn add @bklit/*`,
+    // apps/web/src/shared/ui/charts/**). We do not hand-maintain this code,
+    // so only the rules that actually fire here are scoped off — `any` stays
+    // banned (see the `// envault:` CurveFactory patches) and `unknown` is
+    // the one upstream pattern we keep.
+    files: ["src/shared/ui/charts/**/*.{ts,tsx}"],
+    rules: {
+      // Upstream reads refs during render for spring/animation bookkeeping
+      // (e.g. use-highlight-segment.ts, use-mount-progress.ts, x-axis.tsx).
+      "react-hooks/refs": "off",
+      // Upstream calls setState synchronously inside effects to drive chart
+      // phase transitions (use-chart-phase-orchestrator.ts and friends).
+      "react-hooks/set-state-in-effect": "off",
+      // Upstream effect deps are intentionally partial in several hooks
+      // (mirrors the upstream bklit registry, not our code to fix).
+      "react-hooks/exhaustive-deps": "off",
+      // Several files (chart-context.tsx, index.ts) re-export types and
+      // helpers alongside components, which is the upstream module shape.
+      "react-refresh/only-export-components": "off",
+      // chart-context.tsx keeps unused generic type params (`_Input`) for
+      // documentation/inference parity with the upstream scale types.
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
 );
