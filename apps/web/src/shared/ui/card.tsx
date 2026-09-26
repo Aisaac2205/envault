@@ -4,7 +4,8 @@ import { type VariantProps, cva } from "class-variance-authority";
 const cardVariants = cva("rounded-lg bg-card text-card-foreground", {
   variants: {
     variant: {
-      default: "",
+      default:
+        "border border-black/[0.06] dark:border-white/[0.08] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]",
       elevated: "shadow-md",
       outlined: "border border-border",
       subtle: "bg-muted",
