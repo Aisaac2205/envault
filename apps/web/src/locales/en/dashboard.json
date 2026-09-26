@@ -61,6 +61,8 @@
   "column.cronjob": "Cronjob",
   "column.nextRun": "Next run",
   "column.size": "Size",
+  "restore.dryRun": "Dry run",
+  "restore.full": "Restore",
   "value.yes": "Yes",
   "value.no": "No",
   "health.title": "System health",

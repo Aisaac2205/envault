@@ -61,6 +61,8 @@
   "column.cronjob": "Cronjob",
   "column.nextRun": "Próxima ejecución",
   "column.size": "Tamaño",
+  "restore.dryRun": "Simulación",
+  "restore.full": "Restauración",
   "value.yes": "Sí",
   "value.no": "No",
   "health.title": "Salud del sistema",
