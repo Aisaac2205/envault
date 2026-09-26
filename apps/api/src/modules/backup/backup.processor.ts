@@ -1,7 +1,8 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { DelayedError, Job } from 'bullmq';
+import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { BackupService } from './backup.service';
+import { BackupRepository } from './backup.repository';
 import { BACKUP_QUEUE_NAME } from './backup.constants';
 
 export interface ProcessBackupJobData {
@@ -14,7 +15,10 @@ export interface ProcessBackupJobData {
 export class BackupProcessor extends WorkerHost {
   private readonly logger = new Logger(BackupProcessor.name);
 
-  constructor(private readonly backupService: BackupService) {
+  constructor(
+    private readonly backupService: BackupService,
+    private readonly backupRepository: BackupRepository,
+  ) {
     super();
   }
 
@@ -49,5 +53,41 @@ export class BackupProcessor extends WorkerHost {
     const base = Math.min(300_000, 30_000 * 2 ** n);
     const jitter = 0.8 + Math.random() * 0.4;
     return Math.round(base * jitter);
+  }
+
+  /**
+   * Covers `tryAcquire`/`moveToDelayed` throwing on a DB/Redis blip: that
+   * exception never reaches `BackupService.executeQueuedBackup`'s own
+   * catch block, so nothing marks the row FAILED and it would otherwise sit
+   * PENDING/RUNNING until the next boot sweep. Fires after every failed
+   * attempt (per BullMQ), so only act once the job will not be retried
+   * again: either it just exhausted its last attempt, or the error is an
+   * `UnrecoverableError` (no attempts left regardless of `attemptsMade`).
+   */
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job<ProcessBackupJobData> | undefined, error: Error): Promise<void> {
+    if (!job) return;
+
+    this.logger.error(`Backup job ${job.data.jobId} failed: ${error.message}`);
+
+    const attempts = job.opts?.attempts ?? 1;
+    const exhausted = error instanceof UnrecoverableError || job.attemptsMade >= attempts;
+    if (!exhausted) return;
+
+    const markedFailed = await this.backupRepository.markFailedIfUnfinished(
+      job.data.jobId,
+      `Backup worker reportó una falla final tras ${job.attemptsMade} intento(s): ${error.message}`,
+      new Date(),
+    );
+    if (markedFailed) {
+      this.logger.warn(
+        `Backup job ${job.data.jobId} quedó PENDING/RUNNING y fue marcado FAILED por el handler 'failed' del worker.`,
+      );
+    }
+  }
+
+  @OnWorkerEvent('stalled')
+  onStalled(jobId: string, prev: string): void {
+    this.logger.warn(`Backup job ${jobId} stalled (previo: ${prev})`);
   }
 }

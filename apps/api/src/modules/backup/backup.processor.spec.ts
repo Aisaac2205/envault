@@ -2,13 +2,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BackupProcessor } from './backup.processor';
 import { BackupService } from './backup.service';
-import { DelayedError, Job } from 'bullmq';
+import { BackupRepository } from './backup.repository';
+import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { ProcessBackupJobData } from './backup.processor';
 
 describe('BackupProcessor', () => {
   let processor: BackupProcessor;
   let mockBackupService: {
     executeQueuedBackup: jest.Mock;
+  };
+  let mockBackupRepository: {
+    markFailedIfUnfinished: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -18,11 +22,15 @@ describe('BackupProcessor', () => {
         result: { jobId: 'job-123', status: 'completed' },
       }),
     };
+    mockBackupRepository = {
+      markFailedIfUnfinished: jest.fn().mockResolvedValue(true),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BackupProcessor,
         { provide: BackupService, useValue: mockBackupService },
+        { provide: BackupRepository, useValue: mockBackupRepository },
       ],
     }).compile();
 
@@ -37,11 +45,13 @@ describe('BackupProcessor', () => {
     jobId?: string;
     attemptsMade?: number;
     attemptsStarted?: number;
+    attempts?: number;
   } = {}): Job<ProcessBackupJobData> {
     return {
       data: { jobId: overrides.jobId ?? 'job-123' },
       attemptsMade: overrides.attemptsMade ?? 0,
       attemptsStarted: overrides.attemptsStarted ?? 1,
+      opts: { attempts: overrides.attempts ?? 2 },
       moveToDelayed: jest.fn().mockResolvedValue(undefined),
     } as unknown as Job<ProcessBackupJobData>;
   }
@@ -134,6 +144,50 @@ describe('BackupProcessor', () => {
       const delayMs = timestamp - before;
       expect(delayMs).toBeGreaterThanOrEqual(30_000 * 0.8 - 50);
       expect(delayMs).toBeLessThanOrEqual(30_000 * 1.2 + 1000);
+    });
+  });
+
+  describe('worker events', () => {
+    it('marks the row FAILED once the job exhausts its configured attempts', async () => {
+      const job = makeJob({ jobId: 'job-exhausted', attemptsMade: 2, attempts: 2 });
+
+      await processor.onFailed(job, new Error('pg_dump connection lost'));
+
+      expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+        'job-exhausted',
+        expect.stringContaining('pg_dump connection lost'),
+        expect.any(Date),
+      );
+    });
+
+    it('marks the row FAILED immediately for an UnrecoverableError regardless of attemptsMade', async () => {
+      const job = makeJob({ jobId: 'job-unrecoverable', attemptsMade: 0, attempts: 2 });
+
+      await processor.onFailed(job, new UnrecoverableError('no strategy configured'));
+
+      expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+        'job-unrecoverable',
+        expect.any(String),
+        expect.any(Date),
+      );
+    });
+
+    it('does not mark the row FAILED while retries remain for a plain retryable error', async () => {
+      const job = makeJob({ jobId: 'job-retrying', attemptsMade: 1, attempts: 2 });
+
+      await processor.onFailed(job, new Error('transient Redis blip'));
+
+      expect(mockBackupRepository.markFailedIfUnfinished).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when the failed event fires without a job', async () => {
+      await expect(processor.onFailed(undefined, new Error('gone'))).resolves.toBeUndefined();
+
+      expect(mockBackupRepository.markFailedIfUnfinished).not.toHaveBeenCalled();
+    });
+
+    it('logs a stalled job without throwing', () => {
+      expect(() => processor.onStalled('job-stalled', 'active')).not.toThrow();
     });
   });
 });
