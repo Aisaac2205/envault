@@ -76,22 +76,56 @@ export class BackupService implements OnApplicationBootstrap {
       }
 
       this.logger.warn(
-        `Detectados ${unfinished.length} respaldos sin finalizar al iniciar el proceso. Limpiando huérfanos...`,
+        `Detectados ${unfinished.length} respaldos sin finalizar al iniciar el proceso. Revisando huérfanos...`,
       );
 
       for (const job of unfinished) {
-        await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
-          errorMessage: 'Respaldo interrumpido por reinicio o detención del servicio',
-          completedAt: new Date(),
-        });
-        this.logger.warn(
-          `Respaldo huérfano ${job.id} (conexión ${job.connectionId}) marcado como FAILED`,
-        );
+        try {
+          const failed =
+            job.status === JobStatus.PENDING
+              ? await this.sweepPendingJob(job.id)
+              : await this.backupRepository.failRunningWithoutLease(
+                  job.id,
+                  'Respaldo interrumpido por reinicio o detención del servicio',
+                  new Date(),
+                );
+
+          if (failed) {
+            this.logger.warn(
+              `Respaldo huérfano ${job.id} (conexión ${job.connectionId}) marcado como FAILED`,
+            );
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `Error revisando respaldo huérfano ${job.id}: ${message}`,
+          );
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Error en sweepOrphans de BackupService: ${message}`);
     }
+  }
+
+  /**
+   * A PENDING row whose BullMQ job still exists (waiting, delayed, etc.) is
+   * left alone — it will be processed normally. Only a row whose BullMQ job
+   * is gone (`unknown`, `completed`, `failed`) is a candidate for failure,
+   * and even then only past the 60s grace period that protects an in-flight
+   * `createBackup` insert.
+   */
+  private async sweepPendingJob(jobId: string): Promise<boolean> {
+    const state = await this.backupQueue.getJobState(jobId);
+    if (state !== 'unknown' && state !== 'completed' && state !== 'failed') {
+      return false;
+    }
+
+    return this.backupRepository.failPendingStale(
+      jobId,
+      'Respaldo interrumpido por reinicio o detención del servicio',
+      new Date(),
+    );
   }
 
   async createBackup(

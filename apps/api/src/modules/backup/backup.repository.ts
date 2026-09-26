@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
+  DataSource,
   FindOptionsWhere,
   In,
   LessThan,
@@ -13,11 +14,17 @@ import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { Environment } from '../../database/enums/environment.enum';
 
+type BackupJobMutationRow = { id: string };
+type BackupJobMutationResult =
+  | BackupJobMutationRow[]
+  | [BackupJobMutationRow[], number];
+
 @Injectable()
 export class BackupRepository {
   constructor(
     @InjectRepository(BackupJobEntity)
     private readonly repository: Repository<BackupJobEntity>,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -146,5 +153,68 @@ export class BackupRepository {
       createdAt: LessThan(cutoff),
     });
     return result.affected ?? 0;
+  }
+
+  /**
+   * Fails a PENDING row on boot only if it is older than the 60s grace
+   * period, so an in-flight `createBackup` insert is never swept before its
+   * BullMQ job is enqueued.
+   */
+  async failPendingStale(
+    id: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = $5
+         AND "createdAt" < now() - interval '60 seconds'
+       RETURNING id`,
+      [id, JobStatus.FAILED, errorMessage, completedAt, JobStatus.PENDING],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Fails a RUNNING row on boot only if no live lease still holds it, so a
+   * job still owned by another replica is never swept.
+   */
+  async failRunningWithoutLease(
+    id: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = $5
+         AND NOT EXISTS (
+           SELECT 1 FROM backup_leases
+           WHERE "backupJobId" = $1::uuid
+             AND "expiresAt" > CURRENT_TIMESTAMP
+         )
+       RETURNING id`,
+      [id, JobStatus.FAILED, errorMessage, completedAt, JobStatus.RUNNING],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  private hasAffectedRows(result: BackupJobMutationResult): boolean {
+    if (this.isMutationResult(result)) {
+      return result[1] > 0;
+    }
+
+    return result.length > 0;
+  }
+
+  private isMutationResult(
+    result: BackupJobMutationResult,
+  ): result is [BackupJobMutationRow[], number] {
+    return Array.isArray(result[0]);
   }
 }

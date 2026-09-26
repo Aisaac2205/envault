@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { BackupRepository } from './backup.repository';
 import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 import { Environment } from '../../database/enums/environment.enum';
@@ -12,12 +12,20 @@ type MockRepo = Partial<Record<keyof Repository<BackupJobEntity>, jest.Mock>>;
 describe('BackupRepository', () => {
   let backupRepo: BackupRepository;
   let mockRepo: MockRepo;
+  let dataSource: DataSource;
+  let querySpy: jest.SpiedFunction<DataSource['query']>;
 
   beforeEach(async () => {
     mockRepo = {
       find: jest.fn(),
       findAndCount: jest.fn(),
     };
+    dataSource = new DataSource({
+      type: 'postgres',
+      host: 'localhost',
+      database: 'test',
+    });
+    querySpy = jest.spyOn(dataSource, 'query');
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -26,10 +34,15 @@ describe('BackupRepository', () => {
           provide: getRepositoryToken(BackupJobEntity),
           useValue: mockRepo,
         },
+        { provide: getDataSourceToken(), useValue: dataSource },
       ],
     }).compile();
 
     backupRepo = module.get<BackupRepository>(BackupRepository);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('findAll — paginated', () => {
@@ -159,6 +172,50 @@ describe('BackupRepository', () => {
 
       const result = await backupRepo.findByFileKeys(['k1']);
       expect(result).toEqual(jobs);
+    });
+  });
+
+  describe('failPendingStale', () => {
+    it('fails a PENDING row past the 60s grace period', async () => {
+      querySpy.mockResolvedValue([{ id: 'job-1' }]);
+
+      const failed = await backupRepo.failPendingStale('job-1', 'interrupted', new Date());
+
+      expect(failed).toBe(true);
+      expect(querySpy).toHaveBeenCalledWith(
+        expect.stringContaining(`"createdAt" < now() - interval '60 seconds'`),
+        expect.arrayContaining(['job-1', JobStatus.FAILED, 'interrupted', expect.any(Date), JobStatus.PENDING]),
+      );
+    });
+
+    it('leaves a PENDING row within the grace period untouched', async () => {
+      querySpy.mockResolvedValue([]);
+
+      const failed = await backupRepo.failPendingStale('job-1', 'interrupted', new Date());
+
+      expect(failed).toBe(false);
+    });
+  });
+
+  describe('failRunningWithoutLease', () => {
+    it('fails a RUNNING row with no live lease', async () => {
+      querySpy.mockResolvedValue([{ id: 'job-2' }]);
+
+      const failed = await backupRepo.failRunningWithoutLease('job-2', 'interrupted', new Date());
+
+      expect(failed).toBe(true);
+      expect(querySpy).toHaveBeenCalledWith(
+        expect.stringContaining('NOT EXISTS'),
+        expect.arrayContaining(['job-2', JobStatus.FAILED, 'interrupted', expect.any(Date), JobStatus.RUNNING]),
+      );
+    });
+
+    it('leaves a RUNNING row alone when a live lease still exists', async () => {
+      querySpy.mockResolvedValue([]);
+
+      const failed = await backupRepo.failRunningWithoutLease('job-2', 'interrupted', new Date());
+
+      expect(failed).toBe(false);
     });
   });
 });
