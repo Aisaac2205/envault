@@ -1,7 +1,11 @@
 import { DataSource } from 'typeorm';
 import { CreateBackupLeases1778716800021 } from '../../database/migrations/1778716800021-create-backup-leases';
-import { BackupJobEntity } from '../../database/entities/backup-job.entity';
+import { BackupJobsPendingUnique1778716800022 } from '../../database/migrations/1778716800022-backup-jobs-pending-unique';
+import { BackupJobEntity, STORAGE_KEY_VERSION } from '../../database/entities/backup-job.entity';
 import { JobStatus } from '../../database/enums/job-status.enum';
+import { BackupCategory } from '../../database/enums/backup-category.enum';
+import { Environment } from '../../database/enums/environment.enum';
+import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { BackupLeaseRepository } from './backup-lease.repository';
 import { BackupRepository } from './backup.repository';
 
@@ -44,6 +48,7 @@ integration('backup lease PostgreSQL integration', () => {
   let firstBackupRepository: BackupRepository;
   let secondBackupRepository: BackupRepository;
   const migration = new CreateBackupLeases1778716800021();
+  const pendingUniqueMigration = new BackupJobsPendingUnique1778716800022();
   const connectionId = '00000000-0000-0000-0000-000000000301';
   let createdBackupJobs = false;
 
@@ -61,8 +66,12 @@ integration('backup lease PostgreSQL integration', () => {
       await runner.query(`CREATE TABLE backup_jobs (
         id uuid PRIMARY KEY,
         "connectionId" uuid NOT NULL,
+        environment varchar NOT NULL DEFAULT 'prod',
+        "dbType" varchar NULL,
         status varchar NOT NULL,
         "fileKey" varchar NULL,
+        "storageKeyVersion" integer NOT NULL DEFAULT 1,
+        category varchar NULL,
         "fileSizeMb" float NULL,
         sha256 varchar NULL,
         bytes bigint NULL,
@@ -74,6 +83,7 @@ integration('backup lease PostgreSQL integration', () => {
       )`);
       createdBackupJobs = true;
       await migration.up(runner);
+      await pendingUniqueMigration.up(runner);
     } finally {
       await runner.release();
     }
@@ -100,6 +110,7 @@ integration('backup lease PostgreSQL integration', () => {
         const runner = firstDataSource.createQueryRunner();
         await runner.connect();
         try {
+          await pendingUniqueMigration.down(runner);
           await migration.down(runner);
           if (createdBackupJobs) await runner.query('DROP TABLE backup_jobs');
         } finally {
@@ -263,5 +274,123 @@ integration('backup lease PostgreSQL integration', () => {
       [jobId],
     );
     expect(completed).toEqual({ status: JobStatus.COMPLETED, sha256: 'owned-sha' });
+  });
+
+  describe('category-aware atomic coalescing', () => {
+    it('coalesces two concurrent same-category enqueue requests for the same connection into one PENDING row', async () => {
+      const connId = '00000000-0000-0000-0000-000000000401';
+      const base = {
+        connectionId: connId,
+        environment: Environment.PROD,
+        dbType: DbTypeEnum.POSTGRES,
+        storageKeyVersion: STORAGE_KEY_VERSION.NEW,
+        triggeredBy: 'race-test',
+      };
+
+      const [a, b] = await Promise.all([
+        firstBackupRepository.insertPendingOrFindExisting({
+          ...base,
+          fileKey: 'a.dump',
+          category: BackupCategory.HOURLY,
+        }),
+        secondBackupRepository.insertPendingOrFindExisting({
+          ...base,
+          fileKey: 'b.dump',
+          category: BackupCategory.HOURLY,
+        }),
+      ]);
+
+      expect([a.created, b.created].filter(Boolean)).toHaveLength(1);
+      expect(a.job.id).toBe(b.job.id);
+
+      const rows = await firstDataSource.query<{ id: string }[]>(
+        `SELECT id FROM backup_jobs WHERE "connectionId" = $1 AND category = $2 AND status = 'pending'`,
+        [connId, BackupCategory.HOURLY],
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('creates a separate PENDING row for a different category on the same connection', async () => {
+      const connId = '00000000-0000-0000-0000-000000000402';
+      const base = {
+        connectionId: connId,
+        environment: Environment.PROD,
+        dbType: DbTypeEnum.POSTGRES,
+        storageKeyVersion: STORAGE_KEY_VERSION.NEW,
+        triggeredBy: 'category-test',
+      };
+
+      const hourly = await firstBackupRepository.insertPendingOrFindExisting({
+        ...base,
+        fileKey: 'hourly.dump',
+        category: BackupCategory.HOURLY,
+      });
+      const daily = await firstBackupRepository.insertPendingOrFindExisting({
+        ...base,
+        fileKey: 'daily.dump',
+        category: BackupCategory.DAILY,
+      });
+
+      expect(hourly.created).toBe(true);
+      expect(daily.created).toBe(true);
+      expect(hourly.job.id).not.toBe(daily.job.id);
+    });
+  });
+
+  describe('migration 1778716800022 dedupe', () => {
+    it('keeps the oldest PENDING row, fails the rest, and (re)creates the unique index', async () => {
+      const runner = firstDataSource.createQueryRunner();
+      await runner.connect();
+      try {
+        await runner.query('DROP INDEX IF EXISTS "UQ_backup_jobs_pending_connection_category"');
+
+        const connId = '00000000-0000-0000-0000-000000000403';
+        const olderId = '00000000-0000-0000-0000-000000000501';
+        const newerId = '00000000-0000-0000-0000-000000000502';
+        await firstDataSource.query(
+          `INSERT INTO backup_jobs (id, "connectionId", status, category, "fileKey", "triggeredBy", "createdAt")
+           VALUES ($1, $2, 'pending', $3, 'older.dump', 'dedupe-test', now() - interval '1 hour')`,
+          [olderId, connId, BackupCategory.HOURLY],
+        );
+        await firstDataSource.query(
+          `INSERT INTO backup_jobs (id, "connectionId", status, category, "fileKey", "triggeredBy", "createdAt")
+           VALUES ($1, $2, 'pending', $3, 'newer.dump', 'dedupe-test', now())`,
+          [newerId, connId, BackupCategory.HOURLY],
+        );
+
+        await pendingUniqueMigration.up(runner);
+
+        const rows = await firstDataSource.query<
+          { id: string; status: string; errorMessage: string | null }[]
+        >(
+          'SELECT id, status, "errorMessage" FROM backup_jobs WHERE "connectionId" = $1 ORDER BY "createdAt"',
+          [connId],
+        );
+        expect(rows).toEqual([
+          { id: olderId, status: JobStatus.PENDING, errorMessage: null },
+          {
+            id: newerId,
+            status: JobStatus.FAILED,
+            errorMessage: expect.stringContaining('Duplicate pending backup'),
+          },
+        ]);
+
+        // The index must be usable again: a third concurrent PENDING row for
+        // the same connection+category now coalesces instead of inserting.
+        const result = await firstBackupRepository.insertPendingOrFindExisting({
+          connectionId: connId,
+          environment: Environment.PROD,
+          dbType: DbTypeEnum.POSTGRES,
+          storageKeyVersion: STORAGE_KEY_VERSION.NEW,
+          fileKey: 'third.dump',
+          category: BackupCategory.HOURLY,
+          triggeredBy: 'dedupe-test',
+        });
+        expect(result.created).toBe(false);
+        expect(result.job.id).toBe(olderId);
+      } finally {
+        await runner.release();
+      }
+    });
   });
 });

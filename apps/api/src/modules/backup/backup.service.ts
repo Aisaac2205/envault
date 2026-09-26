@@ -162,47 +162,30 @@ export class BackupService implements OnApplicationBootstrap {
       );
     }
 
-    const activeJob = await this.backupRepository.findActiveJobForConnection(connection.id);
-    if (activeJob) {
-      const jobAgeMs = Date.now() - (activeJob.startedAt ?? activeJob.createdAt).getTime();
-      if (jobAgeMs > this.backupTimeoutMs) {
-        this.logger.warn(
-          `Respaldo activo previo ${activeJob.id} superó el timeout (${jobAgeMs}ms > ${this.backupTimeoutMs}ms). Marcando como FAILED.`,
-        );
-        await this.backupRepository.updateStatus(activeJob.id, JobStatus.FAILED, {
-          errorMessage: 'Respaldo superó el tiempo límite de ejecución (timeout)',
-          completedAt: new Date(),
-        });
-      } else if (activeJob.status === JobStatus.PENDING) {
-        this.logger.log(
-          `Ya existe un respaldo en cola para la conexión "${connection.name}" (Job: ${activeJob.id}). Reutilizando ticket de cola.`,
-        );
-        return {
-          jobId: activeJob.id,
-          fileKey: activeJob.fileKey ?? '',
-          status: JobStatus.PENDING,
-        };
-      } else {
-        this.logger.log(
-          `Conexión "${connection.name}" tiene un respaldo en ejecución (Job: ${activeJob.id}). Encolando nuevo respaldo para ejecución secuencial.`,
-        );
-      }
-    }
-
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const uniqueSuffix = Math.random().toString(36).slice(2, 8);
     const fileKey = `${connection.slug}/${category}/${timestamp}-${uniqueSuffix}.dump`;
 
-    const job = await this.backupRepository.create({
+    const { job, created } = await this.backupRepository.insertPendingOrFindExisting({
       connectionId: connection.id,
       environment: connection.environment,
       dbType: connection.dbType,
-      status: JobStatus.PENDING,
       fileKey,
       triggeredBy: user.id,
       category,
       storageKeyVersion: STORAGE_KEY_VERSION.NEW,
     });
+
+    if (!created) {
+      this.logger.log(
+        `Ya existe un respaldo en cola para la conexión "${connection.name}" y categoría "${category}" (Job: ${job.id}). Reutilizando ticket de cola.`,
+      );
+      return {
+        jobId: job.id,
+        fileKey: job.fileKey ?? '',
+        status: JobStatus.PENDING,
+      };
+    }
 
     this.sseService.register(job.id);
     this.sseService.emit(job.id, {

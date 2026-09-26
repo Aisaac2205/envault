@@ -22,7 +22,7 @@ describe('BackupService', () => {
     create: jest.Mock;
     updateStatus: jest.Mock;
     findById: jest.Mock;
-    findActiveJobForConnection: jest.Mock;
+    insertPendingOrFindExisting: jest.Mock;
     findAllUnfinished: jest.Mock;
     failPendingStale: jest.Mock;
     failRunningWithoutLease: jest.Mock;
@@ -78,7 +78,7 @@ describe('BackupService', () => {
       create: jest.fn(),
       updateStatus: jest.fn(),
       findById: jest.fn(),
-      findActiveJobForConnection: jest.fn().mockResolvedValue(null),
+      insertPendingOrFindExisting: jest.fn(),
       findAllUnfinished: jest.fn().mockResolvedValue([]),
       failPendingStale: jest.fn().mockResolvedValue(false),
       failRunningWithoutLease: jest.fn().mockResolvedValue(false),
@@ -142,10 +142,13 @@ describe('BackupService', () => {
   });
 
   it('createBackup enqueues job in BullMQ and registers SSE', async () => {
-    mockBackupRepository.create.mockResolvedValue({
-      id: 'job-123',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/test.dump',
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: true,
+      job: {
+        id: 'job-123',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/test.dump',
+      },
     });
 
     const result = await service.createBackup(
@@ -164,12 +167,15 @@ describe('BackupService', () => {
     expect(mockSseService.register).toHaveBeenCalledWith('job-123');
   });
 
-  it('createBackup reuses pending job ticket if a job is already PENDING in queue for connection', async () => {
-    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
-      id: 'active-job-pending',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/pending.dump',
-      createdAt: new Date(),
+  it('createBackup reuses the existing PENDING ticket when the atomic insert coalesces', async () => {
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: false,
+      job: {
+        id: 'active-job-pending',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/pending.dump',
+        createdAt: new Date(),
+      },
     });
 
     const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
@@ -177,21 +183,17 @@ describe('BackupService', () => {
     expect(result.jobId).toBe('active-job-pending');
     expect(result.status).toBe(JobStatus.PENDING);
     expect(mockQueue.add).not.toHaveBeenCalled();
-    expect(mockBackupRepository.create).not.toHaveBeenCalled();
   });
 
-  it('createBackup queues new backup if another job is currently RUNNING for connection', async () => {
-    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
-      id: 'active-job-running',
-      status: JobStatus.RUNNING,
-      createdAt: new Date(),
-    });
-
-    mockBackupRepository.create.mockResolvedValue({
-      id: 'new-job-456',
-      connectionId: 'conn-1',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/new.dump',
+  it('createBackup enqueues a new PENDING job even when another job is currently RUNNING for the connection', async () => {
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: true,
+      job: {
+        id: 'new-job-456',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/new.dump',
+      },
     });
 
     const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
@@ -203,35 +205,6 @@ describe('BackupService', () => {
       { jobId: 'new-job-456' },
       expect.anything(),
     );
-  });
-
-  it('createBackup marks zombie job as FAILED if older than BACKUP_TIMEOUT_MS and creates new backup', async () => {
-    const twoHoursAgo = new Date(Date.now() - 7_200_000);
-    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
-      id: 'zombie-job-999',
-      status: JobStatus.RUNNING,
-      createdAt: twoHoursAgo,
-      startedAt: twoHoursAgo,
-    });
-
-    mockBackupRepository.create.mockResolvedValue({
-      id: 'recovered-job-789',
-      connectionId: 'conn-1',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/recovered.dump',
-    });
-
-    const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
-
-    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
-      'zombie-job-999',
-      JobStatus.FAILED,
-      expect.objectContaining({
-        errorMessage: expect.stringContaining('timeout'),
-      }),
-    );
-    expect(result.jobId).toBe('recovered-job-789');
-    expect(mockQueue.add).toHaveBeenCalled();
   });
 
   describe('sweepOrphans', () => {
