@@ -69,6 +69,7 @@ settings.json
 .claude/
 openspec/
 
-# UI/UX
+# UI/UX & Planning
 PRODUCT.md
 DESIGN.md
+plan-ejecucion*.md
