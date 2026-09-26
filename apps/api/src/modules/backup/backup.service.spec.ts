@@ -198,7 +198,7 @@ describe('BackupService', () => {
               id: 'dead-pending-job',
               status: JobStatus.PENDING,
               fileKey: 'prod-db/manual/dead.dump',
-              createdAt: new Date(),
+              createdAt: new Date(Date.now() - 5 * 60_000),
             },
           })
           .mockResolvedValueOnce({
@@ -230,6 +230,30 @@ describe('BackupService', () => {
     },
   );
 
+  it('createBackup treats a fresh PENDING ticket with no BullMQ job yet as in-flight, not dead', async () => {
+    // A concurrent request inserted this row milliseconds ago and has not
+    // reached queue.add yet, so BullMQ reports "unknown". Failing it here
+    // would kill a live ticket.
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: false,
+      job: {
+        id: 'in-flight-job',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/in-flight.dump',
+        createdAt: new Date(),
+      },
+    });
+    mockQueue.getJobState.mockResolvedValue('unknown');
+
+    const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
+
+    expect(result.jobId).toBe('in-flight-job');
+    expect(result.status).toBe(JobStatus.PENDING);
+    expect(mockBackupRepository.markFailedIfUnfinished).not.toHaveBeenCalled();
+    expect(mockBackupRepository.insertPendingOrFindExisting).toHaveBeenCalledTimes(1);
+    expect(mockQueue.add).not.toHaveBeenCalled();
+  });
+
   it('createBackup gives up retrying after one dead-job replacement and returns the second coalesced ticket as-is', async () => {
     mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
       created: false,
@@ -237,7 +261,7 @@ describe('BackupService', () => {
         id: 'still-dead-job',
         status: JobStatus.PENDING,
         fileKey: 'prod-db/manual/still-dead.dump',
-        createdAt: new Date(),
+        createdAt: new Date(Date.now() - 5 * 60_000),
       },
     });
     mockQueue.getJobState.mockResolvedValue('unknown');

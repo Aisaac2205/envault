@@ -26,6 +26,7 @@ import {
   BACKUP_LEASE_HEARTBEAT_MS,
   BACKUP_LEASE_RENEWAL_DEADLINE_MS,
   BACKUP_LEASE_TTL_MS,
+  BACKUP_PENDING_ENQUEUE_GRACE_MS,
   BACKUP_QUEUE_NAME,
 } from './backup.constants';
 import { SseService } from '../../shared/sse/sse.service';
@@ -193,7 +194,11 @@ export class BackupService implements OnApplicationBootstrap {
       }
 
       const state = await this.backupQueue.getJobState(result.job.id);
-      const isDead = state === 'unknown' || state === 'failed' || state === 'completed';
+      const ageMs = Date.now() - result.job.createdAt.getTime();
+      const isDead =
+        state === 'failed' ||
+        state === 'completed' ||
+        (state === 'unknown' && ageMs >= BACKUP_PENDING_ENQUEUE_GRACE_MS);
       if (!isDead || attempt === 1) {
         job = result.job;
         break;

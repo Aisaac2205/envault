@@ -17,3 +17,8 @@ export const BACKUP_BUSY_BACKOFF_MAX_MS = 300_000;
 export const BACKUP_BUSY_BACKOFF_BASE_MS = 30_000;
 export const BACKUP_BUSY_BACKOFF_JITTER_MIN = 0.8;
 export const BACKUP_BUSY_BACKOFF_JITTER_MAX = 1.2;
+
+/** A PENDING row younger than this may still be between its INSERT and its
+ * `queue.add`, so a BullMQ state of "unknown" is not proof the ticket is dead.
+ * Matches the boot sweep's grace for stale PENDING rows. */
+export const BACKUP_PENDING_ENQUEUE_GRACE_MS = 60_000;
