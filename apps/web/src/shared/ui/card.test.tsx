@@ -23,11 +23,12 @@ describe('Card', () => {
     expect(card.className).not.toContain('shadow-md');
   });
 
-  it('renders default variant without shadow or border', () => {
+  it('renders default variant with a dual-layer surface so it separates from the page', () => {
     render(<Card>Content</Card>);
     const card = screen.getByText('Content');
+    expect(card.className).toContain('border-black/[0.06]');
+    expect(card.className).toContain('dark:border-white/[0.08]');
+    expect(card.className).toContain('shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]');
     expect(card.className).not.toContain('shadow-md');
-    expect(card.className).not.toContain('shadow-sm');
-    expect(card.className).not.toContain('border');
   });
 });
