@@ -16,14 +16,28 @@ export function useDashboard() {
       },
     ],
   });
+  const [backupsResult, restoresResult] = results;
 
   return {
-    recentBackups: Array.isArray(results[0].data) ? results[0].data : [],
-    recentRestores: Array.isArray(results[1].data) ? results[1].data : [],
+    recentBackups: Array.isArray(backupsResult.data) ? backupsResult.data : [],
+    recentRestores: Array.isArray(restoresResult.data) ? restoresResult.data : [],
     isLoading: results.some((r) => r.isLoading),
     errors: results.map((r) => r.error).filter(Boolean),
     // dashboard-charts-web: feeds the header's freshness timestamp (max
     // dataUpdatedAt across mounted queries).
     dataUpdatedAt: Math.max(...results.map((r) => r.dataUpdatedAt)),
+    // dashboard-charts-web (S7): per-query status so the page-shell "Activity"
+    // group (backups) and "Restores" group can fail/retry independently
+    // instead of the combined `errors`/`isLoading` above coupling them.
+    backups: {
+      isLoading: backupsResult.isLoading,
+      isError: backupsResult.isError,
+      refetch: backupsResult.refetch,
+    },
+    restores: {
+      isLoading: restoresResult.isLoading,
+      isError: restoresResult.isError,
+      refetch: restoresResult.refetch,
+    },
   };
 }
