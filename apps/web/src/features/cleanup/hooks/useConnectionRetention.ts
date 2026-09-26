@@ -259,6 +259,7 @@ export function useConnectionRetention(connectionSlug: string) {
     handleRunCleanup,
     isDirty,
     hasSavedPolicy,
+    preview,
     prunable,
     totalCount,
     totalMb,

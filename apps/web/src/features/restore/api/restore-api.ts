@@ -17,4 +17,9 @@ export const restoreApi = {
     apiClient
       .post<RestoreExecuteResult>("/restores", { ...dto, isDryRun: false })
       .then((r) => r.data),
+
+  cancelRestore: (id: string) =>
+    apiClient
+      .post<{ message: string; jobId?: string }>(`/restores/${id}/cancel`)
+      .then((r) => r.data),
 };

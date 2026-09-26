@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Loader2,
   AlertTriangle,
@@ -7,8 +7,12 @@ import {
   ChevronUp,
   Sparkles,
   Trash2,
+  ShieldCheck,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { formatDateTimeShort as formatDate } from "@/lib/format";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +63,7 @@ export function RetentionDialog({
     handleRunCleanup,
     isDirty,
     hasSavedPolicy,
+    preview,
     prunable,
     totalCount,
     totalMb,
@@ -72,6 +77,15 @@ export function RetentionDialog({
   } = useConnectionRetention(connectionSlug);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showCandidates, setShowCandidates] = useState(false);
+
+  const allCandidates = useMemo(() => {
+    return preview.flatMap((p) => p.candidates ?? []);
+  }, [preview]);
+
+  const totalProtected = useMemo(() => {
+    return preview.reduce((sum, p) => sum + (p.protectedCount ?? 0), 0);
+  }, [preview]);
 
   if (!connection) return null;
 
@@ -155,12 +169,17 @@ export function RetentionDialog({
               </div>
             </div>
 
-            {/* Impact Projection */}
-            <div className="rounded-lg border border-border/80 bg-muted/20 p-3.5">
+            {/* Impact Projection (Simulación previa) */}
+            <div className="rounded-lg border border-border/80 bg-muted/20 p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-text-primary">
-                  {t("retention.impact.title")}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-text-primary">
+                    {t("retention.impact.title")}
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] font-medium">
+                    {t("retention.impact.badge")}
+                  </Badge>
+                </div>
                 {previewLoading && (
                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                     <Loader2 className="size-3 animate-spin" aria-hidden="true" />
@@ -169,9 +188,9 @@ export function RetentionDialog({
                 )}
               </div>
 
-              <div className="mt-2 text-xs">
+              <div className="text-xs">
                 {prunable.length === 0 ? (
-                  <div className="flex items-center gap-2 text-muted-foreground">
+                  <div className="flex items-center gap-2 text-muted-foreground py-1">
                     <CheckCircle2 className="size-4 text-emerald-500 shrink-0" aria-hidden="true" />
                     <span>{t("retention.impact.empty")}</span>
                   </div>
@@ -184,6 +203,12 @@ export function RetentionDialog({
                           mb: totalMb.toFixed(2),
                         })}
                       </p>
+                      {totalProtected > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
+                          <ShieldCheck className="size-3.5" aria-hidden="true" />
+                          {t("candidates.protectedCount", { count: totalProtected })}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap gap-1.5 pt-1">
@@ -202,6 +227,62 @@ export function RetentionDialog({
                         </span>
                       ))}
                     </div>
+
+                    {allCandidates.length > 0 && (
+                      <div className="pt-2 border-t border-border/40">
+                        <button
+                          type="button"
+                          onClick={() => setShowCandidates((prev) => !prev)}
+                          className="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded"
+                        >
+                          {showCandidates ? (
+                            <>
+                              <EyeOff className="size-3" aria-hidden="true" />
+                              {t("candidates.hideDetails")}
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="size-3" aria-hidden="true" />
+                              {t("candidates.viewDetails")} ({allCandidates.length})
+                            </>
+                          )}
+                        </button>
+
+                        {showCandidates && (
+                          <div className="mt-2 max-h-44 overflow-y-auto rounded-md border border-border/60 bg-background/80 p-2 space-y-1.5 text-[11px]">
+                            {allCandidates.map((candidate, idx) => (
+                              <div
+                                key={candidate.fileKey || idx}
+                                className="flex items-center justify-between gap-2 py-1 px-1.5 rounded hover:bg-muted/40 transition-colors"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-mono text-text-primary text-[11px]" title={candidate.fileKey}>
+                                    {candidate.fileKey.split("/").pop() || candidate.fileKey}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                    <span>{formatDate(candidate.lastModified)}</span>
+                                    <span>-</span>
+                                    <span>{(candidate.sizeBytes / (1024 * 1024)).toFixed(2)} MB</span>
+                                  </div>
+                                </div>
+                                <div className="shrink-0">
+                                  {candidate.isProtected ? (
+                                    <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center gap-1">
+                                      <ShieldCheck className="size-3" aria-hidden="true" />
+                                      {t(`reason.${candidate.reason}`, { defaultValue: candidate.reason })}
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="text-[10px] text-amber-700 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-300">
+                                      {t(`reason.${candidate.reason}`, { defaultValue: candidate.reason })}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

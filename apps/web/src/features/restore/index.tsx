@@ -220,7 +220,7 @@ export default function Restore() {
       <ConfirmRestoreDialog
         open={confirmDialogOpen}
         onOpenChange={setConfirmDialogOpen}
-        targetName={pendingTarget?.name ?? "—"}
+        targetName={pendingTarget?.name ?? "-"}
         targetEnvironment={pendingTarget?.environment}
         targetDbType={
           pendingTarget?.dbType

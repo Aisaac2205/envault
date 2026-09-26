@@ -62,7 +62,7 @@ describe("CronjobsTable", () => {
     expect(screen.getByText("Desarrollo")).toBeInTheDocument();
   });
 
-  it("renders em dash for unknown connection", () => {
+  it("renders hyphen for unknown connection", () => {
     const cronjobs = [
       {
         ...mockCronjobs[0],
@@ -70,7 +70,7 @@ describe("CronjobsTable", () => {
       },
     ];
     render(<CronjobsTable {...defaultProps} cronjobs={cronjobs} />);
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("-")).toBeInTheDocument();
   });
 
   it("does not render EnvironmentBadge in the connection column", () => {

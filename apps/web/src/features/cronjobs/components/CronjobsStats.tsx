@@ -87,7 +87,7 @@ export function CronjobsStats({
                 unit={STATUS_LABELS[topStatus[0]] ?? topStatus[0]}
               />
             ) : total > 0 ? (
-              "—"
+              "-"
             ) : (
               "N/A"
             )

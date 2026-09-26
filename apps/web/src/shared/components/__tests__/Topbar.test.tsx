@@ -20,7 +20,7 @@ beforeEach(() => {
 describe("Topbar", () => {
   it("renders breadcrumbs", () => {
     renderWithRouter(<Topbar />, { route: "/dumps" });
-    expect(screen.getByText("Dumps")).toBeInTheDocument();
+    expect(screen.getByText("Respaldos")).toBeInTheDocument();
   });
 
   it("renders theme toggle button", () => {

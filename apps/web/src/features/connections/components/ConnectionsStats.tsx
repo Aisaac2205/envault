@@ -64,7 +64,7 @@ export function ConnectionsStats({
                 </span>
               </span>
             ) : total > 0 ? (
-              "—"
+              "-"
             ) : (
               "N/A"
             )

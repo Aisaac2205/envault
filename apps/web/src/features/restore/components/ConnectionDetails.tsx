@@ -24,7 +24,7 @@ export function ConnectionDetails({ connection, isActive = false }: ConnectionDe
       <span className="truncate font-medium text-text-primary">{connection.database}</span>
 
       <span className="text-muted-foreground">Usuario</span>
-      <span className="truncate font-medium text-text-primary">{connection.username ?? "—"}</span>
+      <span className="truncate font-medium text-text-primary">{connection.username ?? "-"}</span>
     </div>
   );
 }

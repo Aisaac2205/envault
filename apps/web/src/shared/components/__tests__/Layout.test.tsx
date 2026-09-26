@@ -45,11 +45,11 @@ describe("Layout", () => {
 
   it("renders topbar with breadcrumbs", () => {
     renderLayout("/dumps");
-    // Both sidebar nav and topbar breadcrumbs show "Dumps" — scope to breadcrumbs
+    // Both sidebar nav and topbar breadcrumbs show "Respaldos" - scope to breadcrumbs
     const breadcrumbNav = screen.getByRole("navigation", { name: "Breadcrumbs" });
     expect(breadcrumbNav).toBeInTheDocument();
     const dumpsInBreadcrumb = breadcrumbNav.querySelector("span.font-medium");
-    expect(dumpsInBreadcrumb).toHaveTextContent("Dumps");
+    expect(dumpsInBreadcrumb).toHaveTextContent("Respaldos");
   });
 
   it("contains sonner Toaster (import verified, portal renders in DOM)", () => {

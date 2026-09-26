@@ -139,7 +139,7 @@ export function DumpsTable({
         <span className="text-xs text-muted-foreground">
           {job.fileSizeMb != null
             ? formatSize(job.fileSizeMb * 1024 * 1024)
-            : "—"}
+            : "-"}
         </span>
       ),
       className: "w-[8%] hidden sm:table-cell",

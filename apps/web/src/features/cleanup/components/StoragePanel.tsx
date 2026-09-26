@@ -105,7 +105,7 @@ export function StoragePanel() {
           <StatCard
             variant="outlined"
             label={t("stats.totalDumps")}
-            value={data?.totalDumps ?? (isLoading ? "—" : 0)}
+            value={data?.totalDumps ?? (isLoading ? "-" : 0)}
             icon={<Database className="h-4 w-4" />}
             loading={isLoading}
           />
@@ -114,7 +114,7 @@ export function StoragePanel() {
           <StatCard
             variant="outlined"
             label={t("stats.totalMb")}
-            value={data != null ? `${data.totalSizeMb.toLocaleString()} MB` : (isLoading ? "—" : "0 MB")}
+            value={data != null ? `${data.totalSizeMb.toLocaleString()} MB` : (isLoading ? "-" : "0 MB")}
             icon={<HardDrive className="h-4 w-4" />}
             loading={isLoading}
           />
@@ -123,7 +123,7 @@ export function StoragePanel() {
           <StatCard
             variant="outlined"
             label={t("stats.connectionsWithDumps")}
-            value={data != null ? `${connectionsWithDumps} / ${connectionRows.length || 1}` : (isLoading ? "—" : 0)}
+            value={data != null ? `${connectionsWithDumps} / ${connectionRows.length || 1}` : (isLoading ? "-" : 0)}
             icon={<Radio className="h-4 w-4" />}
             loading={isLoading}
           />
@@ -132,7 +132,7 @@ export function StoragePanel() {
           <StatCard
             variant="outlined"
             label={t("stats.oldDumps")}
-            value={data != null ? oldDumps : (isLoading ? "—" : 0)}
+            value={data != null ? oldDumps : (isLoading ? "-" : 0)}
             icon={<Clock className="h-4 w-4" />}
             loading={isLoading}
           />
@@ -231,7 +231,7 @@ export function StoragePanel() {
                           {conn.sizeMb.toLocaleString()} MB
                         </td>
                         <td className="px-5 py-3.5 text-right text-xs tabular-nums text-muted-foreground">
-                          {conn.oldest ? formatDate(conn.oldest) : "—"}
+                          {conn.oldest ? formatDate(conn.oldest) : "-"}
                         </td>
                         <td className="px-5 py-3.5 text-right">
                           <Button

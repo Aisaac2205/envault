@@ -18,7 +18,7 @@ describe("BackupAreaChart", () => {
     render(<BackupAreaChart data={sampleData} />);
 
     // Verify title is rendered
-    expect(screen.getByText("Backups completados")).toBeInTheDocument();
+    expect(screen.getByText("Respaldos completados")).toBeInTheDocument();
 
     // The chartConfig uses var(--color-info)
     const chartContainer = document.querySelector("[style*='--color-total']");

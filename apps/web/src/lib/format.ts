@@ -3,17 +3,17 @@ import i18n from '@/i18n'
 const getLocale = (): string => (i18n.language?.startsWith('en') ? 'en-US' : 'es-AR')
 
 export function formatDate(date: Date | string | null | undefined, options?: Intl.DateTimeFormatOptions): string {
-  if (!date) return '—'
+  if (!date) return '-'
   return new Intl.DateTimeFormat(getLocale(), options ?? { dateStyle: 'medium' }).format(new Date(date))
 }
 
 export function formatDateTime(date: Date | string | null | undefined): string {
-  if (!date) return '—'
+  if (!date) return '-'
   return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date))
 }
 
 export function formatDateTimeShort(date: Date | string | null | undefined): string {
-  if (!date) return '—'
+  if (!date) return '-'
   return new Intl.DateTimeFormat(getLocale(), {
     year: 'numeric',
     month: '2-digit',
@@ -84,7 +84,7 @@ export function shortId(id: string): string {
 }
 
 export function nextRunParts(isoDate: string | null | undefined): { value: string; unit: string } {
-  if (!isoDate) return { value: '—', unit: '' }
+  if (!isoDate) return { value: '-', unit: '' }
   const diffMs = new Date(isoDate).getTime() - Date.now()
   if (diffMs <= 0) return { value: i18n.t('time.now', { ns: 'common' }), unit: '' }
   const min = Math.round(diffMs / 60_000)
@@ -96,7 +96,7 @@ export function nextRunParts(isoDate: string | null | undefined): { value: strin
 }
 
 export function formatEnvironment(env: string | null | undefined): string {
-  if (!env) return '—'
+  if (!env) return '-'
   const normalized = env.toLowerCase().trim()
   if (normalized === 'prod' || normalized === 'production') {
     return i18n.t('env.prod', { ns: 'common', defaultValue: 'Producción' })

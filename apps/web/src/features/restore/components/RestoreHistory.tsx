@@ -48,7 +48,7 @@ function formatDuration(
   startedAt: string,
   completedAt: string | null,
 ): string {
-  if (!completedAt) return "—";
+  if (!completedAt) return "-";
   const start = new Date(startedAt).getTime();
   const end = new Date(completedAt).getTime();
   const diffMs = end - start;
@@ -225,15 +225,15 @@ export function RestoreHistory({
                           </div>
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
-                      {job.startedAt ? formatDateTimeShort(job.startedAt) : "—"}
+                      {job.startedAt ? formatDateTimeShort(job.startedAt) : "-"}
                     </TableCell>
                     <TableCell className="py-3">
                       <Badge variant="outline" className="rounded-full text-xs font-normal">
-                        {job.targetEnvironment ?? "—"}
+                        {job.targetEnvironment ?? "-"}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3">
@@ -245,7 +245,7 @@ export function RestoreHistory({
                             job.startedAt,
                             job.completedAt ?? null,
                           )
-                        : "—"}
+                        : "-"}
                     </TableCell>
                   </TableRow>
                 );
