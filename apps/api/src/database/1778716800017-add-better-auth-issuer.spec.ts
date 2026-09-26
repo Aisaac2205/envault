@@ -28,12 +28,12 @@ const createQueryRunner = (state: MigrationState): {
     queries.push(statement);
 
     switch (statement) {
-      case 'ALTER TABLE "account" ADD "issuer" text':
+      case 'ALTER TABLE "account" ADD COLUMN IF NOT EXISTS "issuer" text':
         state.hasIssuerColumn = true;
         return;
-      case 'UPDATE "account" SET "issuer" = \'local:credential\', "accountId" = "userId" WHERE "providerId" = \'credential\'':
+      case 'UPDATE "account" SET "issuer" = \'local:credential\', "accountId" = "userId" WHERE "providerId" = \'credential\' AND "issuer" IS NULL':
         state.accounts = state.accounts.map((account) =>
-          account.providerId === 'credential'
+          account.providerId === 'credential' && account.issuer === null
             ? {
                 ...account,
                 accountId: account.userId,
@@ -48,7 +48,7 @@ const createQueryRunner = (state: MigrationState): {
         }
         state.issuerRequired = true;
         return;
-      case 'CREATE UNIQUE INDEX "account_issuer_accountId_uidx" ON "account" ("issuer", "accountId")': {
+      case 'CREATE UNIQUE INDEX IF NOT EXISTS "account_issuer_accountId_uidx" ON "account" ("issuer", "accountId")': {
         const accountKeys = new Set(
           state.accounts.map((account) => `${account.issuer}:${account.accountId}`),
         );
