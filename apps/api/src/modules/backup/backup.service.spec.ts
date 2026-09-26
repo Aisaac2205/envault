@@ -1,7 +1,6 @@
 /// <reference types="jest" />
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
-import { ConflictException } from '@nestjs/common';
 import { BackupService } from './backup.service';
 import { BackupRepository } from './backup.repository';
 import { R2Service } from './r2.service';
@@ -22,6 +21,7 @@ describe('BackupService', () => {
     updateStatus: jest.Mock;
     findById: jest.Mock;
     findActiveJobForConnection: jest.Mock;
+    findAllUnfinished: jest.Mock;
   };
   let mockR2Service: {
     upload: jest.Mock;
@@ -65,6 +65,7 @@ describe('BackupService', () => {
       updateStatus: jest.fn(),
       findById: jest.fn(),
       findActiveJobForConnection: jest.fn().mockResolvedValue(null),
+      findAllUnfinished: jest.fn().mockResolvedValue([]),
     };
     mockR2Service = {
       upload: jest.fn().mockResolvedValue(undefined),
@@ -136,17 +137,98 @@ describe('BackupService', () => {
     expect(mockSseService.register).toHaveBeenCalledWith('job-123');
   });
 
-  it('createBackup rejects with ConflictException if an active job already exists for connection', async () => {
+  it('createBackup reuses pending job ticket if a job is already PENDING in queue for connection', async () => {
     mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
-      id: 'active-job-999',
-      status: JobStatus.RUNNING,
+      id: 'active-job-pending',
+      status: JobStatus.PENDING,
+      fileKey: 'prod-db/manual/pending.dump',
+      createdAt: new Date(),
     });
 
-    await expect(
-      service.createBackup({ connectionId: 'conn-1' }, mockUser),
-    ).rejects.toThrow(ConflictException);
+    const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
 
+    expect(result.jobId).toBe('active-job-pending');
+    expect(result.status).toBe(JobStatus.PENDING);
     expect(mockQueue.add).not.toHaveBeenCalled();
+    expect(mockBackupRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('createBackup queues new backup if another job is currently RUNNING for connection', async () => {
+    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
+      id: 'active-job-running',
+      status: JobStatus.RUNNING,
+      createdAt: new Date(),
+    });
+
+    mockBackupRepository.create.mockResolvedValue({
+      id: 'new-job-456',
+      connectionId: 'conn-1',
+      status: JobStatus.PENDING,
+      fileKey: 'prod-db/manual/new.dump',
+    });
+
+    const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
+
+    expect(result.jobId).toBe('new-job-456');
+    expect(result.status).toBe(JobStatus.PENDING);
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      'process-backup',
+      { jobId: 'new-job-456' },
+      expect.anything(),
+    );
+  });
+
+  it('createBackup marks zombie job as FAILED if older than BACKUP_TIMEOUT_MS and creates new backup', async () => {
+    const twoHoursAgo = new Date(Date.now() - 7_200_000);
+    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
+      id: 'zombie-job-999',
+      status: JobStatus.RUNNING,
+      createdAt: twoHoursAgo,
+      startedAt: twoHoursAgo,
+    });
+
+    mockBackupRepository.create.mockResolvedValue({
+      id: 'recovered-job-789',
+      connectionId: 'conn-1',
+      status: JobStatus.PENDING,
+      fileKey: 'prod-db/manual/recovered.dump',
+    });
+
+    const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
+
+    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
+      'zombie-job-999',
+      JobStatus.FAILED,
+      expect.objectContaining({
+        errorMessage: expect.stringContaining('timeout'),
+      }),
+    );
+    expect(result.jobId).toBe('recovered-job-789');
+    expect(mockQueue.add).toHaveBeenCalled();
+  });
+
+  it('sweepOrphans marks unfinished jobs as FAILED on startup', async () => {
+    mockBackupRepository.findAllUnfinished.mockResolvedValue([
+      { id: 'orphaned-1', connectionId: 'conn-1', status: JobStatus.RUNNING },
+      { id: 'orphaned-2', connectionId: 'conn-2', status: JobStatus.PENDING },
+    ]);
+
+    await service.sweepOrphans();
+
+    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
+      'orphaned-1',
+      JobStatus.FAILED,
+      expect.objectContaining({
+        errorMessage: expect.stringContaining('interrumpido'),
+      }),
+    );
+    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
+      'orphaned-2',
+      JobStatus.FAILED,
+      expect.objectContaining({
+        errorMessage: expect.stringContaining('interrumpido'),
+      }),
+    );
   });
 
   it('executeQueuedBackup uploads manifest v2 and updates DB with sha256 and bytes upon completion', async () => {

@@ -90,6 +90,15 @@ export class BackupRepository {
     });
   }
 
+  findAllUnfinished(): Promise<BackupJobEntity[]> {
+    return this.repository.find({
+      where: {
+        status: In([JobStatus.PENDING, JobStatus.RUNNING]),
+      },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
   create(data: Partial<BackupJobEntity>): Promise<BackupJobEntity> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);
