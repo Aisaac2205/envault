@@ -467,6 +467,54 @@ describe('BackupService', () => {
       );
     });
 
+    it('cancels a RUNNING job with no local AbortController via a conditional update', async () => {
+      // No `active.abort()` call exists on this replica for this job id: the
+      // process actually running the dump (if any) is on another replica.
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-remote-running',
+        connectionId: 'conn-1',
+        status: JobStatus.RUNNING,
+        fileKey: 'prod-db/manual/remote-running.dump',
+      });
+      mockBackupRepository.markFailedIfUnfinished.mockResolvedValue(true);
+
+      const result = await service.cancelBackup('job-remote-running', mockUser);
+
+      expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+        'job-remote-running',
+        'Operación cancelada por el usuario',
+        expect.any(Date),
+      );
+      expect(mockBackupRepository.updateStatus).not.toHaveBeenCalled();
+      expect(mockR2Service.delete).toHaveBeenCalledWith('prod-db/manual/remote-running.dump');
+      expect(result.status).toBe(JobStatus.FAILED);
+    });
+
+    it('does not delete R2 or emit failed SSE when the job already reached a terminal state before the conditional cancel update landed', async () => {
+      mockBackupRepository.findById
+        .mockResolvedValueOnce({
+          id: 'job-already-done',
+          connectionId: 'conn-1',
+          status: JobStatus.RUNNING,
+          fileKey: 'prod-db/manual/already-done.dump',
+        })
+        .mockResolvedValueOnce({
+          id: 'job-already-done',
+          connectionId: 'conn-1',
+          status: JobStatus.COMPLETED,
+        });
+      mockBackupRepository.markFailedIfUnfinished.mockResolvedValue(false);
+
+      const result = await service.cancelBackup('job-already-done', mockUser);
+
+      expect(mockR2Service.delete).not.toHaveBeenCalled();
+      expect(mockSseService.emit).not.toHaveBeenCalledWith(
+        'job-already-done',
+        expect.objectContaining({ type: 'failed' }),
+      );
+      expect(result.status).toBe(JobStatus.COMPLETED);
+    });
+
     it('does not re-execute a permanently FAILED job (terminal-status guard)', async () => {
       mockBackupRepository.findById.mockResolvedValue({
         id: 'job-cancelled',

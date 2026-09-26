@@ -841,10 +841,26 @@ export class BackupService implements OnApplicationBootstrap {
     if (active) {
       active.abort({ kind: 'cancelled' });
     } else {
-      await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
+      // NOTE (cross-replica cancel limitation, see design.md): this replica
+      // has no local AbortController for this job, meaning the process
+      // actually running the dump (if any) is on another replica that this
+      // request cannot signal — remote cancel is out of scope. The
+      // conditional update at least prevents this write from clobbering an
+      // outcome that replica already recorded (COMPLETED/FAILED) between
+      // our `findById` above and this write.
+      const cancelled = await this.backupRepository.markFailedIfUnfinished(
+        job.id,
         errorMessage,
         completedAt,
-      });
+      );
+      if (!cancelled) {
+        const current = await this.backupRepository.findById(job.id);
+        return {
+          message: 'El respaldo ya había finalizado antes de poder cancelarlo',
+          jobId: job.id,
+          status: current?.status ?? job.status,
+        };
+      }
       if (job.fileKey) {
         await this.r2Service.delete(job.fileKey).catch(() => {});
       }
