@@ -156,6 +156,60 @@ export class BackupRepository {
   }
 
   /**
+   * Conditionally flips a job to RUNNING. Allows PENDING/RUNNING always, and
+   * FAILED only when `isRetry` is true (our own `attempts: 2` retry), so a
+   * concurrent cancel or sweep cannot be resurrected by a stale decision.
+   */
+  async startIfRunnable(
+    id: string,
+    startedAt: Date,
+    isRetry: boolean,
+  ): Promise<boolean> {
+    const statuses = isRetry
+      ? [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED]
+      : [JobStatus.PENDING, JobStatus.RUNNING];
+
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "startedAt" = $3
+       WHERE id = $1::uuid
+         AND status = ANY($4::text[])
+       RETURNING id`,
+      [id, JobStatus.RUNNING, startedAt, statuses],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Fails a job only if it is still PENDING or RUNNING, so this write can
+   * never overwrite an outcome already recorded by a concurrent cancel or
+   * sweep.
+   */
+  async markFailedIfUnfinished(
+    id: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = ANY($5::text[])
+       RETURNING id`,
+      [
+        id,
+        JobStatus.FAILED,
+        errorMessage,
+        completedAt,
+        [JobStatus.PENDING, JobStatus.RUNNING],
+      ],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
    * Fails a PENDING row on boot only if it is older than the 60s grace
    * period, so an in-flight `createBackup` insert is never swept before its
    * BullMQ job is enqueued.
