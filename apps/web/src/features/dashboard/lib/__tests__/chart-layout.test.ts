@@ -7,7 +7,18 @@ import {
   DAILY_PANEL_HEIGHTS,
   formatUtcTickDate,
   formatUtcFullDate,
+  toChartRows,
 } from "../chart-layout";
+
+describe("toChartRows", () => {
+  it("preserves every field and row order for the vendored chart's Record<string, unknown>[] data prop", () => {
+    const rows = [
+      { date: "2026-09-01", completed: 4, failed: 1 },
+      { date: "2026-09-02", completed: 0, failed: 0 },
+    ];
+    expect(toChartRows(rows)).toEqual(rows);
+  });
+});
 
 describe("revealDuration", () => {
   it("returns 150 on first mount with motion enabled", () => {

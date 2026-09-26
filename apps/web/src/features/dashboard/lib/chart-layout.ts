@@ -58,6 +58,20 @@ export function getDailyMargin({ compact = false, bottomPanel = false }: DailyMa
   };
 }
 
+/**
+ * Bridges our concrete, fully-typed chart row interfaces (`OutcomeRow`,
+ * `DurationRow`, `SizeRow` in `trends-data.ts`) to the vendored bklit charts'
+ * `data: Record<string, unknown>[]` prop. TypeScript's structural rules
+ * require a source type to carry an explicit index signature to satisfy a
+ * `Record<string, unknown>` target — adding `[key: string]: unknown` to our
+ * own row interfaces would violate the "no `unknown` outside charts/**"
+ * convention, so the cast is isolated to this one documented boundary
+ * instead of loosening our own types.
+ */
+export function toChartRows<T extends object>(rows: T[]): Record<string, unknown>[] {
+  return rows as unknown as Record<string, unknown>[];
+}
+
 function utcDateFromIso(dateIso: string): Date {
   // Date-only ISO strings (`YYYY-MM-DD`) are already parsed as UTC midnight by
   // the spec; being explicit here documents the intent alongside the
