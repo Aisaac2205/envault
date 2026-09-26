@@ -439,12 +439,25 @@ export class BackupService implements OnApplicationBootstrap {
 
       const completedAt = new Date();
 
-      await this.backupRepository.updateStatus(job.id, JobStatus.COMPLETED, {
-        fileSizeMb: backupResult.fileSizeMb,
-        sha256: backupResult.sha256,
-        bytes: backupResult.bytes,
-        completedAt,
-      });
+      const completed = await this.backupRepository.completeIfLeaseHeld(
+        job.id,
+        connection.id,
+        leaseToken,
+        {
+          fileSizeMb: backupResult.fileSizeMb,
+          sha256: backupResult.sha256,
+          bytes: backupResult.bytes,
+          completedAt,
+        },
+      );
+
+      if (!completed) {
+        this.logger.warn(
+          `Backup job ${job.id} finished but no longer holds the connection lease; leaving the outcome to the current owner. Dump object left in R2 for reconcile.`,
+        );
+        const current = await this.backupRepository.findById(job.id);
+        return { kind: 'skipped', status: current?.status ?? JobStatus.RUNNING };
+      }
 
       this.sseService.emit(job.id, {
         type: 'log',
@@ -484,9 +497,24 @@ export class BackupService implements OnApplicationBootstrap {
 
       this.logger.error(`Backup failed for connection ${connection.id}: ${errorMessage}`);
 
-      await this.r2Service.delete(job.fileKey!).catch(() => {});
+      const owned = await this.backupRepository.failIfLeaseHeld(
+        job.id,
+        connection.id,
+        leaseToken,
+        errorMessage,
+        completedAt,
+      );
 
-      await this.backupRepository.markFailedIfUnfinished(job.id, errorMessage, completedAt);
+      if (!owned) {
+        this.logger.warn(
+          `Backup job ${job.id} lost the connection lease before it could record failure; leaving the outcome to the current owner.`,
+        );
+        throw new Error(
+          `Backup job ${job.id} was fenced out by another lease owner: ${errorMessage}`,
+        );
+      }
+
+      await this.r2Service.delete(job.fileKey!).catch(() => {});
 
       this.sseService.emit(job.id, {
         type: 'failed',

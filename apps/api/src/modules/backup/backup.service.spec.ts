@@ -27,6 +27,8 @@ describe('BackupService', () => {
     failRunningWithoutLease: jest.Mock;
     startIfRunnable: jest.Mock;
     markFailedIfUnfinished: jest.Mock;
+    failIfLeaseHeld: jest.Mock;
+    completeIfLeaseHeld: jest.Mock;
   };
   let mockBackupLeaseRepository: {
     tryAcquire: jest.Mock;
@@ -81,6 +83,8 @@ describe('BackupService', () => {
       failRunningWithoutLease: jest.fn().mockResolvedValue(false),
       startIfRunnable: jest.fn().mockResolvedValue(true),
       markFailedIfUnfinished: jest.fn().mockResolvedValue(true),
+      failIfLeaseHeld: jest.fn().mockResolvedValue(true),
+      completeIfLeaseHeld: jest.fn().mockResolvedValue(true),
     };
     mockBackupLeaseRepository = {
       tryAcquire: jest.fn().mockResolvedValue(true),
@@ -361,9 +365,10 @@ describe('BackupService', () => {
       expect.any(Date),
       false,
     );
-    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
+    expect(mockBackupRepository.completeIfLeaseHeld).toHaveBeenCalledWith(
       'job-123',
-      JobStatus.COMPLETED,
+      'conn-1',
+      expect.any(String),
       expect.objectContaining({
         fileSizeMb: 12.5,
         sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
@@ -391,8 +396,10 @@ describe('BackupService', () => {
 
     await expect(service.executeQueuedBackup('job-123')).rejects.toThrow();
 
-    expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+    expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
       'job-123',
+      'conn-1',
+      expect.any(String),
       expect.stringContaining('pg_dump connection lost'),
       expect.any(Date),
     );
@@ -471,8 +478,10 @@ describe('BackupService', () => {
       expect(outcome.kind).toBe('finished');
       if (outcome.kind !== 'finished') throw new Error('expected finished outcome');
       expect(outcome.result.status).toBe(JobStatus.FAILED);
-      expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+      expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
         'job-running',
+        'conn-1',
+        expect.any(String),
         'Operación cancelada por el usuario',
         expect.any(Date),
       );
@@ -626,6 +635,95 @@ describe('BackupService', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it('does not delete R2 or emit failed SSE when the failure write is fenced out by another lease owner', async () => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-fenced-fail',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/fenced-fail.dump',
+        category: BackupCategory.MANUAL,
+        triggeredBy: mockUser.id,
+      });
+      mockStrategy.execute.mockRejectedValue(new Error('pg_dump connection lost'));
+      mockBackupRepository.failIfLeaseHeld.mockResolvedValue(false);
+
+      await expect(service.executeQueuedBackup('job-fenced-fail')).rejects.toThrow();
+
+      expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
+        'job-fenced-fail',
+        'conn-1',
+        expect.any(String),
+        expect.stringContaining('pg_dump connection lost'),
+        expect.any(Date),
+      );
+      expect(mockR2Service.delete).not.toHaveBeenCalled();
+      expect(mockSseService.emit).not.toHaveBeenCalledWith(
+        'job-fenced-fail',
+        expect.objectContaining({ type: 'failed' }),
+      );
+      expect(mockSseService.complete).not.toHaveBeenCalledWith('job-fenced-fail');
+    });
+
+    it('deletes R2 and emits failed SSE when the failure write is still owned by this lease', async () => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-owned-fail',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/owned-fail.dump',
+        category: BackupCategory.MANUAL,
+        triggeredBy: mockUser.id,
+      });
+      mockStrategy.execute.mockRejectedValue(new Error('pg_dump connection lost'));
+      mockBackupRepository.failIfLeaseHeld.mockResolvedValue(true);
+
+      await expect(service.executeQueuedBackup('job-owned-fail')).rejects.toThrow();
+
+      expect(mockR2Service.delete).toHaveBeenCalledWith('prod-db/manual/owned-fail.dump');
+      expect(mockSseService.emit).toHaveBeenCalledWith(
+        'job-owned-fail',
+        expect.objectContaining({ type: 'failed' }),
+      );
+      expect(mockSseService.complete).toHaveBeenCalledWith('job-owned-fail');
+    });
+
+    it('does not emit completed SSE and returns skipped when the success write is fenced out by another lease owner', async () => {
+      mockBackupRepository.findById
+        .mockResolvedValueOnce({
+          id: 'job-fenced-success',
+          connectionId: 'conn-1',
+          status: JobStatus.PENDING,
+          fileKey: 'prod-db/manual/fenced-success.dump',
+          category: BackupCategory.MANUAL,
+          triggeredBy: mockUser.id,
+        })
+        .mockResolvedValueOnce({
+          id: 'job-fenced-success',
+          connectionId: 'conn-1',
+          status: JobStatus.RUNNING,
+        });
+      mockBackupRepository.completeIfLeaseHeld.mockResolvedValue(false);
+
+      const outcome = await service.executeQueuedBackup('job-fenced-success');
+
+      expect(outcome).toEqual({ kind: 'skipped', status: JobStatus.RUNNING });
+      expect(mockBackupRepository.completeIfLeaseHeld).toHaveBeenCalledWith(
+        'job-fenced-success',
+        'conn-1',
+        expect.any(String),
+        expect.objectContaining({
+          fileSizeMb: 12.5,
+          sha256: expect.any(String),
+          bytes: 13107200,
+        }),
+      );
+      expect(mockR2Service.delete).not.toHaveBeenCalled();
+      expect(mockSseService.emit).not.toHaveBeenCalledWith(
+        'job-fenced-success',
+        expect.objectContaining({ type: 'completed' }),
+      );
+      expect(mockSseService.complete).not.toHaveBeenCalledWith('job-fenced-success');
     });
   });
 });

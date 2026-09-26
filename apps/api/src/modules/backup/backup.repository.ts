@@ -233,6 +233,85 @@ export class BackupRepository {
   }
 
   /**
+   * Fails a job only if it is still PENDING/RUNNING AND the given lease
+   * token still owns the connection's lease row. Ownership (not expiry) is
+   * the fence: if a different replica has already taken over the lease for
+   * this connection+job, this write affects zero rows so the fenced-out
+   * caller never overwrites the new owner's outcome.
+   */
+  async failIfLeaseHeld(
+    id: string,
+    connectionId: string,
+    leaseToken: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = ANY($5::text[])
+         AND EXISTS (
+           SELECT 1 FROM backup_leases l
+           WHERE l."connectionId" = $6::uuid
+             AND l."backupJobId" = $1::uuid
+             AND l."leaseToken" = $7::uuid
+         )
+       RETURNING id`,
+      [
+        id,
+        JobStatus.FAILED,
+        errorMessage,
+        completedAt,
+        [JobStatus.PENDING, JobStatus.RUNNING],
+        connectionId,
+        leaseToken,
+      ],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Completes a job only if it is still PENDING/RUNNING AND the given lease
+   * token still owns the connection's lease row. Same fencing rationale as
+   * `failIfLeaseHeld`, applied to the success path.
+   */
+  async completeIfLeaseHeld(
+    id: string,
+    connectionId: string,
+    leaseToken: string,
+    data: { fileSizeMb: number; sha256: string; bytes: number; completedAt: Date },
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "fileSizeMb" = $3, "sha256" = $4, "bytes" = $5, "completedAt" = $6
+       WHERE id = $1::uuid
+         AND status = ANY($7::text[])
+         AND EXISTS (
+           SELECT 1 FROM backup_leases l
+           WHERE l."connectionId" = $8::uuid
+             AND l."backupJobId" = $1::uuid
+             AND l."leaseToken" = $9::uuid
+         )
+       RETURNING id`,
+      [
+        id,
+        JobStatus.COMPLETED,
+        data.fileSizeMb,
+        data.sha256,
+        data.bytes,
+        data.completedAt,
+        [JobStatus.PENDING, JobStatus.RUNNING],
+        connectionId,
+        leaseToken,
+      ],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
    * Fails a RUNNING row on boot only if no live lease still holds it, so a
    * job still owned by another replica is never swept.
    */
