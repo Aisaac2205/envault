@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Queue, UnrecoverableError } from 'bullmq';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { Client } from 'pg';
@@ -162,47 +162,30 @@ export class BackupService implements OnApplicationBootstrap {
       );
     }
 
-    const activeJob = await this.backupRepository.findActiveJobForConnection(connection.id);
-    if (activeJob) {
-      const jobAgeMs = Date.now() - (activeJob.startedAt ?? activeJob.createdAt).getTime();
-      if (jobAgeMs > this.backupTimeoutMs) {
-        this.logger.warn(
-          `Respaldo activo previo ${activeJob.id} superó el timeout (${jobAgeMs}ms > ${this.backupTimeoutMs}ms). Marcando como FAILED.`,
-        );
-        await this.backupRepository.updateStatus(activeJob.id, JobStatus.FAILED, {
-          errorMessage: 'Respaldo superó el tiempo límite de ejecución (timeout)',
-          completedAt: new Date(),
-        });
-      } else if (activeJob.status === JobStatus.PENDING) {
-        this.logger.log(
-          `Ya existe un respaldo en cola para la conexión "${connection.name}" (Job: ${activeJob.id}). Reutilizando ticket de cola.`,
-        );
-        return {
-          jobId: activeJob.id,
-          fileKey: activeJob.fileKey ?? '',
-          status: JobStatus.PENDING,
-        };
-      } else {
-        this.logger.log(
-          `Conexión "${connection.name}" tiene un respaldo en ejecución (Job: ${activeJob.id}). Encolando nuevo respaldo para ejecución secuencial.`,
-        );
-      }
-    }
-
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const uniqueSuffix = Math.random().toString(36).slice(2, 8);
     const fileKey = `${connection.slug}/${category}/${timestamp}-${uniqueSuffix}.dump`;
 
-    const job = await this.backupRepository.create({
+    const { job, created } = await this.backupRepository.insertPendingOrFindExisting({
       connectionId: connection.id,
       environment: connection.environment,
       dbType: connection.dbType,
-      status: JobStatus.PENDING,
       fileKey,
       triggeredBy: user.id,
       category,
       storageKeyVersion: STORAGE_KEY_VERSION.NEW,
     });
+
+    if (!created) {
+      this.logger.log(
+        `Ya existe un respaldo en cola para la conexión "${connection.name}" y categoría "${category}" (Job: ${job.id}). Reutilizando ticket de cola.`,
+      );
+      return {
+        jobId: job.id,
+        fileKey: job.fileKey ?? '',
+        status: JobStatus.PENDING,
+      };
+    }
 
     this.sseService.register(job.id);
     this.sseService.emit(job.id, {
@@ -265,7 +248,7 @@ export class BackupService implements OnApplicationBootstrap {
     const job = await this.backupRepository.findById(jobId);
     if (!job) {
       this.logger.error(`Backup job ${jobId} not found in database`);
-      throw new NotFoundException(`Backup job "${jobId}" no encontrado`);
+      throw new UnrecoverableError(`Backup job "${jobId}" no encontrado`);
     }
 
     if (job.status === JobStatus.COMPLETED) {
@@ -291,9 +274,14 @@ export class BackupService implements OnApplicationBootstrap {
     }
 
     const connection = await this.connectionsService.findById(job.connectionId);
+    if (connection.environment !== Environment.PROD) {
+      throw new UnrecoverableError(
+        `Solo se permiten backups del entorno de producción. Conexión "${connection.name}" es "${connection.environment}".`,
+      );
+    }
     const strategy = this.backupStrategies.get(connection.dbType);
     if (!strategy) {
-      throw new BadRequestException(
+      throw new UnrecoverableError(
         `No hay estrategia de backup configurada para tipo "${connection.dbType}"`,
       );
     }
@@ -322,6 +310,7 @@ export class BackupService implements OnApplicationBootstrap {
     this.activeBackups.set(job.id, { controller: abortController, abort });
 
     let heartbeatTimer: NodeJS.Timeout | null = null;
+    let timeoutTimer: NodeJS.Timeout | null = null;
 
     try {
       if (abortController.signal.aborted) {
@@ -362,6 +351,11 @@ export class BackupService implements OnApplicationBootstrap {
           });
       }, BACKUP_LEASE_HEARTBEAT_MS);
       heartbeatTimer.unref?.();
+
+      timeoutTimer = setTimeout(() => {
+        abort({ kind: 'timeout', timeoutMs: this.backupTimeoutMs });
+      }, this.backupTimeoutMs);
+      timeoutTimer.unref?.();
 
       this.sseService.register(job.id);
       this.sseService.emit(job.id, {
@@ -522,10 +516,13 @@ export class BackupService implements OnApplicationBootstrap {
       });
       this.sseService.complete(job.id);
 
-      if (
-        abortState.reason?.kind === 'cancelled' ||
-        rawMessage.includes('Operación cancelada por el usuario')
-      ) {
+      // Classify strictly by the closure-held `abortState.reason`, never by
+      // `rawMessage`: every strategy rejects an aborted signal with the same
+      // hardcoded "Operación cancelada por el usuario" message regardless of
+      // WHY the signal fired (cancel, timeout, or a lost lease), so matching
+      // on the message would misclassify a timeout or lease-lost dump as a
+      // user cancel and swallow a retry it should get.
+      if (abortState.reason?.kind === 'cancelled') {
         return {
           kind: 'finished',
           result: {
@@ -536,12 +533,21 @@ export class BackupService implements OnApplicationBootstrap {
         };
       }
 
+      if (abortState.reason?.kind === 'timeout') {
+        throw new UnrecoverableError(
+          `Backup job ${job.id} excedió el tiempo límite de ejecución (${abortState.reason.timeoutMs}ms)`,
+        );
+      }
+
       throw new InternalServerErrorException(
         `Backup failed for job ${job.id}: ${errorMessage}`,
       );
     } finally {
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
+      }
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
       }
       this.activeBackups.delete(job.id);
       await this.backupLeaseRepository
@@ -835,10 +841,26 @@ export class BackupService implements OnApplicationBootstrap {
     if (active) {
       active.abort({ kind: 'cancelled' });
     } else {
-      await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
+      // NOTE (cross-replica cancel limitation, see design.md): this replica
+      // has no local AbortController for this job, meaning the process
+      // actually running the dump (if any) is on another replica that this
+      // request cannot signal — remote cancel is out of scope. The
+      // conditional update at least prevents this write from clobbering an
+      // outcome that replica already recorded (COMPLETED/FAILED) between
+      // our `findById` above and this write.
+      const cancelled = await this.backupRepository.markFailedIfUnfinished(
+        job.id,
         errorMessage,
         completedAt,
-      });
+      );
+      if (!cancelled) {
+        const current = await this.backupRepository.findById(job.id);
+        return {
+          message: 'El respaldo ya había finalizado antes de poder cancelarlo',
+          jobId: job.id,
+          status: current?.status ?? job.status,
+        };
+      }
       if (job.fileKey) {
         await this.r2Service.delete(job.fileKey).catch(() => {});
       }

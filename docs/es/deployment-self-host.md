@@ -42,7 +42,7 @@ docker run -d \
   --name envault-redis \
   --restart unless-stopped \
   -v redis_data:/data \
-  redis:7-alpine redis-server --appendonly yes --requirepass "tu-clave-segura"
+  redis:7-alpine redis-server --appendonly yes --maxmemory-policy noeviction --requirepass "tu-clave-segura"
 
 # 2. Contenedor de la API (en el host de backend)
 docker run -d \
@@ -61,6 +61,8 @@ docker run -d \
   -e CSP_HEADER_NAME=Content-Security-Policy \
   envault-web:local
 ```
+
+`--maxmemory-policy noeviction` es necesario para que Redis rechace escrituras en lugar de descartar silenciosamente claves de las colas de BullMQ bajo presión de memoria (ver [BullMQ: going to production](https://docs.bullmq.io/guide/going-to-production)). Una instancia de Redis administrada (por ejemplo, en Railway) se aprovisiona fuera de `docker-compose.yml`, por lo que esta política debe configurarse desde la propia consola de ese proveedor.
 
 ---
 

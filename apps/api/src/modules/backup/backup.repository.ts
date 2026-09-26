@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
 import {
   Between,
   DataSource,
@@ -10,14 +11,31 @@ import {
   MoreThanOrEqual,
   Repository,
 } from 'typeorm';
-import { BackupJobEntity } from '../../database/entities/backup-job.entity';
+import {
+  BackupJobEntity,
+  StorageKeyVersion,
+} from '../../database/entities/backup-job.entity';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { Environment } from '../../database/enums/environment.enum';
+import { DbTypeEnum } from '../../database/enums/db-type.enum';
+import { BackupCategory } from '../../database/enums/backup-category.enum';
 
 type BackupJobMutationRow = { id: string };
 type BackupJobMutationResult =
   | BackupJobMutationRow[]
   | [BackupJobMutationRow[], number];
+
+export interface InsertPendingBackupJobInput {
+  connectionId: string;
+  environment: Environment;
+  dbType: DbTypeEnum;
+  fileKey: string;
+  triggeredBy: string;
+  category: BackupCategory;
+  storageKeyVersion: StorageKeyVersion;
+}
+
+const MAX_COALESCE_ATTEMPTS = 3;
 
 @Injectable()
 export class BackupRepository {
@@ -87,16 +105,6 @@ export class BackupRepository {
     });
   }
 
-  findActiveJobForConnection(connectionId: string): Promise<BackupJobEntity | null> {
-    return this.repository.findOne({
-      where: {
-        connectionId,
-        status: In([JobStatus.PENDING, JobStatus.RUNNING]),
-      },
-      order: { createdAt: 'DESC' },
-    });
-  }
-
   findAllUnfinished(): Promise<BackupJobEntity[]> {
     return this.repository.find({
       where: {
@@ -109,6 +117,60 @@ export class BackupRepository {
   create(data: Partial<BackupJobEntity>): Promise<BackupJobEntity> {
     const entity = this.repository.create(data);
     return this.repository.save(entity);
+  }
+
+  /**
+   * Atomically enqueues a PENDING backup, or returns the existing PENDING
+   * ticket for the same (connectionId, category) instead of creating a
+   * duplicate. Relies on the partial unique index created by migration
+   * 1778716800022 as the `ON CONFLICT` target: `INSERT ... DO NOTHING`
+   * avoids the TOCTOU window a check-then-insert would have. If the insert
+   * loses the race, the follow-up SELECT can itself race with the winner's
+   * own completion (PENDING -> RUNNING/COMPLETED) before it runs, so the
+   * loop retries the insert up to `MAX_COALESCE_ATTEMPTS` times.
+   */
+  async insertPendingOrFindExisting(
+    data: InsertPendingBackupJobInput,
+  ): Promise<{ job: BackupJobEntity; created: boolean }> {
+    for (let attempt = 0; attempt < MAX_COALESCE_ATTEMPTS; attempt++) {
+      const inserted = await this.dataSource.query<BackupJobEntity[]>(
+        `INSERT INTO backup_jobs
+           (id, "connectionId", environment, "dbType", status, "fileKey", "storageKeyVersion", category, "triggeredBy")
+         VALUES ($1::uuid, $2::uuid, $3, $4, 'pending', $5, $6, $7, $8)
+         ON CONFLICT ("connectionId", category) WHERE status = 'pending' DO NOTHING
+         RETURNING *`,
+        [
+          randomUUID(),
+          data.connectionId,
+          data.environment,
+          data.dbType,
+          data.fileKey,
+          data.storageKeyVersion,
+          data.category,
+          data.triggeredBy,
+        ],
+      );
+
+      if (inserted.length > 0) {
+        return { job: this.repository.create(inserted[0]), created: true };
+      }
+
+      const existing = await this.repository.findOne({
+        where: {
+          connectionId: data.connectionId,
+          category: data.category,
+          status: JobStatus.PENDING,
+        },
+        order: { createdAt: 'ASC' },
+      });
+      if (existing) {
+        return { job: existing, created: false };
+      }
+    }
+
+    throw new Error(
+      `Failed to enqueue backup for connection ${data.connectionId}/${data.category} after ${MAX_COALESCE_ATTEMPTS} coalescing attempts`,
+    );
   }
 
   async updateStatus(

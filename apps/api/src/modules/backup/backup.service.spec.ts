@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
+import { UnrecoverableError } from 'bullmq';
 import { BackupService } from './backup.service';
 import { BackupRepository } from './backup.repository';
 import { BackupLeaseRepository } from './backup-lease.repository';
@@ -21,7 +22,7 @@ describe('BackupService', () => {
     create: jest.Mock;
     updateStatus: jest.Mock;
     findById: jest.Mock;
-    findActiveJobForConnection: jest.Mock;
+    insertPendingOrFindExisting: jest.Mock;
     findAllUnfinished: jest.Mock;
     failPendingStale: jest.Mock;
     failRunningWithoutLease: jest.Mock;
@@ -77,7 +78,7 @@ describe('BackupService', () => {
       create: jest.fn(),
       updateStatus: jest.fn(),
       findById: jest.fn(),
-      findActiveJobForConnection: jest.fn().mockResolvedValue(null),
+      insertPendingOrFindExisting: jest.fn(),
       findAllUnfinished: jest.fn().mockResolvedValue([]),
       failPendingStale: jest.fn().mockResolvedValue(false),
       failRunningWithoutLease: jest.fn().mockResolvedValue(false),
@@ -141,10 +142,13 @@ describe('BackupService', () => {
   });
 
   it('createBackup enqueues job in BullMQ and registers SSE', async () => {
-    mockBackupRepository.create.mockResolvedValue({
-      id: 'job-123',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/test.dump',
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: true,
+      job: {
+        id: 'job-123',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/test.dump',
+      },
     });
 
     const result = await service.createBackup(
@@ -163,12 +167,15 @@ describe('BackupService', () => {
     expect(mockSseService.register).toHaveBeenCalledWith('job-123');
   });
 
-  it('createBackup reuses pending job ticket if a job is already PENDING in queue for connection', async () => {
-    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
-      id: 'active-job-pending',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/pending.dump',
-      createdAt: new Date(),
+  it('createBackup reuses the existing PENDING ticket when the atomic insert coalesces', async () => {
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: false,
+      job: {
+        id: 'active-job-pending',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/pending.dump',
+        createdAt: new Date(),
+      },
     });
 
     const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
@@ -176,21 +183,17 @@ describe('BackupService', () => {
     expect(result.jobId).toBe('active-job-pending');
     expect(result.status).toBe(JobStatus.PENDING);
     expect(mockQueue.add).not.toHaveBeenCalled();
-    expect(mockBackupRepository.create).not.toHaveBeenCalled();
   });
 
-  it('createBackup queues new backup if another job is currently RUNNING for connection', async () => {
-    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
-      id: 'active-job-running',
-      status: JobStatus.RUNNING,
-      createdAt: new Date(),
-    });
-
-    mockBackupRepository.create.mockResolvedValue({
-      id: 'new-job-456',
-      connectionId: 'conn-1',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/new.dump',
+  it('createBackup enqueues a new PENDING job even when another job is currently RUNNING for the connection', async () => {
+    mockBackupRepository.insertPendingOrFindExisting.mockResolvedValue({
+      created: true,
+      job: {
+        id: 'new-job-456',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/new.dump',
+      },
     });
 
     const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
@@ -202,35 +205,6 @@ describe('BackupService', () => {
       { jobId: 'new-job-456' },
       expect.anything(),
     );
-  });
-
-  it('createBackup marks zombie job as FAILED if older than BACKUP_TIMEOUT_MS and creates new backup', async () => {
-    const twoHoursAgo = new Date(Date.now() - 7_200_000);
-    mockBackupRepository.findActiveJobForConnection.mockResolvedValue({
-      id: 'zombie-job-999',
-      status: JobStatus.RUNNING,
-      createdAt: twoHoursAgo,
-      startedAt: twoHoursAgo,
-    });
-
-    mockBackupRepository.create.mockResolvedValue({
-      id: 'recovered-job-789',
-      connectionId: 'conn-1',
-      status: JobStatus.PENDING,
-      fileKey: 'prod-db/manual/recovered.dump',
-    });
-
-    const result = await service.createBackup({ connectionId: 'conn-1' }, mockUser);
-
-    expect(mockBackupRepository.updateStatus).toHaveBeenCalledWith(
-      'zombie-job-999',
-      JobStatus.FAILED,
-      expect.objectContaining({
-        errorMessage: expect.stringContaining('timeout'),
-      }),
-    );
-    expect(result.jobId).toBe('recovered-job-789');
-    expect(mockQueue.add).toHaveBeenCalled();
   });
 
   describe('sweepOrphans', () => {
@@ -493,6 +467,54 @@ describe('BackupService', () => {
       );
     });
 
+    it('cancels a RUNNING job with no local AbortController via a conditional update', async () => {
+      // No `active.abort()` call exists on this replica for this job id: the
+      // process actually running the dump (if any) is on another replica.
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-remote-running',
+        connectionId: 'conn-1',
+        status: JobStatus.RUNNING,
+        fileKey: 'prod-db/manual/remote-running.dump',
+      });
+      mockBackupRepository.markFailedIfUnfinished.mockResolvedValue(true);
+
+      const result = await service.cancelBackup('job-remote-running', mockUser);
+
+      expect(mockBackupRepository.markFailedIfUnfinished).toHaveBeenCalledWith(
+        'job-remote-running',
+        'Operación cancelada por el usuario',
+        expect.any(Date),
+      );
+      expect(mockBackupRepository.updateStatus).not.toHaveBeenCalled();
+      expect(mockR2Service.delete).toHaveBeenCalledWith('prod-db/manual/remote-running.dump');
+      expect(result.status).toBe(JobStatus.FAILED);
+    });
+
+    it('does not delete R2 or emit failed SSE when the job already reached a terminal state before the conditional cancel update landed', async () => {
+      mockBackupRepository.findById
+        .mockResolvedValueOnce({
+          id: 'job-already-done',
+          connectionId: 'conn-1',
+          status: JobStatus.RUNNING,
+          fileKey: 'prod-db/manual/already-done.dump',
+        })
+        .mockResolvedValueOnce({
+          id: 'job-already-done',
+          connectionId: 'conn-1',
+          status: JobStatus.COMPLETED,
+        });
+      mockBackupRepository.markFailedIfUnfinished.mockResolvedValue(false);
+
+      const result = await service.cancelBackup('job-already-done', mockUser);
+
+      expect(mockR2Service.delete).not.toHaveBeenCalled();
+      expect(mockSseService.emit).not.toHaveBeenCalledWith(
+        'job-already-done',
+        expect.objectContaining({ type: 'failed' }),
+      );
+      expect(result.status).toBe(JobStatus.COMPLETED);
+    });
+
     it('does not re-execute a permanently FAILED job (terminal-status guard)', async () => {
       mockBackupRepository.findById.mockResolvedValue({
         id: 'job-cancelled',
@@ -588,7 +610,12 @@ describe('BackupService', () => {
       );
     });
 
-    it('aborts the dump when a heartbeat renewal returns false (lease lost)', async () => {
+    it('rethrows for BullMQ retry when a heartbeat renewal returns false (lease lost), instead of treating it like a cancel', async () => {
+      // Regression test for the classification bug fixed by reusing
+      // `abortState.reason` (see the removed `rawMessage.includes(...)`
+      // fallback below): BullMQ's strategies reject with the SAME hardcoded
+      // message for every abort reason, so matching on the message alone
+      // misclassified a lost lease as a user cancel and swallowed the retry.
       jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
       try {
         mockBackupRepository.findById.mockResolvedValue({
@@ -601,10 +628,8 @@ describe('BackupService', () => {
         });
         mockBackupLeaseRepository.renew.mockResolvedValue(false);
 
-        let rejectDump: (err: Error) => void = () => undefined;
         mockStrategy.execute.mockImplementation((_conn, _key, _meta, options) => {
           return new Promise((_resolve, reject) => {
-            rejectDump = reject;
             options?.abortSignal?.addEventListener('abort', () => {
               reject(new Error('Operación cancelada por el usuario'));
             });
@@ -612,10 +637,13 @@ describe('BackupService', () => {
         });
 
         const pending = service.executeQueuedBackup('job-lease-lost');
+        // Attach the rejection assertion synchronously, before advancing
+        // timers, so Node never sees an unhandled rejection window.
+        const assertion = expect(pending).rejects.toThrow();
         await Promise.resolve();
         await jest.advanceTimersByTimeAsync(60_000);
 
-        const outcome = await pending;
+        await assertion;
 
         expect(mockBackupLeaseRepository.renew).toHaveBeenCalledWith(
           'conn-1',
@@ -623,18 +651,112 @@ describe('BackupService', () => {
           expect.any(String),
           expect.any(Number),
         );
-        expect(outcome.kind).toBe('finished');
-        if (outcome.kind !== 'finished') throw new Error('expected finished outcome');
-        expect(outcome.result.status).toBe(JobStatus.FAILED);
+        expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
+          'job-lease-lost',
+          'conn-1',
+          expect.any(String),
+          expect.any(String),
+          expect.any(Date),
+        );
         expect(mockBackupLeaseRepository.release).toHaveBeenCalledWith(
           'conn-1',
           'job-lease-lost',
           expect.any(String),
         );
-        void rejectDump;
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it('aborts on BACKUP_TIMEOUT_MS, marks the row FAILED, and throws UnrecoverableError instead of retrying', async () => {
+      // 30 heartbeat ticks (1_800_000ms / 60_000ms) each flushing a real
+      // Promise under fake timers pushes this past Jest's 5s default.
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+      try {
+        mockBackupRepository.findById.mockResolvedValue({
+          id: 'job-timeout',
+          connectionId: 'conn-1',
+          status: JobStatus.PENDING,
+          fileKey: 'prod-db/manual/timeout.dump',
+          category: BackupCategory.MANUAL,
+          triggeredBy: mockUser.id,
+        });
+
+        mockStrategy.execute.mockImplementation((_conn, _key, _meta, options) => {
+          return new Promise((_resolve, reject) => {
+            options?.abortSignal?.addEventListener('abort', () => {
+              reject(new Error('Operación cancelada por el usuario'));
+            });
+          });
+        });
+
+        const pending = service.executeQueuedBackup('job-timeout');
+        const assertion = expect(pending).rejects.toBeInstanceOf(UnrecoverableError);
+        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(1_800_000);
+
+        await assertion;
+
+        expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
+          'job-timeout',
+          'conn-1',
+          expect.any(String),
+          expect.any(String),
+          expect.any(Date),
+        );
+        expect(mockBackupLeaseRepository.release).toHaveBeenCalledWith(
+          'conn-1',
+          'job-timeout',
+          expect.any(String),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    }, 20_000);
+
+    it('throws UnrecoverableError when the backup job row no longer exists', async () => {
+      mockBackupRepository.findById.mockResolvedValue(null);
+
+      await expect(service.executeQueuedBackup('missing-job')).rejects.toBeInstanceOf(
+        UnrecoverableError,
+      );
+      expect(mockBackupLeaseRepository.tryAcquire).not.toHaveBeenCalled();
+    });
+
+    it('throws UnrecoverableError when the connection targeted by the job is not in PROD', async () => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-nonprod',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/nonprod.dump',
+      });
+      mockConnectionsService.findById.mockResolvedValue({
+        ...mockConnection,
+        environment: Environment.DEV,
+      });
+
+      await expect(service.executeQueuedBackup('job-nonprod')).rejects.toBeInstanceOf(
+        UnrecoverableError,
+      );
+      expect(mockBackupLeaseRepository.tryAcquire).not.toHaveBeenCalled();
+    });
+
+    it('throws UnrecoverableError when no backup strategy is configured for the dbType', async () => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-nostrategy',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/nostrategy.dump',
+      });
+      mockConnectionsService.findById.mockResolvedValue({
+        ...mockConnection,
+        dbType: DbTypeEnum.MYSQL,
+      });
+
+      await expect(service.executeQueuedBackup('job-nostrategy')).rejects.toBeInstanceOf(
+        UnrecoverableError,
+      );
+      expect(mockBackupLeaseRepository.tryAcquire).not.toHaveBeenCalled();
     });
 
     it('does not delete R2 or emit failed SSE when the failure write is fenced out by another lease owner', async () => {
