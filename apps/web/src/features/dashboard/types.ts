@@ -91,3 +91,40 @@ export interface DailyBackupCount {
   scheduled: number;
   manual: number;
 }
+
+// dashboard-charts-web: mirrors apps/api/src/modules/jobs/analytics/jobs-analytics.types.ts.
+// The backend is the source of truth; drift is caught by its @IsEnum/@IsIn validators, not by a shared type.
+export const ANALYTICS_WINDOWS = [7, 30, 90] as const;
+export type AnalyticsWindow = (typeof ANALYTICS_WINDOWS)[number];
+
+export interface DailyBackupPoint {
+  date: string;
+  completed: number;
+  failed: number;
+  p50DurationSeconds: number | null;
+  p95DurationSeconds: number | null;
+  totalSizeMb: number;
+}
+
+export interface DailyBackupSeries {
+  window: AnalyticsWindow;
+  from: string;
+  to: string;
+  timezone: "UTC";
+  days: DailyBackupPoint[];
+}
+
+export interface ConnectionStorage {
+  connectionId: string;
+  connectionName: string | null;
+  totalSizeMb: number;
+  backupCount: number;
+}
+
+export interface RestoreStatusCounts {
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  total: number;
+}
