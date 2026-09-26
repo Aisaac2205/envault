@@ -49,7 +49,10 @@ export class JobsAnalyticsRepository {
     return this.backupJobRepository
       .createQueryBuilder('j')
       .select('j."connectionId"', 'connectionId')
-      .addSelect('COALESCE(SUM(j."fileSizeMb"), 0)::float8', 'totalSizeMb')
+      // No COALESCE needed: the outer WHERE below already restricts every
+      // grouped row to `completed`, so a group can only exist with >=1 row
+      // and SUM(j."fileSizeMb") can never be NULL here.
+      .addSelect('SUM(j."fileSizeMb")::float8', 'totalSizeMb')
       .addSelect('COUNT(*)', 'backupCount')
       .where('j.status = :completed', { completed: JobStatus.COMPLETED })
       .groupBy('j."connectionId"')
