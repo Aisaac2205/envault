@@ -24,9 +24,22 @@ import {
   ChevronDown,
   Check,
   History as HistoryIcon,
+  Ban,
+  Loader2,
 } from "lucide-react";
 import type { RestoreJob, Connection } from "../types";
 import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { restoreApi } from "../api/restore-api";
 
 interface RestoreHistoryProps {
   jobs: RestoreJob[];
@@ -42,7 +55,7 @@ const STATUS_CONFIG_KEYS: Record<RestoreJob["status"], string> = {
 
 
 const ENV_FILTERS = ["all", "dev", "qa", "prod"] as const;
-const STATUS_FILTERS = ["all", "completed", "failed"] as const;
+const STATUS_FILTERS = ["all", "completed", "failed", "running", "pending"] as const;
 
 function formatDuration(
   startedAt: string,
@@ -65,6 +78,26 @@ export function RestoreHistory({
   connections,
 }: RestoreHistoryProps) {
   const { t } = useTranslation('restore')
+  const queryClient = useQueryClient();
+  const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
+  const [jobToCancel, setJobToCancel] = useState<RestoreJob | null>(null);
+
+  const handleCancelRestore = async () => {
+    if (!jobToCancel) return;
+    setCancellingJobId(jobToCancel.id);
+    try {
+      await restoreApi.cancelRestore(jobToCancel.id);
+      toast.success(t("toast.cancelled"));
+      await queryClient.invalidateQueries({ queryKey: ["restore", "history"] });
+      setJobToCancel(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t("toast.cancelError");
+      toast.error(t("toast.cancelError"), { description: message });
+    } finally {
+      setCancellingJobId(null);
+    }
+  };
+
   const connectionMap = useMemo(() => {
     const map = new Map<string, { name: string; database: string; dbType: string }>();
     for (const c of connections) map.set(c.id, { name: c.name, database: c.database, dbType: c.dbType });
@@ -237,7 +270,21 @@ export function RestoreHistory({
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3">
-                      <StatusBadge status={job.status} />
+                      <div className="flex items-center gap-1.5">
+                        <StatusBadge status={job.status} />
+                        {(job.status === "running" || job.status === "pending") && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setJobToCancel(job)}
+                            className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            aria-label={t("confirm.cancelJob.confirm")}
+                            title={t("confirm.cancelJob.confirm")}
+                          >
+                            <Ban className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap py-3 text-right text-xs text-muted-foreground">
                       {job.startedAt
@@ -253,6 +300,39 @@ export function RestoreHistory({
             </TableBody>
           </Table>
         </div>
-      </div>
+
+      {/* Cancel Restore Confirmation Dialog */}
+      <Dialog open={!!jobToCancel} onOpenChange={(open) => !open && setJobToCancel(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("confirm.cancelJob.title")}</DialogTitle>
+            <DialogDescription>
+              {t("confirm.cancelJob.description")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setJobToCancel(null)}
+              disabled={!!cancellingJobId}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void handleCancelRestore()}
+              disabled={!!cancellingJobId}
+            >
+              {cancellingJobId && (
+                <Loader2 className="size-3.5 animate-spin mr-1" aria-hidden="true" />
+              )}
+              {t("confirm.cancelJob.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
