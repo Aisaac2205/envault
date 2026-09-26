@@ -195,6 +195,45 @@ volumes:
           type: 'paragraph',
           text: 'Cloudflare R2 provides full S3 protocol compatibility. You can configure the storage driver by specifying the endpoint address, bucket name, and access keys with read and write permissions.',
         },
+        {
+          type: 'subheading',
+          text: 'Storage Capacity and Cloudflare R2 Free Tier',
+        },
+        {
+          type: 'paragraph',
+          text: 'Cloudflare R2 provides a free tier offering ten gigabytes of storage per month at no charge, coupled with zero egress bandwidth fees. EnVault streams dumps in thirty-two megabyte chunks, supporting continuous single-stream archives of up to three hundred and twenty gigabytes without exceeding the ten thousand part ceiling of the S3 protocol. When executing a restore, the system validates that staging disk space satisfies a safety margin of twenty percent above the archive size, with a minimum floor of fifty megabytes to prevent local disk exhaustion.',
+        },
+        {
+          type: 'table',
+          headers: ['Parameter', 'Limit or Tier', 'Operational Detail'],
+          rows: [
+            [
+              'Cloudflare R2 Free Tier',
+              '10 GB per month',
+              'Monthly storage included at zero cost with zero egress bandwidth charges',
+            ],
+            [
+              'Free Operations in R2',
+              '1M Class A and 10M Class B',
+              'Monthly write and read operations included without charge',
+            ],
+            [
+              'Max Object Size in R2',
+              '5 TB',
+              'Maximum single-object file size supported by the storage engine',
+            ],
+            [
+              'EnVault Multipart Chunking',
+              '32 MB per part',
+              'Supports streaming dumps up to 320 GB within the 10,000 part limit',
+            ],
+            [
+              'Staging Disk Preflight',
+              'Required size plus 20%',
+              'Validation check on staging disk with a 50 MB floor to prevent ENOSPC errors',
+            ],
+          ],
+        },
       ],
     },
     {

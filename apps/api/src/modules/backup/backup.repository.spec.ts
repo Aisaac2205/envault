@@ -145,4 +145,21 @@ describe('BackupRepository', () => {
       expect(result.data).toHaveLength(1);
     });
   });
+
+  describe('findByFileKeys and deleteByFileKeys', () => {
+    it('returns empty array when fileKeys list is empty', async () => {
+      const result = await backupRepo.findByFileKeys([]);
+      expect(result).toEqual([]);
+      expect(mockRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('queries repository when fileKeys list is provided', async () => {
+      const jobs = [{ id: 'job-1', fileKey: 'k1' }] as BackupJobEntity[];
+      mockRepo.find!.mockResolvedValue(jobs);
+
+      const result = await backupRepo.findByFileKeys(['k1']);
+      expect(result).toEqual(jobs);
+    });
+  });
 });
+

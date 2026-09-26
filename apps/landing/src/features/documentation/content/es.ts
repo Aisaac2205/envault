@@ -195,6 +195,45 @@ volumes:
           type: 'paragraph',
           text: 'La compatibilidad de Cloudflare R2 con el protocolo S3 permite configurar el backend suministrando el punto de enlace correspondiente, el identificador del bucket y un par de credenciales de acceso con permisos de lectura y escritura.',
         },
+        {
+          type: 'subheading',
+          text: 'Capacidad de almacenamiento y nivel gratuito de Cloudflare R2',
+        },
+        {
+          type: 'paragraph',
+          text: 'Cloudflare R2 incluye una capa gratuita de diez gigabytes de almacenamiento al mes sin costo alguno y sin cobro por transferencia de datos saliente hacia internet. El motor de EnVault aprovecha esta infraestructura transmitiendo en fragmentos de treinta y dos megabytes, lo que permite respaldar bases de datos de hasta trescientos veinte gigabytes en una sola transmisión continua sin rebasar el límite de diez mil partes del protocolo S3. Durante las operaciones de restauración, el sistema exige un margen de seguridad en disco del veinte por ciento sobre el tamaño del archivo con un mínimo de cincuenta megabytes para impedir desbordamientos de almacenamiento local.',
+        },
+        {
+          type: 'table',
+          headers: ['Parámetro', 'Límite o cuota', 'Detalle operativo'],
+          rows: [
+            [
+              'Capa gratuita de Cloudflare R2',
+              '10 GB al mes',
+              'Almacenamiento mensual incluido sin costo y con cero cargos por transferencia saliente',
+            ],
+            [
+              'Operaciones gratuitas R2',
+              '1M Clase A y 10M Clase B',
+              'Operaciones de escritura y lectura mensuales incluidas sin costo',
+            ],
+            [
+              'Tamaño máximo de objeto en R2',
+              '5 TB',
+              'Límite máximo por archivo individual resguardado en el bucket',
+            ],
+            [
+              'Segmentación multipart en EnVault',
+              '32 MB por parte',
+              'Permite transferencias continuas de hasta 320 GB dentro del límite de diez mil partes',
+            ],
+            [
+              'Comprobación de disco en restauración',
+              'Tamaño requerido más 20%',
+              'Verificación previa en almacenamiento temporal con piso mínimo de 50 MB para evitar errores ENOSPC',
+            ],
+          ],
+        },
       ],
     },
     {

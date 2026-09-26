@@ -145,3 +145,11 @@ El proceso de purga opera en dos etapas coordinadas para garantizar que no perma
 ### 5. Simulación Previa sin Impacto Destructivo
 Para validar el alcance de las políticas de retención antes de aplicar cambios irreversibles, EnVault permite ejecutar limpiezas en modo de simulación. Esta operación computa las reglas configuradas y reporta la relación exacta de copias candidatas a eliminación, sus identificadores y el volumen total de almacenamiento en bytes que se liberará, sin suprimir ningún dato del almacenamiento de objetos.
 
+### 6. Capacidad de Almacenamiento y Límites de Cloudflare R2
+La integración con Cloudflare R2 ofrece una capa gratuita permanente de diez gigabytes mensuales sin costo alguno y sin cargos por transferencia saliente hacia internet. Además, incluye un millón de operaciones de escritura Clase A y diez millones de operaciones de lectura Clase B cada mes.
+
+El tamaño máximo admitido para un archivo individual en Cloudflare R2 alcanza los cinco terabytes. La estrategia de streaming multipart de EnVault divide los datos en partes de 32 MB, lo que permite respaldar bases de datos de hasta 320 GB en una única transmisión continua sin superar el límite de diez mil partes del protocolo S3.
+
+Para las restauraciones que requieren espacio de trabajo en disco local, el servicio de staging comprueba previamente que el almacenamiento disponga de un margen de seguridad del veinte por ciento sobre el tamaño de la copia más un piso mínimo de 50 MB, previniendo fallos por agotamiento de espacio en disco (ENOSPC).
+
+
