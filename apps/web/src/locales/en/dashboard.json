@@ -60,6 +60,7 @@
   "column.date": "Date",
   "column.cronjob": "Cronjob",
   "column.nextRun": "Next run",
+  "column.size": "Size",
   "value.yes": "Yes",
   "value.no": "No",
   "health.title": "System health",

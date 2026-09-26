@@ -60,6 +60,7 @@
   "column.date": "Fecha",
   "column.cronjob": "Cronjob",
   "column.nextRun": "Próxima ejecución",
+  "column.size": "Tamaño",
   "value.yes": "Sí",
   "value.no": "No",
   "health.title": "Salud del sistema",
