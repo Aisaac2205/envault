@@ -13,20 +13,31 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Readable } from 'stream';
+import { randomUUID } from 'crypto';
 import { Client } from 'pg';
 import { createConnection as createMysqlConnection, RowDataPacket } from 'mysql2/promise';
 import { sanitizeMessage } from '../../common/sanitization/sanitize-message';
 import { CreateBackupDto } from './dto/create-backup.dto';
 import { ListHistoryQueryDto } from './dto/list-history-query.dto';
 import { BackupRepository } from './backup.repository';
+import { BackupLeaseRepository } from './backup-lease.repository';
 import { R2Service } from './r2.service';
-import { BACKUP_QUEUE_NAME } from './backup.constants';
+import {
+  BACKUP_LEASE_HEARTBEAT_MS,
+  BACKUP_LEASE_RENEWAL_DEADLINE_MS,
+  BACKUP_LEASE_TTL_MS,
+  BACKUP_QUEUE_NAME,
+} from './backup.constants';
 import { SseService } from '../../shared/sse/sse.service';
 import { BackupResult } from './interfaces/backup-result.interface';
 import { BackupHistoryItem } from './interfaces/backup-history-item.interface';
 import { R2Object } from './interfaces/r2-object.interface';
 import { EnrichedR2Object } from './interfaces/enriched-r2-object.interface';
 import { BackupStrategy } from './interfaces/backup-strategy.interface';
+import {
+  BackupAbortReason,
+  QueuedBackupOutcome,
+} from './interfaces/queued-backup-outcome.interface';
 import { DumpManifest, DumpManifestSource } from './interfaces/dump-manifest.interface';
 import { ConnectionsService } from '../connections/connections.service';
 import { AuthUser } from '../../auth/decorators/current-user.decorator';
@@ -44,12 +55,15 @@ import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
 @Injectable()
 export class BackupService implements OnApplicationBootstrap {
   private readonly logger = new Logger(BackupService.name);
-  private readonly activeBackups = new Map<string, AbortController>();
-  private readonly activeConnectionDumps = new Set<string>();
+  private readonly activeBackups = new Map<
+    string,
+    { controller: AbortController; abort: (reason: BackupAbortReason) => void }
+  >();
   private readonly backupTimeoutMs: number;
 
   constructor(
     private readonly backupRepository: BackupRepository,
+    private readonly backupLeaseRepository: BackupLeaseRepository,
     private readonly r2Service: R2Service,
     private readonly connectionsService: ConnectionsService,
     private readonly sseService: SseService,
@@ -76,22 +90,56 @@ export class BackupService implements OnApplicationBootstrap {
       }
 
       this.logger.warn(
-        `Detectados ${unfinished.length} respaldos sin finalizar al iniciar el proceso. Limpiando huérfanos...`,
+        `Detectados ${unfinished.length} respaldos sin finalizar al iniciar el proceso. Revisando huérfanos...`,
       );
 
       for (const job of unfinished) {
-        await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
-          errorMessage: 'Respaldo interrumpido por reinicio o detención del servicio',
-          completedAt: new Date(),
-        });
-        this.logger.warn(
-          `Respaldo huérfano ${job.id} (conexión ${job.connectionId}) marcado como FAILED`,
-        );
+        try {
+          const failed =
+            job.status === JobStatus.PENDING
+              ? await this.sweepPendingJob(job.id)
+              : await this.backupRepository.failRunningWithoutLease(
+                  job.id,
+                  'Respaldo interrumpido por reinicio o detención del servicio',
+                  new Date(),
+                );
+
+          if (failed) {
+            this.logger.warn(
+              `Respaldo huérfano ${job.id} (conexión ${job.connectionId}) marcado como FAILED`,
+            );
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `Error revisando respaldo huérfano ${job.id}: ${message}`,
+          );
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Error en sweepOrphans de BackupService: ${message}`);
     }
+  }
+
+  /**
+   * A PENDING row whose BullMQ job still exists (waiting, delayed, etc.) is
+   * left alone — it will be processed normally. Only a row whose BullMQ job
+   * is gone (`unknown`, `completed`, `failed`) is a candidate for failure,
+   * and even then only past the 60s grace period that protects an in-flight
+   * `createBackup` insert.
+   */
+  private async sweepPendingJob(jobId: string): Promise<boolean> {
+    const state = await this.backupQueue.getJobState(jobId);
+    if (state !== 'unknown' && state !== 'completed' && state !== 'failed') {
+      return false;
+    }
+
+    return this.backupRepository.failPendingStale(
+      jobId,
+      'Respaldo interrumpido por reinicio o detención del servicio',
+      new Date(),
+    );
   }
 
   async createBackup(
@@ -188,10 +236,11 @@ export class BackupService implements OnApplicationBootstrap {
       const errorMessage =
         queueErr instanceof Error ? queueErr.message : 'Error desconocido al encolar en Redis';
       this.logger.error(`Failed to enqueue backup job ${job.id}: ${errorMessage}`);
-      await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
-        errorMessage: `Fallo al encolar en Redis: ${errorMessage}`,
-        completedAt: new Date(),
-      });
+      await this.backupRepository.markFailedIfUnfinished(
+        job.id,
+        `Fallo al encolar en Redis: ${errorMessage}`,
+        new Date(),
+      );
       this.sseService.emit(job.id, {
         type: 'failed',
         payload: { jobId: job.id, error: `Fallo al encolar en Redis: ${errorMessage}` },
@@ -209,7 +258,10 @@ export class BackupService implements OnApplicationBootstrap {
     };
   }
 
-  async executeQueuedBackup(jobId: string): Promise<BackupResult> {
+  async executeQueuedBackup(
+    jobId: string,
+    options: { isRetry: boolean } = { isRetry: false },
+  ): Promise<QueuedBackupOutcome> {
     const job = await this.backupRepository.findById(jobId);
     if (!job) {
       this.logger.error(`Backup job ${jobId} not found in database`);
@@ -219,13 +271,23 @@ export class BackupService implements OnApplicationBootstrap {
     if (job.status === JobStatus.COMPLETED) {
       this.logger.warn(`Backup job ${jobId} ya estaba completado.`);
       return {
-        jobId: job.id,
-        fileKey: job.fileKey!,
-        fileSizeMb: job.fileSizeMb ?? undefined,
-        sha256: job.sha256 ?? undefined,
-        bytes: job.bytes ?? undefined,
-        status: JobStatus.COMPLETED,
+        kind: 'finished',
+        result: {
+          jobId: job.id,
+          fileKey: job.fileKey!,
+          fileSizeMb: job.fileSizeMb ?? undefined,
+          sha256: job.sha256 ?? undefined,
+          bytes: job.bytes ?? undefined,
+          status: JobStatus.COMPLETED,
+        },
       };
+    }
+
+    if (job.status === JobStatus.FAILED && !options.isRetry) {
+      this.logger.warn(
+        `Backup job ${jobId} ya está en un estado terminal (${job.status}); se omite la reejecución.`,
+      );
+      return { kind: 'skipped', status: job.status };
     }
 
     const connection = await this.connectionsService.findById(job.connectionId);
@@ -236,52 +298,92 @@ export class BackupService implements OnApplicationBootstrap {
       );
     }
 
-    const abortController = new AbortController();
-    this.activeBackups.set(job.id, abortController);
-
-    while (this.activeConnectionDumps.has(connection.id)) {
-      if (abortController.signal.aborted) {
-        throw new Error('Operación cancelada por el usuario');
-      }
+    const leaseToken = randomUUID();
+    const leaseAcquired = await this.backupLeaseRepository.tryAcquire(
+      connection.id,
+      job.id,
+      leaseToken,
+      BACKUP_LEASE_TTL_MS,
+    );
+    if (!leaseAcquired) {
       this.logger.log(
-        `Conexión "${connection.name}" está ejecutando otro volcado. Esperando liberación de conexión para job ${job.id}...`,
+        `Conexión "${connection.name}" ya tiene un respaldo en curso. Difiriendo job ${job.id}.`,
       );
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return { kind: 'deferred' };
     }
 
-    this.activeConnectionDumps.add(connection.id);
-
-    const startedAt = new Date();
-    await this.backupRepository.updateStatus(job.id, JobStatus.RUNNING, {
-      startedAt,
-    });
-
-    this.sseService.register(job.id);
-    this.sseService.emit(job.id, {
-      type: 'log',
-      payload: {
-        message: `Iniciando volcado para conexión "${connection.name}" (${connection.dbType})...`,
-        timestamp: startedAt,
-      },
-    });
-    this.sseService.emit(job.id, {
-      type: 'progress',
-      payload: { percent: 15 },
-    });
-
-    const metadata: Record<string, string> = {
-      connectionId: connection.id,
-      connectionSlug: connection.slug,
-      category: job.category ?? BackupCategory.MANUAL,
-      environment: connection.environment,
-      dbType: connection.dbType,
-      triggeredBy: job.triggeredBy,
+    const abortController = new AbortController();
+    const abortState: { reason: BackupAbortReason | null } = { reason: null };
+    const abort = (reason: BackupAbortReason): void => {
+      if (abortController.signal.aborted) return;
+      abortState.reason = reason;
+      abortController.abort();
     };
+    this.activeBackups.set(job.id, { controller: abortController, abort });
+
+    let heartbeatTimer: NodeJS.Timeout | null = null;
 
     try {
       if (abortController.signal.aborted) {
         throw new Error('Operación cancelada por el usuario');
       }
+
+      const startedAt = new Date();
+      const started = await this.backupRepository.startIfRunnable(
+        job.id,
+        startedAt,
+        options.isRetry,
+      );
+      if (!started) {
+        return { kind: 'skipped', status: job.status };
+      }
+
+      let lastConfirmedAt = Date.now();
+      heartbeatTimer = setInterval(() => {
+        this.backupLeaseRepository
+          .renew(connection.id, job.id, leaseToken, BACKUP_LEASE_TTL_MS)
+          .then((renewed) => {
+            if (renewed) {
+              lastConfirmedAt = Date.now();
+              return;
+            }
+            this.logger.warn(
+              `Lease renewal returned false for backup job ${job.id}. Lease may have been lost`,
+            );
+            abort({ kind: 'lease-lost', cause: 'revoked' });
+          })
+          .catch((err: Error) => {
+            this.logger.error(
+              `Failed to renew backup lease for job ${job.id}: ${err.message}`,
+            );
+            if (Date.now() - lastConfirmedAt >= BACKUP_LEASE_RENEWAL_DEADLINE_MS) {
+              abort({ kind: 'lease-lost', cause: 'renewal-deadline' });
+            }
+          });
+      }, BACKUP_LEASE_HEARTBEAT_MS);
+      heartbeatTimer.unref?.();
+
+      this.sseService.register(job.id);
+      this.sseService.emit(job.id, {
+        type: 'log',
+        payload: {
+          message: `Iniciando volcado para conexión "${connection.name}" (${connection.dbType})...`,
+          timestamp: startedAt,
+        },
+      });
+      this.sseService.emit(job.id, {
+        type: 'progress',
+        payload: { percent: 15 },
+      });
+
+      const metadata: Record<string, string> = {
+        connectionId: connection.id,
+        connectionSlug: connection.slug,
+        category: job.category ?? BackupCategory.MANUAL,
+        environment: connection.environment,
+        dbType: connection.dbType,
+        triggeredBy: job.triggeredBy,
+      };
 
       const sourceSnapshot = await this.captureSourceSnapshot(connection);
 
@@ -337,12 +439,25 @@ export class BackupService implements OnApplicationBootstrap {
 
       const completedAt = new Date();
 
-      await this.backupRepository.updateStatus(job.id, JobStatus.COMPLETED, {
-        fileSizeMb: backupResult.fileSizeMb,
-        sha256: backupResult.sha256,
-        bytes: backupResult.bytes,
-        completedAt,
-      });
+      const completed = await this.backupRepository.completeIfLeaseHeld(
+        job.id,
+        connection.id,
+        leaseToken,
+        {
+          fileSizeMb: backupResult.fileSizeMb,
+          sha256: backupResult.sha256,
+          bytes: backupResult.bytes,
+          completedAt,
+        },
+      );
+
+      if (!completed) {
+        this.logger.warn(
+          `Backup job ${job.id} finished but no longer holds the connection lease; leaving the outcome to the current owner. Dump object left in R2 for reconcile.`,
+        );
+        const current = await this.backupRepository.findById(job.id);
+        return { kind: 'skipped', status: current?.status ?? JobStatus.RUNNING };
+      }
 
       this.sseService.emit(job.id, {
         type: 'log',
@@ -362,14 +477,17 @@ export class BackupService implements OnApplicationBootstrap {
       this.sseService.complete(job.id);
 
       return {
-        jobId: job.id,
-        fileKey: job.fileKey!,
-        fileSizeMb: backupResult.fileSizeMb,
-        sha256: backupResult.sha256,
-        bytes: backupResult.bytes,
-        startedAt,
-        completedAt,
-        status: JobStatus.COMPLETED,
+        kind: 'finished',
+        result: {
+          jobId: job.id,
+          fileKey: job.fileKey!,
+          fileSizeMb: backupResult.fileSizeMb,
+          sha256: backupResult.sha256,
+          bytes: backupResult.bytes,
+          startedAt,
+          completedAt,
+          status: JobStatus.COMPLETED,
+        },
       };
     } catch (error) {
       const completedAt = new Date();
@@ -379,12 +497,24 @@ export class BackupService implements OnApplicationBootstrap {
 
       this.logger.error(`Backup failed for connection ${connection.id}: ${errorMessage}`);
 
-      await this.r2Service.delete(job.fileKey!).catch(() => {});
-
-      await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
+      const owned = await this.backupRepository.failIfLeaseHeld(
+        job.id,
+        connection.id,
+        leaseToken,
         errorMessage,
         completedAt,
-      });
+      );
+
+      if (!owned) {
+        this.logger.warn(
+          `Backup job ${job.id} lost the connection lease before it could record failure; leaving the outcome to the current owner.`,
+        );
+        throw new Error(
+          `Backup job ${job.id} was fenced out by another lease owner: ${errorMessage}`,
+        );
+      }
+
+      await this.r2Service.delete(job.fileKey!).catch(() => {});
 
       this.sseService.emit(job.id, {
         type: 'failed',
@@ -392,11 +522,17 @@ export class BackupService implements OnApplicationBootstrap {
       });
       this.sseService.complete(job.id);
 
-      if (rawMessage.includes('Operación cancelada por el usuario')) {
+      if (
+        abortState.reason?.kind === 'cancelled' ||
+        rawMessage.includes('Operación cancelada por el usuario')
+      ) {
         return {
-          jobId: job.id,
-          fileKey: job.fileKey!,
-          status: JobStatus.FAILED,
+          kind: 'finished',
+          result: {
+            jobId: job.id,
+            fileKey: job.fileKey!,
+            status: JobStatus.FAILED,
+          },
         };
       }
 
@@ -404,8 +540,17 @@ export class BackupService implements OnApplicationBootstrap {
         `Backup failed for job ${job.id}: ${errorMessage}`,
       );
     } finally {
-      this.activeConnectionDumps.delete(connection.id);
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
       this.activeBackups.delete(job.id);
+      await this.backupLeaseRepository
+        .release(connection.id, job.id, leaseToken)
+        .catch((err: Error) => {
+          this.logger.error(
+            `Failed to release backup lease for job ${job.id}: ${err.message}`,
+          );
+        });
     }
   }
 
@@ -686,9 +831,9 @@ export class BackupService implements OnApplicationBootstrap {
       };
     }
 
-    const controller = this.activeBackups.get(job.id);
-    if (controller) {
-      controller.abort();
+    const active = this.activeBackups.get(job.id);
+    if (active) {
+      active.abort({ kind: 'cancelled' });
     } else {
       await this.backupRepository.updateStatus(job.id, JobStatus.FAILED, {
         errorMessage,

@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
+  DataSource,
   FindOptionsWhere,
   In,
   LessThan,
@@ -13,11 +14,17 @@ import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { Environment } from '../../database/enums/environment.enum';
 
+type BackupJobMutationRow = { id: string };
+type BackupJobMutationResult =
+  | BackupJobMutationRow[]
+  | [BackupJobMutationRow[], number];
+
 @Injectable()
 export class BackupRepository {
   constructor(
     @InjectRepository(BackupJobEntity)
     private readonly repository: Repository<BackupJobEntity>,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -146,5 +153,201 @@ export class BackupRepository {
       createdAt: LessThan(cutoff),
     });
     return result.affected ?? 0;
+  }
+
+  /**
+   * Conditionally flips a job to RUNNING. Allows PENDING/RUNNING always, and
+   * FAILED only when `isRetry` is true (our own `attempts: 2` retry), so a
+   * concurrent cancel or sweep cannot be resurrected by a stale decision.
+   */
+  async startIfRunnable(
+    id: string,
+    startedAt: Date,
+    isRetry: boolean,
+  ): Promise<boolean> {
+    const statuses = isRetry
+      ? [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED]
+      : [JobStatus.PENDING, JobStatus.RUNNING];
+
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "startedAt" = $3
+       WHERE id = $1::uuid
+         AND status = ANY($4::text[])
+       RETURNING id`,
+      [id, JobStatus.RUNNING, startedAt, statuses],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Fails a job only if it is still PENDING or RUNNING, so this write can
+   * never overwrite an outcome already recorded by a concurrent cancel or
+   * sweep.
+   */
+  async markFailedIfUnfinished(
+    id: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = ANY($5::text[])
+       RETURNING id`,
+      [
+        id,
+        JobStatus.FAILED,
+        errorMessage,
+        completedAt,
+        [JobStatus.PENDING, JobStatus.RUNNING],
+      ],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Fails a PENDING row on boot only if it is older than the 60s grace
+   * period, so an in-flight `createBackup` insert is never swept before its
+   * BullMQ job is enqueued.
+   */
+  async failPendingStale(
+    id: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = $5
+         AND "createdAt" < now() - interval '60 seconds'
+       RETURNING id`,
+      [id, JobStatus.FAILED, errorMessage, completedAt, JobStatus.PENDING],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Fails a job only if it is still PENDING/RUNNING AND the given lease
+   * token still owns the connection's lease row. Ownership (not expiry) is
+   * the fence: if a different replica has already taken over the lease for
+   * this connection+job, this write affects zero rows so the fenced-out
+   * caller never overwrites the new owner's outcome.
+   */
+  async failIfLeaseHeld(
+    id: string,
+    connectionId: string,
+    leaseToken: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = ANY($5::text[])
+         AND EXISTS (
+           SELECT 1 FROM backup_leases l
+           WHERE l."connectionId" = $6::uuid
+             AND l."backupJobId" = $1::uuid
+             AND l."leaseToken" = $7::uuid
+         )
+       RETURNING id`,
+      [
+        id,
+        JobStatus.FAILED,
+        errorMessage,
+        completedAt,
+        [JobStatus.PENDING, JobStatus.RUNNING],
+        connectionId,
+        leaseToken,
+      ],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Completes a job only if it is still PENDING/RUNNING AND the given lease
+   * token still owns the connection's lease row. Same fencing rationale as
+   * `failIfLeaseHeld`, applied to the success path.
+   */
+  async completeIfLeaseHeld(
+    id: string,
+    connectionId: string,
+    leaseToken: string,
+    data: { fileSizeMb: number; sha256: string; bytes: number; completedAt: Date },
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "fileSizeMb" = $3, "sha256" = $4, "bytes" = $5, "completedAt" = $6
+       WHERE id = $1::uuid
+         AND status = ANY($7::text[])
+         AND EXISTS (
+           SELECT 1 FROM backup_leases l
+           WHERE l."connectionId" = $8::uuid
+             AND l."backupJobId" = $1::uuid
+             AND l."leaseToken" = $9::uuid
+         )
+       RETURNING id`,
+      [
+        id,
+        JobStatus.COMPLETED,
+        data.fileSizeMb,
+        data.sha256,
+        data.bytes,
+        data.completedAt,
+        [JobStatus.PENDING, JobStatus.RUNNING],
+        connectionId,
+        leaseToken,
+      ],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  /**
+   * Fails a RUNNING row on boot only if no live lease still holds it, so a
+   * job still owned by another replica is never swept.
+   */
+  async failRunningWithoutLease(
+    id: string,
+    errorMessage: string,
+    completedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.dataSource.query<BackupJobMutationResult>(
+      `UPDATE backup_jobs
+       SET status = $2, "errorMessage" = $3, "completedAt" = $4
+       WHERE id = $1::uuid
+         AND status = $5
+         AND NOT EXISTS (
+           SELECT 1 FROM backup_leases
+           WHERE "backupJobId" = $1::uuid
+             AND "expiresAt" > CURRENT_TIMESTAMP
+         )
+       RETURNING id`,
+      [id, JobStatus.FAILED, errorMessage, completedAt, JobStatus.RUNNING],
+    );
+
+    return this.hasAffectedRows(result);
+  }
+
+  private hasAffectedRows(result: BackupJobMutationResult): boolean {
+    if (this.isMutationResult(result)) {
+      return result[1] > 0;
+    }
+
+    return result.length > 0;
+  }
+
+  private isMutationResult(
+    result: BackupJobMutationResult,
+  ): result is [BackupJobMutationRow[], number] {
+    return Array.isArray(result[0]);
   }
 }
