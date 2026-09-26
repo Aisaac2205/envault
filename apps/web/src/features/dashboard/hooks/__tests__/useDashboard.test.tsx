@@ -5,10 +5,23 @@ import type { ReactNode } from "react";
 import { useDashboard } from "../useDashboard";
 import type { BackupJob, RestoreJob } from "../../types";
 import { dashboardApi } from "../../api/dashboard-api";
+import { useAuth } from "../../../../shared/hooks/useAuth";
 
 vi.mock("../../api/dashboard-api");
+vi.mock("../../../../shared/hooks/useAuth");
 
 const mockDashboardApi = vi.mocked(dashboardApi);
+const mockUseAuth = vi.mocked(useAuth);
+
+function mockAuth(role: string | null) {
+  mockUseAuth.mockReturnValue({
+    user: role ? { id: "u1", email: "u@test.com", name: "U", role } : null,
+    isAuthenticated: !!role,
+    isInitializing: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+  });
+}
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -50,11 +63,23 @@ const restores: RestoreJob[] = [
 describe("useDashboard", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockAuth("admin");
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+  });
+
+  it("does not call /jobs/backups or /jobs/restores for non-admin sessions (Restricted Access requirement)", () => {
+    mockAuth("user");
+
+    const { result } = renderHook(() => useDashboard(), { wrapper: createWrapper() });
+
+    expect(mockDashboardApi.getRecentBackups).not.toHaveBeenCalled();
+    expect(mockDashboardApi.getRecentRestores).not.toHaveBeenCalled();
+    expect(result.current.backups.isLoading).toBe(false);
+    expect(result.current.restores.isLoading).toBe(false);
   });
 
   it("exposes per-query status so a restores failure does not mark backups as failed", async () => {

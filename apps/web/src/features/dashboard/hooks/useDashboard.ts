@@ -1,17 +1,24 @@
 import { useQueries } from "@tanstack/react-query";
+import { useAuth } from "@/shared/hooks/useAuth";
 import { dashboardApi } from "../api/dashboard-api";
 
+/** `/jobs/backups` and `/jobs/restores` are admin-only server-side; both queries are disabled entirely (no network call) for non-admins (Restricted Access requirement). */
 export function useDashboard() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
   const results = useQueries({
     queries: [
       {
         queryKey: ["dashboard", "recent-backups"],
         queryFn: () => dashboardApi.getRecentBackups(15),
+        enabled: isAdmin,
         refetchInterval: 15_000,
       },
       {
         queryKey: ["dashboard", "recent-restores"],
         queryFn: () => dashboardApi.getRecentRestores(5),
+        enabled: isAdmin,
         refetchInterval: 15_000,
       },
     ],
