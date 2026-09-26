@@ -22,5 +22,8 @@ export function useDashboard() {
     recentRestores: Array.isArray(results[1].data) ? results[1].data : [],
     isLoading: results.some((r) => r.isLoading),
     errors: results.map((r) => r.error).filter(Boolean),
+    // dashboard-charts-web: feeds the header's freshness timestamp (max
+    // dataUpdatedAt across mounted queries).
+    dataUpdatedAt: Math.max(...results.map((r) => r.dataUpdatedAt)),
   };
 }
