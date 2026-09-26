@@ -3,7 +3,8 @@ import { Reflector } from '@nestjs/core';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { JobsAnalyticsController } from './jobs-analytics.controller';
 import { JobsAnalyticsService } from './jobs-analytics.service';
-import { ROLES_KEY } from '../../../auth/roles.guard';
+import { RolesGuard, ROLES_KEY } from '../../../auth/roles.guard';
+import { BetterAuthGuard } from '../../../auth/auth.guard';
 
 jest.mock('../../../auth/auth.guard', () => ({
   BetterAuthGuard: class {},
@@ -61,7 +62,7 @@ describe('JobsAnalyticsController', () => {
 
   it('applies BetterAuthGuard and RolesGuard at the class level', () => {
     const guards = Reflect.getMetadata(GUARDS_METADATA, JobsAnalyticsController);
-    expect(guards).toHaveLength(2);
+    expect(guards).toEqual([BetterAuthGuard, RolesGuard]);
   });
 
   it('delegates the storage-by-connection route directly to the service', async () => {

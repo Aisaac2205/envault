@@ -241,6 +241,93 @@ integration('jobs analytics PostgreSQL integration', () => {
 
       expect(guatemalaResult).toEqual(utcResult);
     });
+
+    it('excludes pending and running jobs from completed/failed counts, percentiles, and totalSizeMb', async () => {
+      // Both rows have full timestamp data and outlier durations/sizes so that,
+      // if they leaked into the wrong bucket, the assertions below would fail.
+      await insertBackupJob({
+        id: '00000000-0000-0000-0000-000000000b30',
+        connectionId,
+        status: JobStatus.PENDING,
+        createdAt: '2026-03-10 11:00:00',
+        startedAt: '2026-03-10 11:00:00',
+        completedAt: '2026-03-10 11:16:40',
+        fileSizeMb: 5000,
+      });
+      await insertBackupJob({
+        id: '00000000-0000-0000-0000-000000000b31',
+        connectionId,
+        status: JobStatus.RUNNING,
+        createdAt: '2026-03-10 12:00:00',
+        startedAt: '2026-03-10 12:00:00',
+        completedAt: '2026-03-10 12:33:20',
+        fileSizeMb: 6000,
+      });
+
+      const rows = await repository.getDailyBackupRows({ from: '2026-03-10', toExclusive: '2026-03-11' });
+
+      expect(rows).toHaveLength(1);
+      const [row] = rows;
+      // Same values as the base fixture (5 completed, 1 failed, p50=25, p95=38.5,
+      // totalSizeMb=105): unchanged even with the pending/running rows present.
+      expect(Number(row.completed)).toBe(5);
+      expect(Number(row.failed)).toBe(1);
+      expect(row.p50).toBe(25);
+      expect(row.p95).toBe(38.5);
+      expect(row.totalSizeMb).toBe(105);
+    });
+
+    it('returns null percentiles and zero totalSizeMb for a day with only failed jobs (no completed)', async () => {
+      await insertBackupJob({
+        id: '00000000-0000-0000-0000-000000000b10',
+        connectionId,
+        status: JobStatus.FAILED,
+        createdAt: '2026-03-12 08:00:00',
+        startedAt: '2026-03-12 08:00:00',
+        completedAt: '2026-03-12 08:05:00',
+        fileSizeMb: 999,
+      });
+
+      const rows = await repository.getDailyBackupRows({ from: '2026-03-12', toExclusive: '2026-03-13' });
+
+      expect(rows).toHaveLength(1);
+      const [row] = rows;
+      expect(Number(row.completed)).toBe(0);
+      expect(Number(row.failed)).toBe(1);
+      expect(row.p50).toBeNull();
+      expect(row.p95).toBeNull();
+      expect(row.totalSizeMb).toBe(0);
+    });
+
+    it('excludes a completed job with null startedAt from the percentile calculation', async () => {
+      await insertBackupJob({
+        id: '00000000-0000-0000-0000-000000000b20',
+        connectionId,
+        status: JobStatus.COMPLETED,
+        createdAt: '2026-03-13 08:00:00',
+        startedAt: '2026-03-13 08:00:00',
+        completedAt: '2026-03-13 08:00:20',
+        fileSizeMb: 20,
+      });
+      await insertBackupJob({
+        id: '00000000-0000-0000-0000-000000000b21',
+        connectionId,
+        status: JobStatus.COMPLETED,
+        createdAt: '2026-03-13 09:00:00',
+        // No startedAt/completedAt: must count toward `completed` and
+        // `totalSizeMb`, but be excluded from the percentile calculation.
+        fileSizeMb: 30,
+      });
+
+      const rows = await repository.getDailyBackupRows({ from: '2026-03-13', toExclusive: '2026-03-14' });
+
+      expect(rows).toHaveLength(1);
+      const [row] = rows;
+      expect(Number(row.completed)).toBe(2);
+      expect(row.p50).toBe(20);
+      expect(row.p95).toBe(20);
+      expect(row.totalSizeMb).toBe(50);
+    });
   });
 
   describe('getStorageByConnection', () => {
@@ -284,6 +371,32 @@ integration('jobs analytics PostgreSQL integration', () => {
       expect(rows.map((r) => r.connectionId)).toEqual([highest, tieLow, tieHigh]);
       expect(rows[0].totalSizeMb).toBe(500);
       expect(Number(rows[0].backupCount)).toBe(1);
+    });
+
+    it('reflects only the completed job when the same connection has both a completed and a failed backup', async () => {
+      const mixed = '00000000-0000-0000-0000-000000000905';
+
+      await insertBackupJob({
+        id: '00000000-0000-0000-0000-000000000a05',
+        connectionId: mixed,
+        status: JobStatus.COMPLETED,
+        createdAt: '2026-03-10 08:00:00',
+        fileSizeMb: 100,
+      });
+      await insertBackupJob({
+        id: '00000000-0000-0000-0000-000000000a06',
+        connectionId: mixed,
+        status: JobStatus.FAILED,
+        createdAt: '2026-03-10 09:00:00',
+        fileSizeMb: 50,
+      });
+
+      const rows = await repository.getStorageByConnection();
+      const row = rows.find((r) => r.connectionId === mixed);
+
+      expect(row).toBeDefined();
+      expect(row?.totalSizeMb).toBe(100);
+      expect(Number(row?.backupCount)).toBe(1);
     });
   });
 
