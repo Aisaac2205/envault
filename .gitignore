@@ -68,6 +68,7 @@ settings.json
 .agents/
 .claude/
 openspec/
+odd/
 
 # UI/UX & Planning
 PRODUCT.md
