@@ -1,0 +1,171 @@
+# ── Hermetic stack for black-box E2E runs ───────────────────────
+# Layer it on the BASE compose file only, never on docker-compose.dev.yml: the
+# dev override swaps in dev targets and bind mounts, which would skew the
+# performance timings the E2E suite collects. The api and web services keep the
+# production targets from docker-compose.yml.
+#
+#   cp .env.e2e.example .env.e2e
+#   pnpm docker:e2e        # build + start, returns once everything is healthy
+#   pnpm docker:e2e:down   # stop and delete the stack together with its volumes
+#
+# What this file adds on top of the base services:
+#   - db-test-pg / db-test-mysql  source databases that backups read from and
+#                                 restores write into
+#   - minio + minio-init          S3-compatible object storage standing in for
+#                                 Cloudflare R2 (the api reaches it through
+#                                 R2_ENDPOINT) and a one-shot bucket creator
+#
+# Host ports (everything else stays on the internal network):
+#   web     5173  nginx, the entry point for browsers and /api/* traffic
+#   api     3000  published here only; the base file keeps it private
+#   pg      5435  | override with E2E_PG_PORT / E2E_MYSQL_PORT /
+#   mysql   3307  | E2E_MINIO_PORT / E2E_MINIO_CONSOLE_PORT / E2E_API_PORT
+#   minio   9000 (S3 API), 9001 (console)
+# The extra services stay clear of the dev stack's 5432, 5434, 3306 and 6379.
+# web (5173) is the one shared port: stop the dev or prod compose stack first.
+
+# Pins the project name so that running this file without `-p` can never
+# touch another stack's containers or volumes.
+name: envault-e2e
+
+services:
+  api:
+    # Dedicated tag so building the E2E image never retags the one used by the
+    # regular production compose.
+    image: envault-management-api:e2e
+    ports:
+      - "${E2E_API_PORT:-3000}:3000"
+    # The base file loads the root `.env`. Drop it so a developer's real
+    # credentials (R2, SMTP, ...) can never leak into the hermetic stack: this
+    # service gets exactly the variables listed below, taken from `--env-file`.
+    env_file: !reset []
+    environment:
+      # Production-like on purpose: the performance runs must not pay for dev
+      # logging or Swagger. It is also what makes Better Auth mark its session
+      # cookie `Secure`, which browsers and Playwright still send to
+      # http://localhost (but not to 127.0.0.1).
+      NODE_ENV: production
+      # The image healthcheck and the web proxy both assume 3000.
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required (see .env.e2e.example)}
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required (see .env.e2e.example)}
+
+      # Better Auth; the admin is seeded from these at boot (sign-up is closed).
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required (see .env.e2e.example)}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required (see .env.e2e.example)}
+      BETTER_AUTH_ADMIN_EMAIL: ${BETTER_AUTH_ADMIN_EMAIL:?BETTER_AUTH_ADMIN_EMAIL is required (see .env.e2e.example)}
+      BETTER_AUTH_ADMIN_PASSWORD: ${BETTER_AUTH_ADMIN_PASSWORD:?BETTER_AUTH_ADMIN_PASSWORD is required (see .env.e2e.example)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (see .env.e2e.example)}
+
+      # Rate limits are raised so a suite hammering the API from one address
+      # does not trip them by accident.
+      THROTTLE_TTL_MS: ${THROTTLE_TTL_MS:-60000}
+      THROTTLE_LIMIT: ${THROTTLE_LIMIT:-10000}
+      AUTH_RATE_WINDOW_MS: ${AUTH_RATE_WINDOW_MS:-60000}
+      AUTH_RATE_MAX: ${AUTH_RATE_MAX:-1000}
+      AUTH_RATE_MAX_KEYS: ${AUTH_RATE_MAX_KEYS:-10000}
+      AUTH_RATE_SWEEP_INTERVAL_MS: ${AUTH_RATE_SWEEP_INTERVAL_MS:-60000}
+
+      # Backup and restore pipeline.
+      BACKUP_TIMEOUT_MS: ${BACKUP_TIMEOUT_MS:-1800000}
+      RESTORE_TIMEOUT_MS: ${RESTORE_TIMEOUT_MS:-1800000}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required (see .env.e2e.example)}
+      REDIS_TLS: ${REDIS_TLS:-false}
+
+      # Object storage: MinIO instead of Cloudflare R2. R2_ENDPOINT replaces
+      # the endpoint normally derived from R2_ACCOUNT_ID, so that one may stay
+      # blank. The api still refuses to boot in production without credentials
+      # and a bucket.
+      R2_ENDPOINT: ${R2_ENDPOINT:?R2_ENDPOINT is required (see .env.e2e.example)}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required (see .env.e2e.example)}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required (see .env.e2e.example)}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:?R2_BUCKET_NAME is required (see .env.e2e.example)}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
+    depends_on:
+      # The bucket must exist before the first backup lands.
+      minio-init:
+        condition: service_completed_successfully
+
+  web:
+    image: envault-management-web:e2e
+    environment:
+      # The base file derives this from ${PORT}, which a PORT exported in the
+      # developer's shell would silently win over. The api listens on 3000.
+      API_UPSTREAM: api:3000
+
+  # ── Source databases for backup/restore flows ────────────────
+  # Same engines and credentials as the `test` profile of docker-compose.dev.yml,
+  # on different host ports so both stacks can run side by side. The api reaches
+  # them as db-test-pg:5432 and db-test-mysql:3306; the test runner seeds them
+  # through the published host ports. Restores into MySQL create and swap
+  # staging databases, which needs privileges beyond `testdb`: connect as
+  # `root` (password below) for MySQL restore targets.
+  db-test-pg:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_pass123
+    ports:
+      - "${E2E_PG_PORT:-5435}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-test-mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: test_user
+      MYSQL_PASSWORD: test_pass123
+      MYSQL_ROOT_PASSWORD: root_pass123
+    ports:
+      - "${E2E_MYSQL_PORT:-3307}:3306"
+    healthcheck:
+      # 127.0.0.1 forces TCP: during first start the image runs a temporary
+      # server that only listens on the unix socket, and a socket ping would
+      # report ready while the real server is still initializing.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ── S3-compatible storage (stand-in for Cloudflare R2) ───────
+  # Upstream minio/minio and minio/mc are no longer published on Docker Hub or
+  # Quay, so this uses pgsty's community-maintained build of the same server
+  # (MinIO CE RELEASE.2025-12-03 lineage). Pinned by tag and by digest because
+  # the publisher is a third party; bump both together.
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    command: server /data --console-address ":9001"
+    environment:
+      # The api authenticates with the same pair (R2_ACCESS_KEY_ID /
+      # R2_SECRET_ACCESS_KEY), so the root user doubles as the app credentials.
+      MINIO_ROOT_USER: ${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required (see .env.e2e.example)}
+      MINIO_ROOT_PASSWORD: ${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required (see .env.e2e.example)}
+    ports:
+      - "${E2E_MINIO_PORT:-9000}:9000"
+      - "${E2E_MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # One-shot: creates the bucket if it is missing and exits 0, so it is safe to
+  # run on every `up`. The image's entrypoint is `mc`; MC_HOST_<alias> defines
+  # the `e2e` alias without a config file or a shell.
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd
+    environment:
+      MC_HOST_e2e: http://${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required (see .env.e2e.example)}:${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required (see .env.e2e.example)}@minio:9000
+    command: ["mb", "--ignore-existing", "e2e/${R2_BUCKET_NAME:?R2_BUCKET_NAME is required (see .env.e2e.example)}"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"

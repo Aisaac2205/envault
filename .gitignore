@@ -12,6 +12,8 @@ out/
 .env
 .env.local
 .env.*.local
+# Local copy of .env.e2e.example (hermetic E2E stack); the example stays tracked
+.env.e2e
 apps/*/.env
 apps/*/.env.*
 
