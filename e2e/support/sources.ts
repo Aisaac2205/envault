@@ -28,3 +28,13 @@ export const MYSQL_SOURCE: SourceDatabase = {
   username: 'test_user',
   password: 'test_pass123',
 };
+
+// `test_user` only owns `testdb` on MySQL. The pipeline specs work on databases
+// of their own, and a MySQL restore creates and swaps staging databases, so
+// they connect as `root` (MYSQL_ROOT_PASSWORD of the compose file). The
+// Postgres `test_user` is already the server's superuser.
+export const MYSQL_ADMIN: SourceDatabase = {
+  ...MYSQL_SOURCE,
+  username: 'root',
+  password: 'root_pass123',
+};

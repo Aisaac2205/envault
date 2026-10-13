@@ -4,10 +4,11 @@ import { expect, test } from '../../support/fixtures';
 // Shapes of the read-only endpoints the dashboard builds on. Fields and types
 // are the contract; durations and timestamps are volatile and never pinned.
 //
-// The "stack without jobs" groups also pin the counts to zero. That holds on a
-// freshly started stack, because nothing in the suite creates a backup or a
-// restore yet. Once specs start running backups they have to move to the
-// invariants (totals add up, lists are arrays) or reset the stack first.
+// The stack is shared and its job tables are never empty for long: the
+// `pipeline` project runs real backups and restores, and no endpoint deletes a
+// job row. Counts are therefore checked as invariants that hold whatever else
+// ran (a total equals the sum of its parts, a count is a whole number that is
+// not negative, a list is an array), never as values.
 
 const COUNT = expect.any(Number);
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -20,66 +21,102 @@ function consecutiveDays(first: string, count: number): string[] {
   );
 }
 
-test.describe('stack without jobs', () => {
-  test('GET /jobs/summary counts every status as zero', async ({ request }) => {
-    const summary = await expectSuccessEnvelope(await request.get('jobs/summary'));
+function expectCount(value: unknown): void {
+  expect(Number.isInteger(value) && (value as number) >= 0, `${value} is a whole number >= 0`).toBe(true);
+}
 
-    expect(summary).toEqual({ total: 0, completed: 0, failed: 0, pending: 0, running: 0 });
+/** Every value is a count, and `total` is the sum of the parts. */
+function expectCountsAddUp(counts: Record<string, number>, parts: string[]): void {
+  Object.values(counts).forEach(expectCount);
+  expect(counts.total).toBe(parts.reduce((sum, part) => sum + counts[part], 0));
+}
+
+test.describe('job counters', () => {
+  test('GET /jobs/summary counts every status and the total adds them up', async ({ request }) => {
+    const summary = await expectSuccessEnvelope<Record<string, number>>(await request.get('jobs/summary'));
+
+    expect(summary).toEqual({ total: COUNT, completed: COUNT, failed: COUNT, pending: COUNT, running: COUNT });
+    expectCountsAddUp(summary, ['completed', 'failed', 'pending', 'running']);
   });
 
-  test('GET /jobs/stats reports zero rates, counts and storage', async ({ request }) => {
-    const stats = await expectSuccessEnvelope(await request.get('jobs/stats'));
+  test('GET /jobs/stats reports a rate, counts and storage', async ({ request }) => {
+    const stats = await expectSuccessEnvelope<Record<string, number>>(await request.get('jobs/stats'));
 
-    expect(stats).toEqual({ successRate30d: 0, backupsToday: 0, failed7d: 0, totalStorageMb: 0 });
+    expect(stats).toEqual({ successRate30d: COUNT, backupsToday: COUNT, failed7d: COUNT, totalStorageMb: COUNT });
+    expect(stats.successRate30d).toBeGreaterThanOrEqual(0);
+    expect(stats.successRate30d).toBeLessThanOrEqual(100);
+    expectCount(stats.backupsToday);
+    expectCount(stats.failed7d);
+    expect(stats.totalStorageMb).toBeGreaterThanOrEqual(0);
   });
 
-  test('GET /jobs/daily-counts is an empty list', async ({ request }) => {
-    expect(await expectSuccessEnvelope(await request.get('jobs/daily-counts'))).toEqual([]);
+  test('GET /jobs/daily-counts lists days with a count per trigger', async ({ request }) => {
+    const rows = await expectSuccessEnvelope<Record<string, unknown>[]>(await request.get('jobs/daily-counts'));
+
+    expect(Array.isArray(rows)).toBe(true);
+    for (const row of rows) {
+      expect(row).toEqual({ date: expect.stringMatching(ISO_DAY), scheduled: COUNT, manual: COUNT });
+      expectCount(row.scheduled);
+      expectCount(row.manual);
+    }
+    // One row per day, oldest first.
+    const days = rows.map((row) => row.date as string);
+    expect(days).toEqual([...new Set(days)].sort());
   });
 
-  test('GET /jobs/analytics/storage-by-connection is an empty list', async ({ request }) => {
-    const rows = await expectSuccessEnvelope(
+  test('GET /jobs/analytics/storage-by-connection lists a size per connection', async ({ request }) => {
+    const rows = await expectSuccessEnvelope<Record<string, unknown>[]>(
       await request.get('jobs/analytics/storage-by-connection'),
     );
 
-    expect(rows).toEqual([]);
+    expect(Array.isArray(rows)).toBe(true);
+    for (const { connectionName, ...row } of rows) {
+      expect(row).toEqual({ connectionId: expect.any(String), totalSizeMb: COUNT, backupCount: COUNT });
+      // The name is null for a connection that has since been deleted.
+      expect(connectionName === null || typeof connectionName === 'string').toBe(true);
+      expect(row.totalSizeMb as number).toBeGreaterThanOrEqual(0);
+      // A connection only appears here because it has a completed backup.
+      expect(row.backupCount as number).toBeGreaterThanOrEqual(1);
+    }
   });
 
-  test('GET /jobs/analytics/restore-status counts every status as zero', async ({ request }) => {
-    const counts = await expectSuccessEnvelope(
+  test('GET /jobs/analytics/restore-status counts every status and the total adds them up', async ({ request }) => {
+    const counts = await expectSuccessEnvelope<Record<string, number>>(
       await request.get('jobs/analytics/restore-status'),
     );
 
-    expect(counts).toEqual({ pending: 0, running: 0, completed: 0, failed: 0, total: 0 });
+    expect(counts).toEqual({ pending: COUNT, running: COUNT, completed: COUNT, failed: COUNT, total: COUNT });
+    expectCountsAddUp(counts, ['pending', 'running', 'completed', 'failed']);
   });
 
   for (const path of ['backups', 'restores', 'jobs/backups', 'jobs/restores']) {
-    test(`GET /${path} is an empty list`, async ({ request }) => {
-      expect(await expectSuccessEnvelope(await request.get(path))).toEqual([]);
+    test(`GET /${path} is a list`, async ({ request }) => {
+      expect(Array.isArray(await expectSuccessEnvelope(await request.get(path)))).toBe(true);
     });
   }
 
-  test('GET /backups/history is an empty page, double-wrapped', async ({ request }) => {
+  test('GET /backups/history is a page, double-wrapped', async ({ request }) => {
     const response = await request.get('backups/history');
     expect(response.status()).toBe(200);
 
     // The page is the `data` of the envelope, and it has its own `data` list.
-    expect(await response.json()).toEqual({
-      data: { data: [], total: 0, page: 1, pageSize: 25 },
-      timestamp: expect.any(String),
-    });
+    const { data: page, timestamp } = await response.json();
+    expect(timestamp).toEqual(expect.any(String));
+    expect(page).toEqual({ data: expect.any(Array), total: COUNT, page: 1, pageSize: 25 });
+    expect(page.data.length).toBeLessThanOrEqual(page.pageSize);
+    expect(page.total).toBeGreaterThanOrEqual(page.data.length);
   });
 });
 
 test.describe('GET /jobs/analytics/daily', () => {
   for (const window of [7, 30, 90]) {
-    test(`returns one zero-filled entry per day for window=${window}`, async ({ request }) => {
+    test(`returns one entry per day for window=${window}`, async ({ request }) => {
       const series = await expectSuccessEnvelope<{
         window: number;
         from: string;
         to: string;
         timezone: string;
-        days: Record<string, unknown>[];
+        days: Record<string, number | string | null>[];
       }>(await request.get(`jobs/analytics/daily?window=${window}`));
 
       expect(series).toMatchObject({ window, timezone: 'UTC' });
@@ -87,14 +124,28 @@ test.describe('GET /jobs/analytics/daily', () => {
       expect(series.days.map((day) => day.date)).toEqual(consecutiveDays(series.from, window));
       expect(series.to).toBe(series.days.at(-1)?.date);
       for (const day of series.days) {
-        expect(day).toEqual({
-          date: expect.stringMatching(ISO_DAY),
-          completed: 0,
-          failed: 0,
-          p50DurationSeconds: null,
-          p95DurationSeconds: null,
-          totalSizeMb: 0,
-        });
+        expect(Object.keys(day).sort()).toEqual([
+          'completed',
+          'date',
+          'failed',
+          'p50DurationSeconds',
+          'p95DurationSeconds',
+          'totalSizeMb',
+        ]);
+        expect(day.date).toMatch(ISO_DAY);
+        expectCount(day.completed);
+        expectCount(day.failed);
+        expect(day.totalSizeMb as number).toBeGreaterThanOrEqual(0);
+
+        // Durations are those of the day's completed backups: none, no duration
+        // (null); otherwise numbers, with the 95th percentile at or above the median.
+        if (day.completed === 0) {
+          expect(day.p50DurationSeconds).toBeNull();
+          expect(day.p95DurationSeconds).toBeNull();
+        } else {
+          expect(day.p50DurationSeconds as number).toBeGreaterThanOrEqual(0);
+          expect(day.p95DurationSeconds as number).toBeGreaterThanOrEqual(day.p50DurationSeconds as number);
+        }
       }
     });
   }
@@ -121,7 +172,8 @@ test.describe('pagination of GET /backups/history', () => {
       await request.get('backups/history?page=1&pageSize=5'),
     );
 
-    expect(page).toMatchObject({ data: [], page: 1, pageSize: 5 });
+    expect(page).toMatchObject({ page: 1, pageSize: 5 });
+    expect(page.data.length).toBeLessThanOrEqual(5);
   });
 
   for (const query of ['page=0', 'pageSize=0', 'pageSize=101', 'status=unknown', 'environment=staging']) {

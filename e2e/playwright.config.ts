@@ -12,6 +12,9 @@ import { API_URL, BASE_URL } from './support/env';
  *   api          HTTP specs, reuse the saved session
  *   ui-chromium  browser specs, reuse the saved session; their auth calls use a
  *                rate-limit bucket of their own (support/browser.ts)
+ *   pipeline     backup and restore through the real queue, dump tools and object
+ *                store, with source databases seeded from the host; HTTP only,
+ *                with long timeouts because the jobs are asynchronous
  */
 export default defineConfig({
   testDir: './tests',
@@ -55,6 +58,21 @@ export default defineConfig({
         // it. A leading slash would drop `/api` and hit the SPA instead.
         baseURL: `${API_URL}/`,
         // Better Auth routes reject requests that carry no Origin header.
+        extraHTTPHeaders: { Origin: BASE_URL },
+        storageState: AUTH_STATE_FILE,
+      },
+    },
+    {
+      name: 'pipeline',
+      testDir: './tests/pipeline',
+      testMatch: /.*\.pipeline\.spec\.ts/,
+      dependencies: ['setup'],
+      // A test seeds a database, runs one or two jobs and may wait for a failing
+      // backup's retry; the seeded datasets themselves take well under a second.
+      timeout: 120_000,
+      use: {
+        // Same conventions as the `api` project (see the comment there).
+        baseURL: `${API_URL}/`,
         extraHTTPHeaders: { Origin: BASE_URL },
         storageState: AUTH_STATE_FILE,
       },
