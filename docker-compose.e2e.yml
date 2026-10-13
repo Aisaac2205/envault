@@ -95,16 +95,33 @@ services:
       # The base file derives this from ${PORT}, which a PORT exported in the
       # developer's shell would silently win over. The api listens on 3000.
       API_UPSTREAM: api:3000
+    # The image healthcheck probes http://localhost/. Inside the container
+    # `localhost` resolves to ::1 first, but nginx only listens on 0.0.0.0:80, so
+    # the probe is refused and `up --wait` aborts with "web is unhealthy" even
+    # though the site answers. Probe the IPv4 loopback explicitly.
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
 
   # ── Source databases for backup/restore flows ────────────────
-  # Same engines and credentials as the `test` profile of docker-compose.dev.yml,
-  # on different host ports so both stacks can run side by side. The api reaches
-  # them as db-test-pg:5432 and db-test-mysql:3306; the test runner seeds them
-  # through the published host ports. Restores into MySQL create and swap
-  # staging databases, which needs privileges beyond `testdb`: connect as
-  # `root` (password below) for MySQL restore targets.
+  # Same engines (Postgres version aside, see below) and credentials as the `test`
+  # profile of docker-compose.dev.yml, on different host ports so both stacks can
+  # run side by side. The api reaches them as db-test-pg:5432 and
+  # db-test-mysql:3306; the test runner seeds them through the published host
+  # ports. Restores into MySQL create and swap staging databases, which needs
+  # privileges beyond `testdb`: connect as `root` (password below) for MySQL
+  # restore targets.
+  #
+  # The Postgres source runs the same major version as the pg_dump/pg_restore
+  # client baked into the api image (18). With a 16 server, pg_restore 18 aborts
+  # every restore on `SET transaction_timeout = 0` (a setting only 17+ knows), so
+  # the happy-path restore flow could never pass. Set E2E_PG_IMAGE=postgres:16-alpine
+  # to reproduce that failure on purpose.
   db-test-pg:
-    image: postgres:16-alpine
+    image: ${E2E_PG_IMAGE:-postgres:18-alpine}
     environment:
       POSTGRES_DB: testdb
       POSTGRES_USER: test_user
@@ -160,6 +177,9 @@ services:
   # One-shot: creates the bucket if it is missing and exits 0, so it is safe to
   # run on every `up`. The image's entrypoint is `mc`; MC_HOST_<alias> defines
   # the `e2e` alias without a config file or a shell.
+  # `up --wait` accepts its clean exit only because api depends on it with
+  # service_completed_successfully. Naming it as an explicit `up --wait` target
+  # without api fails with "container ... exited (0)"; start it without --wait.
   minio-init:
     image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z@sha256:cfc83108c3abb371f8fb84d99c1fdc88f8c237e022409b0081fb7c0a3be634dd
     environment:
