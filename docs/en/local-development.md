@@ -220,6 +220,8 @@ Bring up:
 pnpm docker:db:test
 ```
 
+> End-to-end tests against a separate hermetic Docker stack: see [e2e-testing.md](e2e-testing.md).
+
 ---
 
 ## Comparison

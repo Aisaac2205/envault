@@ -219,6 +219,8 @@ Levantar:
 pnpm docker:db:test
 ```
 
+> Pruebas E2E contra un stack Docker hermético aparte: ver [e2e-testing.md](e2e-testing.md).
+
 ---
 
 ## Comparación
