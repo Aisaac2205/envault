@@ -50,6 +50,11 @@ tsconfig.tsbuildinfo
 coverage/
 .nyc_output/
 
+# Playwright (e2e/): run output, HTML report and the saved admin session
+e2e/test-results/
+e2e/playwright-report/
+e2e/.auth/
+
 # Cache
 .cache/
 .turbo/
