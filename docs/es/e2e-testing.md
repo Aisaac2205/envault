@@ -21,7 +21,7 @@ Desde la raíz del repositorio:
 | 5 | `pnpm test:e2e` | Ejecuta la suite. |
 | 6 | `pnpm docker:e2e:down` | Detiene el stack y borra sus datos. |
 
-Una ejecución correcta termina con `148 passed` (el número crece a medida que se agregan suites). Las specs de defectos conocidos del producto están escritas para fallar y cuentan como pasadas; ver [Defectos conocidos](#defectos-conocidos).
+Una ejecución correcta termina con `208 passed` (el número crece a medida que se agregan suites). Las specs de defectos conocidos del producto están escritas para fallar y cuentan como pasadas; ver [Defectos conocidos](#defectos-conocidos).
 
 > El primer `pnpm docker:e2e` construye las imágenes y tarda cerca de 3 minutos. Los arranques siguientes son mucho más rápidos.
 
@@ -33,7 +33,7 @@ Una ejecución correcta termina con `148 passed` (el número crece a medida que 
 |----------------|--------------|---------|--------|
 | Smoke | Salud del stack (`/health`: API, base de datos y almacenamiento arriba), autenticación (`GET /connections` responde 401 sin sesión y 200 con sesión), página de login (se muestra el formulario, las rutas protegidas redirigen a ella, la sesión de admin guardada abre la app) | `e2e/tests/api`, `e2e/tests/ui` | Disponible |
 | Suite de caja negra de la API | Inicio de sesión (contraseña incorrecta, correo desconocido, cookie de sesión alterada, guarda del límite de intentos); autorización (401 sin sesión, 403 para un usuario no admin, en cada endpoint de admin); conexiones (crear, leer, actualizar, eliminar, validaciones, la contraseña nunca se devuelve, `test-raw` contra PostgreSQL y MySQL, probar una conexión guardada); formato de errores (400, 401, 403, 404 y el cuerpo de éxito); forma de los endpoints de solo lectura de jobs, analítica, backups, restores y auditoría | `e2e/tests/api` | Disponible |
-| Suite de caja negra de la UI | Flujos de login, conexiones y dashboard en el navegador | `e2e/tests/ui` | Planificada |
+| Suite de caja negra de la UI | Login (formulario, validación del navegador, contraseña incorrecta, inicio de sesión correcto que sobrevive a una recarga, mostrar u ocultar la contraseña, cierre de sesión de su propia sesión); navegación y roles (cada sección de la barra lateral abre su página, un usuario normal solo ve y alcanza lo que no es exclusivo de admin); conexiones (estado vacío, crear PostgreSQL y MySQL con el formulario, validación del formulario, probar la conexión desde el formulario y desde una fila, filtrar, editar, eliminar con confirmación, la contraseña nunca se muestra); dashboard (título, tarjetas de KPI, paneles, solo peticiones exitosas, un sistema vacío); direcciones desconocidas | `e2e/tests/ui` | Disponible |
 | Pipeline de backup / restore | Backup y restore funcionales de PostgreSQL y MySQL a través de la cola y el almacenamiento de objetos reales | Por definir | Planificada |
 | Rendimiento | Duración, espera en cola y throughput de dumps y restores | Por definir | Planificada |
 
@@ -42,6 +42,7 @@ Una ejecución correcta termina con `148 passed` (el número crece a medida que 
 - Cobertura de caja blanca del código: eso lo hacen Jest y Vitest.
 - Pruebas de carga o estrés con muchos usuarios concurrentes.
 - Latencia de red hacia Cloudflare R2 real: el stack usa MinIO, un almacenamiento local compatible con S3, por lo que los tiempos excluyen ese salto.
+- Capturas visuales, auditorías de accesibilidad y navegadores distintos de Chromium.
 - Integración con CI: por ahora la suite se ejecuta en la máquina del desarrollador.
 
 Todo cambio que agregue o modifique una suite debe actualizar esta tabla.
@@ -54,9 +55,13 @@ La suite documenta los errores que encuentra en lugar de ocultarlos. Cada uno ti
 
 | Id | Dónde | Qué ocurre hoy | Spec |
 |----|-------|----------------|------|
-| D4 | `GET /api/health` | Responde 404. El dashboard llama a esta ruta, pero la API sirve el health fuera del prefijo `/api` (`/health`, solo en el puerto 3000). | `health.api.spec.ts` |
+| D4 | `GET /api/health` | Responde 404: la API sirve el health fuera del prefijo `/api` (`/health`, solo en el puerto 3000). El cliente de API del dashboard declara una llamada a esta ruta, pero ninguna pantalla la hace, así que hoy la UI no muestra el problema (`dashboard.ui.spec.ts` falla si una pantalla empieza a llamarla). | `health.api.spec.ts` |
 | D6 | `PATCH /api/connections/:id` | La respuesta contiene la contraseña descifrada. Crear, leer y listar sí la omiten. | `connections.api.spec.ts` |
 | D7 | `GET /api/<recurso>/<id>` con un id que no es un UUID (connections, backups, restores, jobs, audit) | Responde 500 en lugar de un 4xx, porque el id llega a la base de datos sin validar. | `error-envelope.api.spec.ts` |
+| D8 | `/`, `/restore`, `/cronjobs` y `/audit` como usuario normal (rol `user`) | La barra lateral ofrece estas pantallas, pero todos los endpoints de la API que las alimentan son exclusivos de admin y responden 403, así que el usuario ve ceros, tablas vacías o una carga que nunca termina, sin ningún mensaje. | `navigation.ui.spec.ts` |
+| D9 | Cualquier dirección que el router no conoce | Muestra la pantalla de error para desarrolladores de React Router (`Unexpected Application Error! 404 Not Found`) en lugar de una página del producto. | `navigation.ui.spec.ts` |
+| D10 | Página de conexiones, toast de éxito de **Test connection** en una conexión guardada | La descripción dice `Latencia: 5ms` en español dentro de la interfaz en inglés; el texto traducido existe pero no se usa. | `connections.ui.spec.ts` |
+| D11 | Formulario de login cuando la API no es alcanzable | La petición falla a nivel de red, el botón se queda en `Signing in...` y no aparece ningún mensaje, así que el formulario no se puede volver a usar sin recargar. | `login.ui.spec.ts` |
 
 ---
 
@@ -82,7 +87,9 @@ La suite documenta los errores que encuentra en lugar de ocultarlos. Cada uno ti
 e2e/
 ├── playwright.config.ts   proyectos: setup, api, ui-chromium
 ├── support/               carga de .env.e2e, chequeo de que el stack esté listo, ruta de la sesión guardada,
-│                          fixtures (anónimo, usuario no admin, fábrica de conexiones), helpers del formato de respuesta
+│                          fixtures (anónimo, cliente de API admin, usuario no admin, fábrica y limpieza
+│                          de conexiones), helpers del formato de respuesta, respuestas de API simuladas (mock-api.ts),
+│                          enrutado del límite de intentos para el navegador (browser.ts), page objects (pages/)
 └── tests/
     ├── setup/             inicia sesión una vez y guarda la sesión del admin
     ├── api/               *.api.spec.ts  (HTTP, sin navegador)
@@ -93,7 +100,9 @@ e2e/
 |----------|---------|-------|
 | `setup` | `tests/setup` | Espera al stack, inicia sesión como el admin sembrado y guarda la sesión en `e2e/.auth/admin.json`, salvo que la sesión guardada siga siendo válida. Se ejecuta primero, de forma automática. |
 | `api` | `tests/api` | Reutiliza la sesión guardada. |
-| `ui-chromium` | `tests/ui` | Reutiliza la sesión guardada. |
+| `ui-chromium` | `tests/ui` | Reutiliza la sesión guardada. Sus llamadas de autenticación usan un contador de límite propio (ver [Specs del navegador y el límite de intentos](#specs-del-navegador-y-el-límite-de-intentos)). |
+
+Salida generada (toda ignorada por git): `e2e/playwright-report/` (reporte HTML), `e2e/test-results/` (trazas y capturas de los fallos) y `e2e/.auth/` (la sesión guardada).
 
 Archivos de specs de la API:
 
@@ -107,6 +116,17 @@ Archivos de specs de la API:
 | `error-envelope.api.spec.ts` | El cuerpo de error para 400, 401, 403 y 404, el cuerpo de éxito, ids que no son UUID (defecto conocido) |
 | `read-contracts.api.spec.ts` | Forma y conteos en cero de los endpoints de jobs, analítica, backups, restores y auditoría en un stack sin jobs |
 
+Archivos de specs de la UI (los page objects están en `e2e/support/pages/`; los locators usan los textos en inglés de la aplicación web, que es lo que muestra cuando el navegador no tiene un idioma guardado):
+
+| Archivo | Cubre |
+|---------|-------|
+| `login.ui.spec.ts` | Formulario, validación del navegador con datos vacíos o mal formados, contraseña incorrecta, mensaje del límite de intentos, inicio de sesión correcto que sobrevive a una recarga, mostrar u ocultar la contraseña, cierre de su propia sesión, visitantes con sesión que salen de `/login`, API no alcanzable (defecto conocido) |
+| `navigation.ui.spec.ts` | Secciones y enlaces de la barra lateral, abrir cada sección como admin, qué ve un usuario normal, de dónde se le redirige y qué puede abrir, los datos detrás de las pantallas que un usuario normal abre (defecto conocido), direcciones desconocidas (defecto conocido) |
+| `connections.ui.spec.ts` | Estado vacío, formulario de creación y su validación, crear conexiones PostgreSQL y MySQL, probar desde el formulario y desde una fila, filtrar, editar, eliminar y cancelar la confirmación, redacción del toast de éxito (defecto conocido) |
+| `dashboard.ui.spec.ts` | Título y tarjetas de KPI, paneles, solo peticiones exitosas, un sistema vacío |
+
+Las specs de login se ejecutan en una ventana de 1000 px de ancho: desde 1024 px la pantalla de login pinta un panel animado con WebGL que Chromium sin interfaz renderiza por software, lo que hacía cada test varios segundos más lento (1,2 minutos para el archivo a 1280 px frente a 18 segundos), y por debajo de ese ancho la aplicación lo oculta. Las specs que necesitan un estado que el stack compartido no puede garantizar (sin conexiones, sin jobs) responden el `GET` con `mockApiGet` de `e2e/support/mock-api.ts`; el resto del tráfico es real.
+
 ### Iniciar sesión desde una spec
 
 Better Auth permite solo 3 inicios de sesión cada 10 segundos por IP de cliente y ese límite no es configurable. Dos reglas mantienen la suite por debajo:
@@ -116,7 +136,15 @@ Better Auth permite solo 3 inicios de sesión cada 10 segundos por IP de cliente
 
 Nunca cierres la sesión del admin compartido: todas las demás specs la usan. El usuario no admin se crea una vez por worker con el plugin de administración de Better Auth y se elimina cuando el worker termina.
 
-Salida generada (toda ignorada por git): `e2e/playwright-report/` (reporte HTML), `e2e/test-results/` (trazas y capturas de los fallos) y `e2e/.auth/` (la sesión guardada).
+### Specs del navegador y el límite de intentos
+
+Better Auth también limita cualquier otra ruta de `/api/auth/*` a 100 peticiones cada 10 segundos por IP de cliente, y la aplicación web llama a `get-session` en cada página que abre. A través del proxy todos los contextos de navegador, workers y proyectos comparten una sola dirección, así que una ejecución paralela de la UI agota ese margen: la aplicación interpreta el 429 como "sin sesión" y la spec termina en la página de login, de forma aleatoria (sin el enrutado descrito abajo, `--repeat-each=3` sobre el proyecto de la UI hizo fallar 7 tests de este modo).
+
+La suite lo evita sin simular el inicio de sesión. El fixture `context` de `e2e/support/fixtures.ts` llama a `routeAuthToOwnRateLimitBucket` (`e2e/support/browser.ts`), que repite cada petición `/api/auth/*` del navegador contra el puerto de la API con una dirección `X-Forwarded-For` propia y entrega la respuesta a la página. El formulario real habla con la API real y el navegador termina con las cookies de sesión reales (dependen del nombre de host, no del puerto). Solo se omite el salto por nginx, y solo para estas llamadas; `setup` y el proyecto de la API siguen usando las rutas de autenticación a través del proxy.
+
+- Importa `test` de `e2e/support/fixtures`, nunca de `@playwright/test`, en cada spec de la UI.
+- Una ruta que una spec agrega a su página tiene prioridad sobre esta, así que una spec todavía puede responder un inicio de sesión con una respuesta simulada (lo hacen el mensaje del límite de intentos y la falla de red).
+- Una spec que inicia o cierra sesión debe usar un contexto propio (`test.use({ storageState: SIGNED_OUT })`), nunca la sesión compartida del admin.
 
 ---
 
@@ -127,17 +155,20 @@ Pasa los flags justo después de `pnpm test:e2e`, **sin** el separador `--` (con
 ```bash
 pnpm test:e2e --project=api                      # solo las specs de la API
 pnpm test:e2e --project=ui-chromium              # solo las specs del navegador
+pnpm test:e2e tests/ui/connections.ui.spec.ts    # un solo archivo de la UI
+pnpm test:e2e --project=ui-chromium -g "wrong password"   # tests de la UI cuyo título coincide
 pnpm test:e2e tests/api/connections.api.spec.ts  # un solo archivo
 pnpm test:e2e -g "login"                         # tests cuyo título coincide
 pnpm test:e2e --project=api -g "test-raw"        # tests de la API cuyo título coincide
 pnpm test:e2e --project=api --repeat-each=3      # ejecuta cada test de la API 3 veces para detectar inestabilidad
 pnpm test:e2e --project=ui-chromium --headed     # ver el navegador
+pnpm test:e2e --project=ui-chromium --workers=1  # un navegador a la vez, más fácil de seguir
 pnpm test:e2e --ui                               # modo UI de Playwright
 pnpm test:e2e --project=ui-chromium --debug      # paso a paso con el Inspector
 pnpm test:e2e:report                             # abrir el reporte HTML
 ```
 
-El proyecto `setup` siempre se ejecuta primero, por lo que su test se cuenta en todas las ejecuciones. El reporte se sirve en `http://localhost:9323` (presiona `Ctrl+C` para detenerlo).
+El proyecto `setup` siempre se ejecuta primero, por lo que su test se cuenta en todas las ejecuciones. El reporte se sirve en `http://localhost:9323` (presiona `Ctrl+C` para detenerlo). Para las specs del navegador, `--headed` y `--ui` muestran lo que hace la página, `--workers=1` ejecuta un navegador a la vez y un test fallido conserva su traza y su captura en el reporte.
 
 ---
 
@@ -176,6 +207,7 @@ Las pruebas cargan el `.env.e2e` de la raíz del repositorio, el mismo archivo q
 | `The E2E stack is not ready: ... (last result: ECONNREFUSED)` | Las pruebas se ejecutaron con el stack apagado; reintentan durante 30 segundos antes de fallar. | Ejecuta `pnpm docker:e2e` y luego las pruebas de nuevo. |
 | `couldn't find env file: ...\.env.e2e` o `E2E configuration is incomplete: ... .env.e2e does not exist` | Falta `.env.e2e`. | `cp .env.e2e.example .env.e2e` |
 | El inicio de sesión falla con HTTP 429 (`Too many requests`) | Más de 3 inicios de sesión en 10 segundos a través del proxy. `setup` inicia sesión una vez como máximo, así que hacen falta varias ejecuciones lanzadas en pocos segundos sin una sesión guardada válida (tras `pnpm docker:e2e:down`, o con `e2e/.auth` borrado), o una spec que inicia sesión por el proxy. | Espera 10 segundos y vuelve a ejecutar. En una spec, usa `signInOnDirectApi`. |
+| Una spec de la UI termina en la página de login aunque tiene sesión, o `/api/auth/get-session` responde 429 | Más de 100 peticiones a la misma ruta de `/api/auth/*` (en la práctica `get-session`) en 10 segundos desde una sola dirección; la aplicación interpreta el 429 como sin sesión. La spec no usa el fixture `context` que le da al navegador una dirección propia. | Importa `test` de `e2e/support/fixtures`, no de `@playwright/test` (ver [Specs del navegador y el límite de intentos](#specs-del-navegador-y-el-límite-de-intentos)). |
 | El inicio de sesión falla con `INVALID_ORIGIN` | `E2E_BASE_URL` usa `127.0.0.1`. | Usa `localhost`. |
 | El inicio de sesión falla con `INVALID_EMAIL_OR_PASSWORD`, o el stack arranca con valores inesperados | Una variable exportada en tu shell sobrescribe `.env.e2e` (tanto para Compose como para las pruebas). | Elimina la variable en ese shell (`unset`). |
 | `Expected to fail, but passed` en una spec marcada con `test.fail` | Se corrigió un defecto conocido. | Borra el `test.fail` y la fila en [Defectos conocidos](#defectos-conocidos). |

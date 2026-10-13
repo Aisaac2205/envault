@@ -10,7 +10,8 @@ import { API_URL, BASE_URL } from './support/env';
  * Projects:
  *   setup        signs in once and saves the admin session
  *   api          HTTP specs, reuse the saved session
- *   ui-chromium  browser specs, reuse the saved session
+ *   ui-chromium  browser specs, reuse the saved session; their auth calls use a
+ *                rate-limit bucket of their own (support/browser.ts)
  */
 export default defineConfig({
   testDir: './tests',
