@@ -4,7 +4,7 @@
 
 Pruebas de extremo a extremo (E2E) que ejercitan EnVault desde afuera, como lo haría un usuario o un cliente de la API, contra un stack Docker similar al de producción. Usan [Playwright](https://playwright.dev) y viven en el paquete del workspace `e2e/` (`@vaultly-control/e2e`).
 
-Es testing de **caja negra**: la suite solo habla HTTP y maneja un navegador real. Las pruebas unitarias de **caja blanca** siguen donde estaban, en Jest (`apps/api`) y Vitest (`apps/web`), y se ejecutan con `pnpm test`. `pnpm test` nunca recoge las specs E2E; estas tienen su propio comando, `pnpm test:e2e`. La suite de rendimiento es un benchmark aparte, con su propio comando, `pnpm test:e2e:perf`, y tampoco forma parte de `pnpm test:e2e`.
+Es testing de **caja negra**: la suite solo habla HTTP y maneja un navegador real. Las pruebas unitarias de **caja blanca** siguen donde estaban, en Jest (`apps/api`) y Vitest (`apps/web`, `apps/landing`), y se ejecutan con `pnpm test`; su cobertura se mide con `pnpm test:coverage` (ver [testing-coverage.md](testing-coverage.md)). `pnpm test` nunca recoge las specs E2E; estas tienen su propio comando, `pnpm test:e2e`. La suite de rendimiento es un benchmark aparte, con su propio comando, `pnpm test:e2e:perf`, y tampoco forma parte de `pnpm test:e2e`.
 
 ---
 
@@ -39,7 +39,7 @@ Una ejecución correcta termina con `250 passed` y `1 skipped` (los números cre
 
 **No cubierto (por diseño):**
 
-- Cobertura de caja blanca del código: eso lo hacen Jest y Vitest.
+- Cobertura de caja blanca del código: eso lo hacen Jest y Vitest, documentada en [testing-coverage.md](testing-coverage.md).
 - Pruebas de carga o estrés con muchos usuarios concurrentes.
 - Latencia de red hacia Cloudflare R2 real: el stack usa MinIO, un almacenamiento local compatible con S3, por lo que los tiempos excluyen ese salto.
 - Capturas visuales, auditorías de accesibilidad y navegadores distintos de Chromium.

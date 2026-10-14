@@ -4,7 +4,7 @@
 
 End-to-end (E2E) tests that exercise EnVault from the outside, the way a user or an API client would, against a production-like Docker stack. They use [Playwright](https://playwright.dev) and live in the `e2e/` workspace package (`@vaultly-control/e2e`).
 
-This is **black-box** testing: the suite only talks HTTP and drives a real browser. The **white-box** unit tests stay where they were, in Jest (`apps/api`) and Vitest (`apps/web`), and run with `pnpm test`. E2E specs are never collected by `pnpm test`; they have their own command, `pnpm test:e2e`. The performance suite is a separate benchmark with its own command, `pnpm test:e2e:perf`, and is never part of `pnpm test:e2e` either.
+This is **black-box** testing: the suite only talks HTTP and drives a real browser. The **white-box** unit tests stay where they were, in Jest (`apps/api`) and Vitest (`apps/web`, `apps/landing`), and run with `pnpm test`; their coverage is measured with `pnpm test:coverage` (see [testing-coverage.md](testing-coverage.md)). E2E specs are never collected by `pnpm test`; they have their own command, `pnpm test:e2e`. The performance suite is a separate benchmark with its own command, `pnpm test:e2e:perf`, and is never part of `pnpm test:e2e` either.
 
 ---
 
@@ -39,7 +39,7 @@ A healthy run ends with `250 passed` and `1 skipped` (the numbers grow as suites
 
 **Not covered (by design):**
 
-- White-box coverage of the code: that is Jest and Vitest.
+- White-box coverage of the code: that is Jest and Vitest, documented in [testing-coverage.md](testing-coverage.md).
 - Load or stress tests with many concurrent users.
 - Network latency to the real Cloudflare R2: the stack uses MinIO, a local S3-compatible store, so timings exclude that hop.
 - Visual snapshots, accessibility audits and browsers other than Chromium.
