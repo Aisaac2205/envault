@@ -750,10 +750,10 @@ export class BackupService implements OnApplicationBootstrap {
     try {
       await client.connect();
 
-      const versionResult = await client.query<{ version: string }>(
+      const versionResult = await client.query<{ server_version: string }>(
         'SHOW server_version',
       );
-      const serverVersion = versionResult.rows[0]?.version ?? 'unknown';
+      const serverVersion = versionResult.rows[0]?.server_version ?? 'unknown';
 
       const tablesResult = await client.query<{
         name: string;

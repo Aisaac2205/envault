@@ -61,7 +61,6 @@ La suite documenta los errores que encuentra en lugar de ocultarlos. Cada uno ti
 | D9 | Cualquier dirección que el router no conoce | Muestra la pantalla de error para desarrolladores de React Router (`Unexpected Application Error! 404 Not Found`) en lugar de una página del producto. | `navigation.ui.spec.ts` |
 | D10 | Página de conexiones, toast de éxito de **Test connection** en una conexión guardada | La descripción dice `Latencia: 5ms` en español dentro de la interfaz en inglés; el texto traducido existe pero no se usa. | `connections.ui.spec.ts` |
 | D11 | Formulario de login cuando la API no es alcanzable | La petición falla a nivel de red, el botón se queda en `Signing in...` y no aparece ningún mensaje, así que el formulario no se puede volver a usar sin recargar. | `login.ui.spec.ts` |
-| D13 | Manifiesto de un backup de PostgreSQL | `source.serverVersion` siempre es `unknown`: la captura lee la columna equivocada de `SHOW server_version`. Los manifiestos de MySQL sí traen la versión real. | `backup.pipeline.spec.ts` |
 
 ---
 
@@ -178,7 +177,7 @@ Cada test trabaja con datos propios, así que el proyecto corre en paralelo y se
 
 | Archivo | Cubre |
 |---------|-------|
-| `backup.pipeline.spec.ts` | PostgreSQL y MySQL: campos y tiempos del job, el dump servido con su URL firmada (tamaño y SHA-256), dump y manifiesto en el almacenamiento, los listados del almacenamiento, la versión del servidor en el manifiesto (defecto conocido en PostgreSQL), un backup pendiente devuelto a peticiones repetidas y luego cancelado |
+| `backup.pipeline.spec.ts` | PostgreSQL y MySQL: campos y tiempos del job, el dump servido con su URL firmada (tamaño y SHA-256), dump y manifiesto en el almacenamiento, los listados del almacenamiento, la versión del servidor en el manifiesto, un backup pendiente devuelto a peticiones repetidas y luego cancelado |
 | `restore.pipeline.spec.ts` | Restore a destinos `dev` y `qa` con conteos de filas y checksum de datos iguales a los del origen, restore por clave de objeto, dry run (el plan, el manifiesto, un destino intacto), restore sobre un PostgreSQL anterior a la versión 17 (D1) |
 | `rules.pipeline.spec.ts` | Lo que se rechaza: restore a `prod`, un backup del otro motor, peticiones desconocidas y mal formadas, un restore sin origen, el backup de una conexión que no es de producción, listar dumps |
 | `backup-failure.pipeline.spec.ts` | Backups de un origen con contraseña incorrecta, un host que no se resuelve o una base de datos que no existe terminan `failed`, con un mensaje de error y sin ningún objeto en el almacenamiento |

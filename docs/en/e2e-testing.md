@@ -61,7 +61,6 @@ The suite documents bugs it has found instead of hiding them. Each one has a spe
 | D9 | Any address the router does not know | Shows React Router's developer error screen (`Unexpected Application Error! 404 Not Found`) instead of a product page. | `navigation.ui.spec.ts` |
 | D10 | Connections page, success toast of **Test connection** on a saved connection | The description reads `Latencia: 5ms` in Spanish in the English interface; the translated string exists but is not used. | `connections.ui.spec.ts` |
 | D11 | Login form when the API cannot be reached | The request fails at network level, the button stays on `Signing in...` and no message appears, so the form cannot be used again without reloading. | `login.ui.spec.ts` |
-| D13 | Manifest of a PostgreSQL backup | `source.serverVersion` is always `unknown`: the snapshot reads the wrong column of `SHOW server_version`. MySQL manifests carry the real version. | `backup.pipeline.spec.ts` |
 
 ---
 
@@ -178,7 +177,7 @@ Every test works on data of its own, so the project runs in parallel and can be 
 
 | File | Covers |
 |------|--------|
-| `backup.pipeline.spec.ts` | PostgreSQL and MySQL: job fields and timings, the dump served through its signed URL (size and SHA-256), dump and manifest in storage, the storage listings, the server version in the manifest (known defect on PostgreSQL), a pending backup returned to repeated requests and then cancelled |
+| `backup.pipeline.spec.ts` | PostgreSQL and MySQL: job fields and timings, the dump served through its signed URL (size and SHA-256), dump and manifest in storage, the storage listings, the server version in the manifest, a pending backup returned to repeated requests and then cancelled |
 | `restore.pipeline.spec.ts` | Restore into `dev` and `qa` targets with row counts and a data checksum equal to the source, restore by object key, dry run (the plan, the manifest, a target left untouched), restore on a PostgreSQL older than 17 (D1) |
 | `rules.pipeline.spec.ts` | What is refused: restore into `prod`, a backup of the other engine, unknown and malformed requests, a restore with no source, a backup of a connection that is not in production, listing dumps |
 | `backup-failure.pipeline.spec.ts` | Backups of a source with a wrong password, a host that does not resolve or a database that does not exist end `failed`, with an error message and no object in storage |

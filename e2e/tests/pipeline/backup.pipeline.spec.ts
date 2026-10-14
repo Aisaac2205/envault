@@ -144,24 +144,11 @@ test.describe('server version in the manifest', () => {
     expect(await recordedVersion(backup.fileKey)).toBe(await database.engine.serverVersion());
   });
 
-  // Known defect D13: the PostgreSQL snapshot reads `rows[0].version`, but
-  // `SHOW server_version` names its column `server_version`, so the manifest
-  // of every PostgreSQL backup says "unknown". Remove `fail` once it records
-  // the version.
-  test.fail(
-    'PostgreSQL records the version the source server reports',
-    {
-      annotation: {
-        type: 'known-defect',
-        description: 'D13: the manifest of a PostgreSQL backup always has serverVersion "unknown"',
-      },
-    },
-    async ({ backedUp }) => {
-      const { database, backup } = await backedUp('postgres');
+  test('PostgreSQL records the version the source server reports', async ({ backedUp }) => {
+    const { database, backup } = await backedUp('postgres');
 
-      expect(await recordedVersion(backup.fileKey)).toBe(await database.engine.serverVersion());
-    },
-  );
+    expect(await recordedVersion(backup.fileKey)).toBe(await database.engine.serverVersion());
+  });
 });
 
 test.describe('duplicate requests', () => {
