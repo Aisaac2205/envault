@@ -4,7 +4,7 @@
 
 End-to-end (E2E) tests that exercise EnVault from the outside, the way a user or an API client would, against a production-like Docker stack. They use [Playwright](https://playwright.dev) and live in the `e2e/` workspace package (`@vaultly-control/e2e`).
 
-This is **black-box** testing: the suite only talks HTTP and drives a real browser. The **white-box** unit tests stay where they were, in Jest (`apps/api`) and Vitest (`apps/web`), and run with `pnpm test`. E2E specs are never collected by `pnpm test`; they have their own command, `pnpm test:e2e`.
+This is **black-box** testing: the suite only talks HTTP and drives a real browser. The **white-box** unit tests stay where they were, in Jest (`apps/api`) and Vitest (`apps/web`), and run with `pnpm test`. E2E specs are never collected by `pnpm test`; they have their own command, `pnpm test:e2e`. The performance suite is a separate benchmark with its own command, `pnpm test:e2e:perf`, and is never part of `pnpm test:e2e` either.
 
 ---
 
@@ -35,7 +35,7 @@ A healthy run ends with `250 passed` and `1 skipped` (the numbers grow as suites
 | Black-box API suite | Sign-in (wrong password, unknown email, tampered session cookie, rate-limit guard); authorization (401 without a session, 403 for a non-admin user, on every admin endpoint); connections (create, read, update, delete, validation, the password never returned, `test-raw` against PostgreSQL and MySQL, testing a saved connection); error envelope (400, 401, 403, 404 and the success body); shapes of the read-only jobs, analytics, backups, restores and audit endpoints | `e2e/tests/api` | Available |
 | Black-box UI suite | Login (form, browser validation, wrong password, successful sign-in that survives a reload, password toggle, logout of its own session); navigation and roles (every sidebar section opens its page, a regular user sees and reaches only what is not admin-only); connections (empty state, create PostgreSQL and MySQL through the form, form validation, test connection from the form and from a row, filter, edit, delete with confirmation, the password never shown); dashboard (title, KPI cards, panels, only successful requests, an empty system); unknown addresses | `e2e/tests/ui` | Available |
 | Backup / restore pipeline | Real backups and restores of PostgreSQL and MySQL through the API, the queue, `pg_dump` / `mysqldump`, object storage and `pg_restore` / `mysql`, on databases the tests seed themselves: job fields, the dump downloaded through its signed URL (size and SHA-256), the manifest, restore into `dev` and `qa` with row counts and a data checksum equal to the source, a dry run that changes nothing, restore into `prod` refused, malformed and unknown requests, a pending backup returned to repeated requests, failed backups (error message, no object), job lists, history and analytics; one UI journey that starts a backup from the Dumps page | `e2e/tests/pipeline`, `e2e/tests/ui` | Available |
-| Performance | Duration, queue wait and throughput of dumps and restores | To be defined | Planned |
+| Performance | Throughput of backup and restore per engine and dataset size (about 10 MiB to 1 GiB), BullMQ concurrency (K simultaneous backups, one against two restores), cold-load timings of the screens in Chromium, API latency; results as JSON, CSV and Markdown | `e2e/tests/perf` | Available (opt-in, see [Performance suite](#performance-suite)) |
 
 **Not covered (by design):**
 
@@ -89,16 +89,19 @@ The suite documents bugs it has found instead of hiding them. Each one has a spe
 ```
 e2e/
 ├── playwright.config.ts   projects: setup, api, pipeline, ui-chromium
+├── playwright.perf.config.ts   projects: perf-unit, setup, perf (the benchmark; never part of pnpm test:e2e)
 ├── support/               .env.e2e loader, stack readiness check, saved-session path,
 │                          fixtures (anonymous, admin API client, non-admin user, connection
 │                          factory and cleanup), envelope helpers, canned API answers (mock-api.ts),
 │                          rate-limit routing for the browser (browser.ts), page objects (pages/),
 │                          pipeline: source databases and seed data (databases.ts, seed-data.ts),
-│                          job polling (jobs.ts), object storage (storage.ts), fixtures (pipeline-fixtures.ts)
+│                          job polling (jobs.ts), object storage (storage.ts), fixtures (pipeline-fixtures.ts),
+│                          performance: settings, datasets, timings, statistics, report and reporter (perf/)
 └── tests/
     ├── setup/             signs in once and saves the admin session
     ├── api/               *.api.spec.ts       (HTTP, no browser)
     ├── pipeline/          *.pipeline.spec.ts  (HTTP, real backup and restore jobs)
+    ├── perf/              *.perf.spec.ts (the benchmark), *.unit.spec.ts (its helpers, no stack)
     └── ui/                *.ui.spec.ts        (Chromium)
 ```
 
@@ -108,8 +111,10 @@ e2e/
 | `api` | `tests/api` | Reuses the saved session. |
 | `pipeline` | `tests/pipeline` | Reuses the saved session. Gives each test 120 s because jobs are asynchronous. Seeds source databases from the host (see [Backup and restore tests](#backup-and-restore-tests)). Part of the default run. |
 | `ui-chromium` | `tests/ui` | Reuses the saved session. Its auth calls use a rate-limit bucket of their own (see [Browser specs and the rate limit](#browser-specs-and-the-rate-limit)). |
+| `perf-unit` | `tests/perf` (`*.unit.spec.ts`) | Only in `playwright.perf.config.ts`. Unit tests of the statistics helpers; no stack needed. `setup` depends on it there, so a broken helper stops a benchmark run before it starts. |
+| `perf` | `tests/perf` (`*.perf.spec.ts`) | Only in `playwright.perf.config.ts`. The benchmark, one worker and one test at a time. See [Performance suite](#performance-suite). |
 
-Generated output (all git-ignored): `e2e/playwright-report/` (HTML report), `e2e/test-results/` (traces and screenshots of failures) and `e2e/.auth/` (the saved session).
+Generated output (all git-ignored): `e2e/playwright-report/` (HTML report), `e2e/test-results/` (traces and screenshots of failures) and `e2e/.auth/` (the saved session); the performance suite adds `e2e/perf-results/` (one folder per run) and `e2e/test-results-perf/`.
 
 API spec files:
 
@@ -205,6 +210,132 @@ On PostgreSQL 16 the D1 test passes: the restore job ends `failed` with `transac
 
 ---
 
+## Performance suite
+
+The `perf` project measures how fast the stack backs up and restores databases, how the BullMQ queues behave when requests arrive together, how quickly the screens load and how fast the API answers. It is a benchmark, not a test of behavior: it has a config of its own (`e2e/playwright.perf.config.ts`) and is **never part of `pnpm test:e2e`**. The full default run takes about 17 minutes on the machine of the reference run (16 CPUs and 16 GiB for Docker). It fails only on functional errors (a job that fails, a restored table with the wrong row count, a timeout); there are no speed thresholds, so a slow machine never turns it red.
+
+### Run it
+
+| # | Command | What it does |
+|---|---------|--------------|
+| 1 | `pnpm docker:e2e` | Starts the stack, as for the functional suite. |
+| 2 | `pnpm test:e2e:perf:unit` | Unit tests of the statistics helpers, the report builders and the settings parser. They need no stack. |
+| 3 | `pnpm test:e2e:perf` | Runs the full default suite (the unit tests first) and writes a results folder. |
+| 4 | `pnpm docker:e2e:down` | Stops the stack and deletes its data. |
+
+Close heavy applications first and leave the stack alone while it measures: the numbers are only meaningful on a quiet machine.
+
+### What is measured
+
+| Group | What it measures | Spec |
+|-------|------------------|------|
+| Dump and restore throughput | For PostgreSQL and MySQL at each dataset size: the backup (queue wait `startedAt - createdAt`, duration `completedAt - startedAt`, wall time seen by the test, dump size, throughput over the source size and over the dump size), then the restore of that dump into a fresh empty `dev` database (queue wait, duration, throughput) and a row count of every table against the source. | `backup-restore.perf.spec.ts` |
+| BullMQ concurrency | K simultaneous backups of K different connections (K = 1, 2, 4, 6): queue wait of each job by start order, duration, makespan and parallelism; and one against two simultaneous restores. | `concurrency.perf.spec.ts` |
+| Front-end | Cold loads in Chromium of the login page (narrow and wide), the dashboard and the connections page: TTFB, DOMContentLoaded, load, FCP, LCP, bytes transferred and requests made. | `latency-web.perf.spec.ts` |
+| API latency | 100 sequential requests to each of `GET /api/connections`, `GET /api/jobs/summary`, `GET /api/jobs/analytics/daily?window=7` and `GET /api/backups/history`: p50, p95 and p99. | `latency-api.perf.spec.ts` |
+| Helpers | Percentiles and statistics, the report builders, the settings parser and the gating of the two configs. | `stats.unit.spec.ts`, `report.unit.spec.ts`, `config.unit.spec.ts` |
+
+Everything runs in one worker, one test at a time, in this order: backup and restore, BullMQ, API latency, front-end. The heavy cases come first so that the light ones are measured on a system that already has job history. Every case starts with one warm-up repetition that is recorded and left out of the statistics, because the first dump of a freshly loaded database pays for cold caches and the first connection to the object store. Durations come from the timestamps the API stores with each job (milliseconds), never from how often the test polls (every 250 ms).
+
+### Datasets
+
+Each engine gets a database generated inside the server with set-based SQL (`generate_series` on PostgreSQL; on MySQL an insert-select over a table of numbers that is doubled until it is big enough), once per engine and size, before the timed repetitions and never counted in them. Every value is a function of the row id, so a size always produces the same rows. Both engines get the same number of rows with the same shape; the sizes differ a little because each engine stores them in its own way.
+
+There are three tables linked by foreign keys, with indexes: `perf_customers` (uuid, text, an e-mail with a unique index, a decimal, a timestamp, a JSON profile), `perf_orders` (4 per customer; uuid, status, decimal, JSON, text; indexes on the customer and the date) and `perf_events` (4 per order, so most of the bytes; a 132-character payload made of three SHA-256 digests in base64, JSON details; an index on the order). The payload looks random on purpose, so the dump does not compress away: the PostgreSQL custom format ends at about 0.42 of the source size and the MySQL dump, plain SQL text, at about 0.8 to 0.9.
+
+| Size | Target | Customers | Orders | Events | Source PostgreSQL | Source MySQL |
+|------|--------|-----------|--------|--------|-------------------|--------------|
+| `small` | 10 MiB | 1,500 | 6,000 | 24,000 | 10.2 MiB | 10.1 MiB |
+| `medium` | 100 MiB | 15,000 | 60,000 | 240,000 | 99.4 MiB | 94.7 MiB |
+| `large` | 500 MiB | 75,000 | 300,000 | 1,200,000 | 496 MiB | 463 MiB |
+| `xlarge` (opt-in) | 1 GiB | 155,000 | 620,000 | 2,480,000 | 1,025 MiB | 953 MiB |
+
+The source size is tables plus indexes as the server reports them (`pg_table_size` + `pg_indexes_size`; `DATA_LENGTH` + `INDEX_LENGTH`) and is what the throughput figures divide; the dump size comes from the backup job. The sizes above were measured on a reference run and `summary.md` reports the ones of every run. MiB is 1,048,576 bytes.
+
+### Settings
+
+The defaults are the `full` preset. Each variable overrides it; set them in `.env.e2e` (commented examples are in `.env.e2e.example`) or export them in the shell, where they win over the file.
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `E2E_PERF_PRESET` | `full` | `quick` is a smoke check of the whole harness (about a minute): both engines, the small dataset, 2 runs, K = 1, 2, 4, 3 page loads and 20 API requests. |
+| `E2E_PERF_ENGINES` | `postgres,mysql` | Engines to measure. |
+| `E2E_PERF_SIZES` | `small,medium,large` | Dataset sizes. Add `xlarge` (about 1 GiB) to opt in. |
+| `E2E_PERF_RUNS` | 20 small, 20 medium, 10 large, 3 xlarge | Measured repetitions per case, warm-up not counted. A single number applies to every size. |
+| `E2E_PERF_QUEUE_SIZE` | `medium` | Dataset of the BullMQ experiments. |
+| `E2E_PERF_QUEUE_K` | `1,2,4,6` | Simultaneous backups, one case per value (1 to 12). |
+| `E2E_PERF_QUEUE_RESTORES` | `1,2` | Simultaneous restores, one case per value. |
+| `E2E_PERF_QUEUE_RUNS` | `5` | Measured repetitions per BullMQ case. |
+| `E2E_PERF_UI_RUNS` | `20` | Cold loads per page (the wide login page uses at most 10). |
+| `E2E_PERF_API_REQUESTS` | `100` | Sequential requests per endpoint, after 5 warm-ups. |
+
+### Variants
+
+Flags and file names go straight after `pnpm test:e2e:perf`, **without** a `--` separator, as for `pnpm test:e2e`. A file name selects that spec only; the unit tests and `setup` still run first.
+
+```bash
+pnpm test:e2e:perf                       # the full default suite
+pnpm test:e2e:perf --list                # what would run, without running anything
+pnpm test:e2e:perf:unit                  # unit tests of the helpers only, no stack
+E2E_PERF_PRESET=quick pnpm test:e2e:perf # smoke check of the whole harness
+E2E_PERF_ENGINES=postgres E2E_PERF_SIZES=small,medium E2E_PERF_RUNS=5 pnpm test:e2e:perf backup-restore   # chosen engine, sizes and runs; backup and restore spec only
+E2E_PERF_SIZES=xlarge E2E_PERF_RUNS=1 pnpm test:e2e:perf backup-restore   # the 1 GiB dataset, one run
+pnpm test:e2e:perf latency-web           # one spec file (backup-restore, concurrency, latency-api, latency-web)
+```
+
+In PowerShell set the variable first and clear it afterwards: `$env:E2E_PERF_PRESET = 'quick'; pnpm test:e2e:perf; Remove-Item Env:E2E_PERF_PRESET`.
+
+### Results
+
+Every run writes a new folder, `e2e/perf-results/<UTC timestamp>/` (git-ignored), and never touches an earlier one. The specs save each case as they measure it, and when the run ends, even if it failed, the reporter merges the cases into three files:
+
+| File | Content |
+|------|---------|
+| `results.json` | The raw sample of every repetition (warm-ups flagged `warmup: true`), the statistics, the environment (commit, Node.js, Playwright and Chromium versions, host and Docker VM resources, source PostgreSQL and MySQL versions, `pg_dump` and `mysqldump` versions of the API image, the `E2E_*` variables), the settings and the dataset definitions with their real sizes. |
+| `summary.csv` | One row per case and metric, with the columns `group,case,metric,unit,n,min,p50,p95,p99,max,mean,stddev,complete`, ready for a spreadsheet. |
+| `summary.md` | Readable tables, one per metric group and with the unit in the title, to paste into a report. |
+
+How to read the statistics:
+
+- **p50** is the median; **p95** and **p99** are percentiles computed by linear interpolation between the closest ranks (method R-7, the default of NumPy and of Excel's `PERCENTILE.INC`); **σ** is the sample standard deviation (n - 1).
+- With fewer than 20 samples p95 lies between the two largest values, so it is effectively the maximum; it is reported anyway so that every table has the same shape. By default `small` and `medium` have 20 runs, so they have a real p95, and the 100 API requests give a real p99; `large` has 10 and the BullMQ cases 5.
+- **Duration** is `completedAt - startedAt` of the job; **queue wait** is `startedAt - createdAt`; **wall time** is what the test saw from its request to the poll that found the job completed, so it can be up to 250 ms longer than the duration. **Throughput** is MiB per second over the source size and over the dump size.
+- A `*` after a size in `summary.md` (`complete` false in the CSV) marks a case that stopped before its last repetition.
+- The numbers belong to this machine and to the local MinIO: they say nothing about the network hop to Cloudflare R2.
+
+An example of the format (rows of the "Backup duration (s)" table from one reference run; they show the shape, not figures to compare your machine with):
+
+| Engine | Size | n | min | p50 | p95 | max | mean | σ |
+|:---|:---|---:|---:|---:|---:|---:|---:|---:|
+| PostgreSQL | medium | 20 | 1.83 | 1.85 | 2.02 | 2.36 | 1.89 | 0.12 |
+| MySQL | medium | 20 | 0.77 | 0.80 | 0.82 | 0.82 | 0.80 | 0.01 |
+
+### The BullMQ staircase
+
+The `backup` queue has concurrency 2 and the `restore` queue concurrency 1. When K backups of K different connections are requested together, two start at once and each further job waits for a free worker, so the queue wait by start order climbs one step (about one backup) every two jobs and the makespan (first request to last completion) grows in steps too, while the parallelism stays near 2.
+
+| K | Expected shape |
+|---|----------------|
+| 1, 2 | Everything starts at once: a makespan of one backup and queue waits of a few milliseconds. |
+| 4 | Two waves: jobs 3 and 4 wait about one backup, and the makespan is about two. |
+| 6 | Three waves: jobs 5 and 6 wait about two backups, and the makespan is about three. |
+
+With a single restore worker restores are strictly sequential: of two simultaneous restores the second waits for the first, so its queue wait is about one restore and the gap between the two completions is about one restore. The K connections are K different connection records, because a second backup of the same connection is deferred with a backoff of 30 to 300 seconds, which would measure that policy and not the queue; they point at one source database, which keeps the load of every job identical. In the reference run, PostgreSQL with K = 6 had queue waits by start order of 0.01, 0.01, 2.07, 2.10, 4.10 and 4.15 s (a step of about one backup, 2 s, every two jobs) and a makespan of 6.28 s against 1.92 s for K = 1, with a parallelism of 1.99; MySQL showed the same steps of about 1 s. Of two simultaneous restores the second waited 1.08 s on PostgreSQL and 4.49 s on MySQL, the duration of one restore, and their completions were 1.13 s and 4.37 s apart.
+
+### Caveats
+
+- Run it on a quiet machine: close heavy applications and do not use the stack or run other suites while it measures. The host and Docker VM resources are saved in `results.json` so that a result can be read against the machine that made it.
+- The first run of each case is a warm-up: it is kept in `results.json` and left out of every statistic.
+- Object storage is MinIO on the same Docker VM, so dump and restore times exclude the network hop to Cloudflare R2.
+- The login page is measured below 1024 px (1000 x 800) because from 1024 px the sign-in screen paints an animated WebGL panel that headless Chromium draws in software; that wide case is measured apart and labelled `Login (WebGL panel)`. In the reference run it did not differ from the narrow case (median LCP 386 ms against 416 ms).
+- Job rows pile up for the life of the stack and the API endpoints answer more slowly with more rows behind them (`summary.md` lists the rows each response had). For comparable numbers start from a clean stack: `pnpm docker:e2e:down`, then `pnpm docker:e2e`.
+- The `xlarge` dataset needs a few GB of free space in the Docker VM for the source, the dump and the restore target, and takes about 4 minutes for one run of both engines.
+- On a PostgreSQL older than 17 the PostgreSQL cases are skipped, because the restore fails there (D1).
+- A default run leaves about 7.5 GB of binary logs in the volume of the MySQL source (MySQL 8 logs every seed and restore and keeps the logs for 30 days). `pnpm docker:e2e:down` deletes them; check the free disk space before running it several times in a row without `down`.
+- A run killed hard leaves its `e2e_...` databases, connections and dumps until `pnpm docker:e2e:down`.
+
+---
+
 ## Run variants
 
 Pass flags straight after `pnpm test:e2e`, **without** a `--` separator (with it, pnpm forwards the `--` and Playwright ignores the project filter).
@@ -262,6 +393,7 @@ The tests load the repository-root `.env.e2e`, the same file that configures the
 | `E2E_MYSQL_PORT` | `3307` | Host port of the source MySQL, for the pipeline specs. |
 | `E2E_MINIO_PORT` | `9000` | Host port of MinIO, for the pipeline specs. |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` | from `.env.e2e` | MinIO account and bucket; the pipeline specs use them to look at the stored objects. |
+| `E2E_PERF_PRESET`, `E2E_PERF_ENGINES`, `E2E_PERF_SIZES`, `E2E_PERF_RUNS`, `E2E_PERF_QUEUE_SIZE`, `E2E_PERF_QUEUE_K`, `E2E_PERF_QUEUE_RESTORES`, `E2E_PERF_QUEUE_RUNS`, `E2E_PERF_UI_RUNS`, `E2E_PERF_API_REQUESTS` | see [Settings](#settings) | What and how much the performance suite measures. |
 
 ---
 
@@ -283,3 +415,5 @@ The tests load the repository-root `.env.e2e`, the same file that configures the
 | `Cannot reach the source PostgreSQL (localhost:5435) from the host` (or the MySQL one) | The stack is down, or a port was changed in Compose but not in `.env.e2e`, so the tests still look at the default. | Run `pnpm docker:e2e`, and set `E2E_PG_PORT` / `E2E_MYSQL_PORT` in `.env.e2e`, where both Compose and the tests read them. |
 | `Backup job ... did not complete within 60 s` (or `Restore job ...`) | The worker did not finish the job in time: it is stuck, or the queue is busy with other jobs. The message carries the job's last status and error. | Run the test alone to see whether the stack is healthy; `pnpm docker:e2e:down` and `pnpm docker:e2e` give a clean one. |
 | Databases named `e2e_...` remain on the source servers after an aborted run | The cleanup runs when the test ends; a run killed hard skips it. | `pnpm docker:e2e:down` removes them with the rest of the data. |
+| A performance setting is rejected: `E2E_PERF_SIZES="..." is not valid` (or another `E2E_PERF_*` variable) | The value has a typo or is out of range. | Use the values in [Settings](#settings); the message lists the valid ones. |
+| A performance case fails with `Backup job ... did not complete within ... s`, or the Docker VM runs out of disk | The dataset is larger than the machine can dump within the deadline (it grows with the size), or the VM has no free space for the source, the dumps and the restore copies. | Check `docker system df`, free some space, run a smaller size, or start from a clean stack with `pnpm docker:e2e:down` and `pnpm docker:e2e`. |

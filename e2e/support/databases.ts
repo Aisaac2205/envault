@@ -83,7 +83,7 @@ async function connectPostgres(database: string): Promise<Client> {
   return client;
 }
 
-async function withPostgres<T>(database: string, run: (client: Client) => Promise<T>): Promise<T> {
+export async function withPostgres<T>(database: string, run: (client: Client) => Promise<T>): Promise<T> {
   const client = await connectPostgres(database);
   try {
     return await run(client);
@@ -175,7 +175,7 @@ const postgres: Engine = {
 
 // ── MySQL ───────────────────────────────────────────────────────
 
-async function withMysql<T>(
+export async function withMysql<T>(
   database: string | undefined,
   run: (connection: Connection) => Promise<T>,
 ): Promise<T> {
