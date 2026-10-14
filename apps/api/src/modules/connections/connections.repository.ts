@@ -76,7 +76,10 @@ export class ConnectionsRepository {
     return this.dataSource.transaction(async (manager) => {
       const connection = await this.lockAndCheckLease(manager, id);
       if (connection === 'missing' || connection === 'leased') return connection;
-      return manager.save(ConnectionEntity, { ...connection, ...data });
+      // Keep the loaded entity instance: spreading it into a plain object would
+      // make save() return a plain object, and the @Exclude() on `password`
+      // (applied by ClassSerializerInterceptor) only works on class instances.
+      return manager.save(Object.assign(connection, data));
     });
   }
 

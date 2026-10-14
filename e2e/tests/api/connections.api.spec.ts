@@ -169,30 +169,21 @@ test.describe('update', () => {
     expect(await connects()).toBe(true);
   });
 
-  // Known defect D6: the update path returns the decrypted password in the body
-  // (observed: `"password":"test_pass123"` in the PATCH response), unlike create,
-  // read and list. UpdateConnectionDto saves a plain object, so the entity's
-  // @Exclude() on `password` never applies. Remove `fail` once it is fixed.
-  test.fail(
-    'does not return the password in the update response',
-    {
-      annotation: {
-        type: 'known-defect',
-        description: 'D6: PATCH /connections/:id returns the decrypted password',
-      },
-    },
-    async ({ request, createConnection }) => {
-      const password = `leak-probe-${uniqueId()}`;
-      const { connection } = await createConnection({ password });
+  // Regression guard for D6 (fixed): the update path returned the decrypted
+  // password in the body (`"password":"test_pass123"`), unlike create, read and
+  // list. The repository saved a plain object, so the entity's @Exclude() on
+  // `password` never applied; it now keeps the entity instance.
+  test('does not return the password in the update response', async ({ request, createConnection }) => {
+    const password = `leak-probe-${uniqueId()}`;
+    const { connection } = await createConnection({ password });
 
-      const response = await request.patch(`connections/${connection.id}`, {
-        data: { name: uniqueName('renamed') },
-      });
+    const response = await request.patch(`connections/${connection.id}`, {
+      data: { name: uniqueName('renamed') },
+    });
 
-      expect(response.status()).toBe(200);
-      expectNoSecret(await response.json(), password);
-    },
-  );
+    expect(response.status()).toBe(200);
+    expectNoSecret(await response.json(), password);
+  });
 
   test('rejects an out-of-range port with 400', async ({ request, createConnection }) => {
     const { connection } = await createConnection();
