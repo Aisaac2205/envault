@@ -136,6 +136,11 @@ services:
 
   db-test-mysql:
     image: mysql:8.0
+    # The suites seed and restore large datasets. With the default binary log a
+    # full performance run leaves about 7.5 GiB of binlogs in the volume until
+    # `pnpm docker:e2e:down`. Nothing here uses replication or point-in-time
+    # recovery, and the api only runs mysqldump with --single-transaction.
+    command: --skip-log-bin
     environment:
       MYSQL_DATABASE: testdb
       MYSQL_USER: test_user

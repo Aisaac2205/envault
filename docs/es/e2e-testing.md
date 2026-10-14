@@ -331,7 +331,7 @@ Con un solo worker de restore los restores son estrictamente secuenciales: de do
 - Las filas de jobs se acumulan mientras viva el stack y los endpoints de la API responden más lento con más filas detrás (`summary.md` indica las filas que tenía cada respuesta). Para números comparables parte de un stack limpio: `pnpm docker:e2e:down` y luego `pnpm docker:e2e`.
 - El conjunto `xlarge` necesita unos GB libres en la VM de Docker para el origen, el dump y el destino del restore, y tarda unos 4 minutos para una repetición de ambos motores.
 - Con un PostgreSQL anterior a la versión 17 se omiten los casos de PostgreSQL, porque el restore falla ahí (D1).
-- Una ejecución por defecto deja unos 7,5 GB de logs binarios en el volumen del MySQL de origen (MySQL 8 registra cada siembra y cada restore y conserva los logs 30 días). `pnpm docker:e2e:down` los borra; revisa el espacio libre en disco antes de ejecutarla varias veces seguidas sin `down`.
+- El MySQL de origen corre con su log binario desactivado (`--skip-log-bin`). Antes de ese ajuste una ejecución de rendimiento por defecto dejaba unos 7,5 GB de logs binarios en su volumen (MySQL 8 registra cada siembra y cada restore y conserva los logs 30 días); después, una ejecución rápida solo de MySQL dejó un directorio de datos de unos 200 MB, sin archivos de log binario. `pnpm docker:e2e:down` sigue borrando todos los datos.
 - Una ejecución terminada a la fuerza deja sus bases de datos `e2e_...`, conexiones y dumps hasta `pnpm docker:e2e:down`.
 
 ---
