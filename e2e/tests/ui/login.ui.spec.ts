@@ -131,35 +131,26 @@ test.describe('login page', () => {
       await expect(login.submit).toBeEnabled();
     });
 
-    // Known defect D11: the submit handler (apps/web/src/features/auth/LoginPage.tsx)
-    // awaits authClient.signIn.email without a try/catch, so when the request
-    // fails at the network level (API down, connection reset) the promise
-    // rejects, `loading` is never reset and the button stays on "Signing in..."
-    // with no message. This asserts what a user needs: an error and a button
-    // that works again. When it is fixed the test passes, Playwright reports an
-    // unexpected pass and fails the run: delete `fail` then.
-    test.fail(
-      'tells the user when the API cannot be reached',
-      {
-        annotation: {
-          type: 'known-defect',
-          description: 'D11: a network failure leaves the form stuck on "Signing in..."',
-        },
-      },
-      async ({ page }) => {
-        const login = new LoginPage(page);
-        await login.open();
-        await page.route(
-          (url) => url.pathname === SIGN_IN_PATH,
-          (route) => route.abort('connectionrefused'),
-        );
+    // Regression test for D11 (fixed): the submit handler used to await
+    // authClient.signIn.email without a try/catch, so a network failure (API
+    // down, connection reset) left the button on "Signing in..." with no
+    // message. LoginPage now catches it, shows the message in the alert region
+    // and re-enables the form.
+    test('tells the user when the API cannot be reached', async ({ page }) => {
+      const login = new LoginPage(page);
+      await login.open();
+      await page.route(
+        (url) => url.pathname === SIGN_IN_PATH,
+        (route) => route.abort('connectionrefused'),
+      );
 
-        await login.signIn({ email: adminCredentials().email, password: 'irrelevant' });
+      await login.signIn({ email: adminCredentials().email, password: 'irrelevant' });
 
-        await expect(login.alert).toBeVisible();
-        await expect(login.submit).toBeEnabled();
-      },
-    );
+      await expect(login.alert).toHaveText(
+        "We couldn't reach the server. Check your connection and try again.",
+      );
+      await expect(login.submit).toBeEnabled();
+    });
 
     test('signs in and lands on the dashboard with a session that survives a reload', async ({
       page,
