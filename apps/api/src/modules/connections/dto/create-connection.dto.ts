@@ -11,9 +11,13 @@ export class CreateConnectionDto {
   @IsEnum(Environment)
   environment!: Environment;
 
+  // Left unset when omitted: the column default of ConnectionEntity (postgres)
+  // applies. Do not give it an initializer here, because PartialType copies
+  // initializers to UpdateConnectionDto and every update would then reset the
+  // engine to postgres.
   @IsOptional()
   @IsEnum(DbTypeEnum)
-  dbType: DbTypeEnum = DbTypeEnum.POSTGRES;
+  dbType?: DbTypeEnum;
 
   @IsString()
   @IsNotEmpty()

@@ -150,6 +150,48 @@ test.describe('update', () => {
     expect(reread).toMatchObject({ name, port: 5433 });
   });
 
+  // Regression guard for D15 (fixed): the update DTO inherited the create DTO's
+  // `dbType = postgres` initializer, so a request that did not name the engine
+  // turned a MySQL connection into a PostgreSQL one, in the response and in the
+  // database.
+  test('keeps the engine when a connection is renamed', async ({ request, createConnection }) => {
+    const { connection } = await createConnection({ ...MYSQL_SOURCE });
+    const name = uniqueName('renamed');
+
+    const updated = await expectSuccessEnvelope<Connection>(
+      await request.patch(`connections/${connection.id}`, { data: { name } }),
+    );
+
+    expect(updated).toMatchObject({ id: connection.id, name, dbType: 'mysql' });
+    const reread = await expectSuccessEnvelope<Connection>(
+      await request.get(`connections/${connection.id}`),
+    );
+    expect(reread).toMatchObject({ name, dbType: 'mysql', host: MYSQL_SOURCE.host, port: MYSQL_SOURCE.port });
+  });
+
+  test('changes the engine when the update names it', async ({ request, createConnection }) => {
+    const { connection } = await createConnection();
+    expect(connection.dbType).toBe('postgres');
+
+    const updated = await expectSuccessEnvelope<Connection>(
+      await request.patch(`connections/${connection.id}`, {
+        data: { dbType: 'mysql', host: MYSQL_SOURCE.host, port: MYSQL_SOURCE.port },
+      }),
+    );
+
+    expect(updated).toMatchObject({ id: connection.id, dbType: 'mysql' });
+    const reread = await expectSuccessEnvelope<Connection>(
+      await request.get(`connections/${connection.id}`),
+    );
+    expect(reread).toMatchObject({ dbType: 'mysql', host: MYSQL_SOURCE.host, port: MYSQL_SOURCE.port });
+    // The stored engine is the one used: the MySQL source accepts the stored credentials.
+    const tested = await expectSuccessEnvelope<{ success: boolean }>(
+      await request.post(`connections/${connection.id}/test`),
+      201,
+    );
+    expect(tested.success).toBe(true);
+  });
+
   test('applies a new password to later connection tests', async ({ request, createConnection }) => {
     const { connection } = await createConnection();
     const connects = async () =>

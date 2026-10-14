@@ -54,7 +54,7 @@ describe('ConnectionsController responses', () => {
 
   // What TypeORM hands back after loading a row: an entity instance whose
   // transformer has already decrypted the password.
-  const loadedEntity = (): ConnectionEntity =>
+  const loadedEntity = (overrides: Partial<ConnectionEntity> = {}): ConnectionEntity =>
     Object.assign(new ConnectionEntity(), {
       id: CONNECTION_ID,
       name: 'Billing',
@@ -69,9 +69,11 @@ describe('ConnectionsController responses', () => {
       isActive: true,
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
+      ...overrides,
     });
 
   let app: INestApplication;
+  let manager: { findOne: jest.Mock; query: jest.Mock; save: jest.Mock };
   let baseUrl: string;
 
   beforeAll(async () => {
@@ -87,7 +89,7 @@ describe('ConnectionsController responses', () => {
         Object.assign(entity, { id: CONNECTION_ID, isActive: true }),
       ),
     };
-    const manager = {
+    manager = {
       findOne: jest.fn(async () => loadedEntity()),
       query: jest.fn(async () => []),
       save: jest.fn(async (...args: unknown[]) => args[args.length - 1]),
@@ -227,5 +229,32 @@ describe('ConnectionsController responses', () => {
       username: 'billing_user',
     });
     expect(response.json.data).not.toHaveProperty('password');
+  });
+
+  // PATCH is a partial update: whatever the request does not name must stay as
+  // stored. Every update used to reset the engine to PostgreSQL because the
+  // update DTO inherited the create DTO's default.
+  describe('update keeps the stored engine unless the request names one', () => {
+    const lastSaved = (): ConnectionEntity => manager.save.mock.calls.at(-1)?.at(-1);
+
+    it('a rename leaves a MySQL connection as MySQL', async () => {
+      manager.findOne.mockResolvedValueOnce(loadedEntity({ dbType: DbTypeEnum.MYSQL }));
+
+      const response = await call('PATCH', connectionPath, { name: 'Renamed' });
+
+      expect(response.status).toBe(200);
+      expect(response.json.data).toMatchObject({ name: 'Renamed', dbType: DbTypeEnum.MYSQL });
+      expect(lastSaved()).toMatchObject({ name: 'Renamed', dbType: DbTypeEnum.MYSQL });
+    });
+
+    it('naming the engine changes it', async () => {
+      manager.findOne.mockResolvedValueOnce(loadedEntity({ dbType: DbTypeEnum.MYSQL }));
+
+      const response = await call('PATCH', connectionPath, { dbType: DbTypeEnum.POSTGRES });
+
+      expect(response.status).toBe(200);
+      expect(response.json.data).toMatchObject({ dbType: DbTypeEnum.POSTGRES });
+      expect(lastSaved()).toMatchObject({ dbType: DbTypeEnum.POSTGRES });
+    });
   });
 });
