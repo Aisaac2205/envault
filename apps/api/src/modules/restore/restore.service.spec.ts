@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Readable } from 'stream';
@@ -307,8 +307,35 @@ describe('RestoreService engine compatibility by sourceBackupId', () => {
 
     const service = module.get(RestoreService);
     jest.spyOn(service, 'executeRestoreAsync').mockResolvedValue(undefined);
-    return { service, restoreRepository };
+    return { service, restoreRepository, backupService };
   }
+
+  describe('a request that names no source backup', () => {
+    // Without a source, getBackupById(undefined) used to be resolved by TypeORM as
+    // a query without a where clause, i.e. the first backup row of the table.
+    const noSource: Array<[string, Record<string, unknown>]> = [
+      ['neither sourceBackupId nor r2Key', {}],
+      ['undefined values', { sourceBackupId: undefined, r2Key: undefined }],
+      ['empty strings', { sourceBackupId: '', r2Key: '' }],
+    ];
+
+    for (const isDryRun of [true, false]) {
+      it.each(noSource)(
+        `is refused with 400 before any backup lookup (%s, isDryRun: ${isDryRun})`,
+        async (_title, source) => {
+          const { service, restoreRepository, backupService } = await buildModule();
+
+          await expect(
+            service.createRestore({ targetConnectionId, isDryRun, ...source }, testUser),
+          ).rejects.toBeInstanceOf(BadRequestException);
+
+          expect(backupService.getBackupById).not.toHaveBeenCalled();
+          expect(restoreRepository.create).not.toHaveBeenCalled();
+          expect(restoreRepository.tryCreateWithLease).not.toHaveBeenCalled();
+        },
+      );
+    }
+  });
 
   it('rejects restore when backup engine does not match target connection engine', async () => {
     const { service } = await buildModule({

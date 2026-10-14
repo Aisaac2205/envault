@@ -93,30 +93,20 @@ test.describe('restore requests', () => {
     });
   }
 
-  // Known defect D12: a body with neither `sourceBackupId` nor `r2Key` passes
-  // validation, and the lookup of "backup undefined" returns a row of the table
-  // instead of nothing (TypeORM drops an undefined condition). Depending on what
-  // that first row is, the answer is a 403 ("source is not completed") or a 202
-  // for a restore from a backup the caller never named. Remove `fail` once the
-  // request is rejected with a 400.
-  test.fail(
-    'rejects a restore that names no source',
-    {
-      annotation: {
-        type: 'known-defect',
-        description: 'D12: POST /restores without sourceBackupId or r2Key picks an arbitrary backup',
-      },
-    },
-    async ({ restoreTarget, adminApi }) => {
-      const { connection } = await restoreTarget('mysql', 'dev');
+  // Regression guard for D12 (fixed): a body with neither `sourceBackupId` nor
+  // `r2Key` used to pass validation, and the lookup of "backup undefined"
+  // returned a row of the table instead of nothing (TypeORM drops an undefined
+  // condition), so the answer was a 403 or a 202 for a restore from a backup the
+  // caller never named. The request is now rejected with a 400.
+  test('rejects a restore that names no source', async ({ restoreTarget, adminApi }) => {
+    const { connection } = await restoreTarget('mysql', 'dev');
 
-      const response = await adminApi.post('restores', {
-        data: { targetConnectionId: connection.id, isDryRun: true },
-      });
+    const response = await adminApi.post('restores', {
+      data: { targetConnectionId: connection.id, isDryRun: true },
+    });
 
-      await expectErrorEnvelope(response, 400);
-    },
-  );
+    await expectErrorEnvelope(response, 400);
+  });
 });
 
 test.describe('backup requests', () => {

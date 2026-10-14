@@ -95,6 +95,9 @@ export class BackupRepository {
   }
 
   findById(id: string): Promise<BackupJobEntity | null> {
+    // TypeORM drops a where condition whose value is undefined, so an empty id
+    // would become a query without a where clause and return an arbitrary row.
+    if (!id) return Promise.resolve(null);
     return this.repository.findOne({ where: { id } });
   }
 
