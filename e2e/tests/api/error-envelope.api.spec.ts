@@ -12,7 +12,7 @@ import { expect, test } from '../../support/fixtures';
 const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000';
 
 // Resources that expose a read by id.
-const BY_ID = ['connections', 'backups', 'restores', 'jobs/backups', 'jobs/restores', 'audit'];
+const BY_ID = ['connections', 'backups', 'restores', 'jobs/backups', 'jobs/restores', 'audit', 'cronjobs'];
 
 test.describe('success bodies', () => {
   test('wrap a list in data and timestamp', async ({ request }) => {
@@ -92,26 +92,18 @@ test.describe('404 not found', () => {
   }
 });
 
-// Known defect D7: an id that is not a UUID reaches the database, which rejects
-// it, and the API answers 500 "Internal server error" for what is a client
-// mistake. No path parameter is validated (no ParseUUIDPipe). The contract is a
-// 4xx envelope: 404 as for any unknown id, or 400. Remove `fail` once it is fixed.
+// Regression guard for D7 (fixed): an id that is not a UUID used to reach the
+// database, which rejects it, and the API answered 500 "Internal server error"
+// for what is a client mistake. Every UUID path parameter now goes through a
+// ParseUUIDPipe. The contract is a 4xx envelope: 400 from the pipe (or 404 as
+// for any unknown id).
 test.describe('an id that is not a UUID', () => {
   for (const resource of BY_ID) {
-    test.fail(
-      `answers 4xx for /${resource}/<id>`,
-      {
-        annotation: {
-          type: 'known-defect',
-          description: `D7: GET /${resource}/not-a-uuid answers 500 instead of a 4xx`,
-        },
-      },
-      async ({ request }) => {
-        const response = await request.get(`${resource}/not-a-uuid`);
+    test(`answers 4xx for /${resource}/<id>`, async ({ request }) => {
+      const response = await request.get(`${resource}/not-a-uuid`);
 
-        expect([400, 404]).toContain(response.status());
-        await expectErrorEnvelope(response, response.status());
-      },
-    );
+      expect([400, 404]).toContain(response.status());
+      await expectErrorEnvelope(response, response.status());
+    });
   }
 });

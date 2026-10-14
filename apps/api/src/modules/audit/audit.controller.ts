@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { BetterAuthGuard } from '../../auth/auth.guard';
 import { RolesGuard, Roles } from '../../auth/roles.guard';
 import { AuditService } from './audit.service';
@@ -16,7 +16,7 @@ export class AuditController {
   }
 
   @Get(':id')
-  getLogById(@Param('id') id: string) {
+  getLogById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getLogById(id);
   }
 }

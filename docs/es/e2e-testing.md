@@ -21,7 +21,7 @@ Desde la raíz del repositorio:
 | 5 | `pnpm test:e2e` | Ejecuta la suite. |
 | 6 | `pnpm docker:e2e:down` | Detiene el stack y borra sus datos. |
 
-Una ejecución correcta termina con `250 passed` y `1 skipped` (los números crecen a medida que se agregan suites). Las specs de defectos conocidos del producto están escritas para fallar y cuentan como pasadas, y el único test omitido solo se ejecuta contra un PostgreSQL antiguo; ver [Defectos conocidos](#defectos-conocidos) y [Tests de backup y restore](#tests-de-backup-y-restore).
+Una ejecución correcta termina con `252 passed` y `1 skipped` (los números crecen a medida que se agregan suites). Las specs de defectos conocidos del producto están escritas para fallar y cuentan como pasadas, y el único test omitido solo se ejecuta contra un PostgreSQL antiguo; ver [Defectos conocidos](#defectos-conocidos) y [Tests de backup y restore](#tests-de-backup-y-restore).
 
 > El primer `pnpm docker:e2e` construye las imágenes y tarda cerca de 3 minutos. Los arranques siguientes son mucho más rápidos.
 
@@ -57,7 +57,6 @@ La suite documenta los errores que encuentra en lugar de ocultarlos. Cada uno ti
 |----|-------|----------------|------|
 | D1 | Restore a un PostgreSQL anterior a la versión 17 | El `pg_restore` de la imagen de la API es la versión 18 y se aborta en `SET transaction_timeout`, así que todo restore falla. Ver [PostgreSQL anterior a la versión 17 (D1)](#postgresql-anterior-a-la-versión-17-d1). | `restore.pipeline.spec.ts` |
 | D4 | `GET /api/health` | Responde 404: la API sirve el health fuera del prefijo `/api` (`/health`, solo en el puerto 3000). El cliente de API del dashboard declara una llamada a esta ruta, pero ninguna pantalla la hace, así que hoy la UI no muestra el problema (`dashboard.ui.spec.ts` falla si una pantalla empieza a llamarla). | `health.api.spec.ts` |
-| D7 | `GET /api/<recurso>/<id>` con un id que no es un UUID (connections, backups, restores, jobs, audit) | Responde 500 en lugar de un 4xx, porque el id llega a la base de datos sin validar. | `error-envelope.api.spec.ts` |
 | D8 | `/`, `/restore`, `/cronjobs` y `/audit` como usuario normal (rol `user`) | La barra lateral ofrece estas pantallas, pero todos los endpoints de la API que las alimentan son exclusivos de admin y responden 403, así que el usuario ve ceros, tablas vacías o una carga que nunca termina, sin ningún mensaje. | `navigation.ui.spec.ts` |
 | D9 | Cualquier dirección que el router no conoce | Muestra la pantalla de error para desarrolladores de React Router (`Unexpected Application Error! 404 Not Found`) en lugar de una página del producto. | `navigation.ui.spec.ts` |
 | D10 | Página de conexiones, toast de éxito de **Test connection** en una conexión guardada | La descripción dice `Latencia: 5ms` en español dentro de la interfaz en inglés; el texto traducido existe pero no se usa. | `connections.ui.spec.ts` |
@@ -123,7 +122,7 @@ Archivos de specs de la API:
 | `sign-in.api.spec.ts` | Contraseña incorrecta y correo desconocido, consulta de sesión, cookies alteradas, registro público cerrado, límite de inicios de sesión |
 | `authorization.api.spec.ts` | 401 sin sesión y 403 para un usuario no admin, un test por endpoint de admin |
 | `connections.api.spec.ts` | CRUD de conexiones, validaciones, sin contraseña en las respuestas, `test-raw`, probar una conexión guardada |
-| `error-envelope.api.spec.ts` | El cuerpo de error para 400, 401, 403 y 404, el cuerpo de éxito, ids que no son UUID (defecto conocido) |
+| `error-envelope.api.spec.ts` | El cuerpo de error para 400, 401, 403 y 404, el cuerpo de éxito, ids que no son UUID |
 | `read-contracts.api.spec.ts` | Forma e invariantes de los conteos (los totales suman, los conteos son enteros no negativos, las listas son arreglos) de los endpoints de jobs, analítica, backups, restores y auditoría; las tablas de jobs casi nunca están vacías porque el proyecto `pipeline` las llena |
 
 Archivos de specs de la UI (los page objects están en `e2e/support/pages/`; los locators usan los textos en inglés de la aplicación web, que es lo que muestra cuando el navegador no tiene un idioma guardado):

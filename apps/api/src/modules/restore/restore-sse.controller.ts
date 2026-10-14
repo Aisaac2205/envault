@@ -2,6 +2,7 @@ import {
   Controller,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Sse,
   UseGuards,
 } from '@nestjs/common';
@@ -29,7 +30,7 @@ export class RestoreSseController {
   ) {}
 
   @Sse(':id/stream')
-  async streamRestore(@Param('id') id: string): Promise<Observable<MessageEvent>> {
+  async streamRestore(@Param('id', ParseUUIDPipe) id: string): Promise<Observable<MessageEvent>> {
     const job = await this.restoreService.getRestoreById(id);
     if (!job) {
       throw new NotFoundException(

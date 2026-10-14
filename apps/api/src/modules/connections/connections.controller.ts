@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Param,
+  ParseUUIDPipe,
   Body,
   Query,
   Req,
@@ -32,7 +33,7 @@ export class ConnectionsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.findById(id);
   }
 
@@ -48,7 +49,7 @@ export class ConnectionsController {
 
   @Patch(':id')
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateConnectionDto,
     @Req() req: Request,
   ) {
@@ -58,7 +59,7 @@ export class ConnectionsController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string, @Req() req: Request) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     const existing = await this.service.findById(id);
     setAuditContext(req, { environment: existing.environment });
     return this.service.delete(id);
@@ -75,7 +76,7 @@ export class ConnectionsController {
   }
 
   @Post(':id/test')
-  async testById(@Param('id') id: string, @Req() req: Request) {
+  async testById(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     const connection = await this.service.findById(id);
     setAuditContext(req, { environment: connection.environment });
     return this.service.testByConnectionId(id);

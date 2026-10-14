@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
 import { BetterAuthGuard } from '../../auth/auth.guard';
 import { RolesGuard, Roles } from '../../auth/roles.guard';
 import { JobsService } from './jobs.service';
@@ -16,7 +16,7 @@ export class JobsController {
   }
 
   @Get('backups/:id')
-  getBackupJobById(@Param('id') id: string) {
+  getBackupJobById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getBackupJobById(id);
   }
 
@@ -26,7 +26,7 @@ export class JobsController {
   }
 
   @Get('restores/:id')
-  getRestoreJobById(@Param('id') id: string) {
+  getRestoreJobById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getRestoreJobById(id);
   }
 

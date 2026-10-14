@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Param,
+  ParseUUIDPipe,
   Body,
   Query,
   Req,
@@ -77,7 +78,7 @@ export class BackupController {
   @Post('trigger/:connectionId')
   @HttpCode(HttpStatus.ACCEPTED)
   async triggerManual(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId', ParseUUIDPipe) connectionId: string,
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
   ) {
@@ -92,7 +93,7 @@ export class BackupController {
 
   @Post(':id/download-url')
   async getDownloadUrl(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const result = await this.service.getDownloadUrl(id);
@@ -106,7 +107,7 @@ export class BackupController {
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   async cancelBackup(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
   ) {
@@ -120,7 +121,7 @@ export class BackupController {
   }
 
   @Sse(':id/stream')
-  async streamBackup(@Param('id') id: string): Promise<Observable<MessageEvent>> {
+  async streamBackup(@Param('id', ParseUUIDPipe) id: string): Promise<Observable<MessageEvent>> {
     const job = await this.service.getBackupById(id);
     if (!job) {
       throw new NotFoundException(`Backup job con ID "${id}" no encontrado`);
@@ -137,7 +138,7 @@ export class BackupController {
   }
 
   @Get(':id')
-  getBackupById(@Param('id') id: string) {
+  getBackupById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getBackupById(id);
   }
 }

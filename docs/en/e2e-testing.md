@@ -21,7 +21,7 @@ From the repository root:
 | 5 | `pnpm test:e2e` | Runs the suite. |
 | 6 | `pnpm docker:e2e:down` | Stops the stack and deletes its data. |
 
-A healthy run ends with `250 passed` and `1 skipped` (the numbers grow as suites are added). Specs for known product defects are written to fail and count as passed, and the one skipped test only runs against an old PostgreSQL; see [Known defects](#known-defects) and [Backup and restore tests](#backup-and-restore-tests).
+A healthy run ends with `252 passed` and `1 skipped` (the numbers grow as suites are added). Specs for known product defects are written to fail and count as passed, and the one skipped test only runs against an old PostgreSQL; see [Known defects](#known-defects) and [Backup and restore tests](#backup-and-restore-tests).
 
 > The first `pnpm docker:e2e` builds the images and takes about 3 minutes. Later starts are much faster.
 
@@ -57,7 +57,6 @@ The suite documents bugs it has found instead of hiding them. Each one has a spe
 |----|-------|--------------------|------|
 | D1 | Restore into a PostgreSQL older than 17 | The API image's `pg_restore` is version 18 and aborts on `SET transaction_timeout`, so every restore fails. See [PostgreSQL older than 17 (D1)](#postgresql-older-than-17-d1). | `restore.pipeline.spec.ts` |
 | D4 | `GET /api/health` | Answers 404: the API serves health outside the `/api` prefix (`/health`, on port 3000 only). The dashboard's API client declares a call to this path, but no screen makes it, so the UI does not show the problem today (`dashboard.ui.spec.ts` fails if a screen starts calling it). | `health.api.spec.ts` |
-| D7 | `GET /api/<resource>/<id>` with an id that is not a UUID (connections, backups, restores, jobs, audit) | Answers 500 instead of a 4xx, because the id reaches the database unvalidated. | `error-envelope.api.spec.ts` |
 | D8 | `/`, `/restore`, `/cronjobs` and `/audit` as a regular user (role `user`) | The sidebar offers these screens, but every API endpoint behind them is admin-only and answers 403, so the user sees zeros, empty tables or a loading state that never ends, with no message. | `navigation.ui.spec.ts` |
 | D9 | Any address the router does not know | Shows React Router's developer error screen (`Unexpected Application Error! 404 Not Found`) instead of a product page. | `navigation.ui.spec.ts` |
 | D10 | Connections page, success toast of **Test connection** on a saved connection | The description reads `Latencia: 5ms` in Spanish in the English interface; the translated string exists but is not used. | `connections.ui.spec.ts` |
@@ -123,7 +122,7 @@ API spec files:
 | `sign-in.api.spec.ts` | Wrong password and unknown email, session lookup, tampered cookies, closed self-registration, sign-in rate limit |
 | `authorization.api.spec.ts` | 401 without a session and 403 for a non-admin user, one test per admin endpoint |
 | `connections.api.spec.ts` | Connection CRUD, validation, no password in responses, `test-raw`, testing a saved connection |
-| `error-envelope.api.spec.ts` | The error body for 400, 401, 403 and 404, the success body, ids that are not UUIDs (known defect) |
+| `error-envelope.api.spec.ts` | The error body for 400, 401, 403 and 404, the success body, ids that are not UUIDs |
 | `read-contracts.api.spec.ts` | Shapes and count invariants (totals add up, counts are whole numbers that are not negative, lists are arrays) of the jobs, analytics, backups, restores and audit endpoints; the job tables are never empty for long because the `pipeline` project fills them |
 
 UI spec files (the page objects are in `e2e/support/pages/`; locators use the English copy of the web app, which is what it shows when the browser has no stored language):
