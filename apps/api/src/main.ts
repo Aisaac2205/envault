@@ -12,6 +12,7 @@ import { AppModule } from './app.module';
 import { createAuthRateLimitMiddleware } from './common/middleware/auth-rate-limit.middleware';
 import { createApiSecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { registerFatalRuntimePolicy } from './common/runtime/fatal-runtime-policy';
+import { resolveLogLevels } from './config/logger.config';
 
 // Safety net global: cualquier promise no atrapada (cronjobs, R2, pg_dump,
 // etc.) se loguea pero NO mata el proceso. Sin esto, Node 22 trata
@@ -28,6 +29,8 @@ async function bootstrap(): Promise<void> {
   // JSON parsing is re-applied below for all non-auth routes.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
+    // Chosen from the raw environment: ConfigService does not exist yet.
+    logger: resolveLogLevels(process.env.NODE_ENV),
   });
   registerFatalRuntimePolicy(app, process, processLogger);
 
