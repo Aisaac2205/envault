@@ -13,6 +13,7 @@
     "build": "pnpm --parallel -r run build",
     "lint": "pnpm --parallel -r run lint",
     "test": "pnpm --parallel -r run test",
+    "test:coverage": "pnpm --parallel -r run test:coverage",
     "typecheck": "pnpm --parallel -r run typecheck",
     "audit:production": "pnpm audit --prod --audit-level high",
     "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",

@@ -84,7 +84,7 @@ importers:
         version: 11.0.1(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)(typeorm@0.3.31(ioredis@5.11.1)(mysql2@3.22.3(@types/node@22.19.17))(pg@8.20.0)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
       better-auth:
         specifier: ^1.7.1
-        version: 1.7.1(mysql2@3.22.3(@types/node@22.19.17))(pg@8.20.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.11(@types/node@22.19.17)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)))
+        version: 1.7.1(mysql2@3.22.3(@types/node@22.19.17))(pg@8.20.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.11)
       bullmq:
         specifier: ^6.3.8
         version: 6.3.8(ioredis@5.11.1)(pg@8.20.0)
@@ -213,6 +213,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.14)
+      '@vitest/coverage-v8':
+        specifier: 4.1.11
+        version: 4.1.11(vitest@4.1.11)
       tailwindcss:
         specifier: ^4
         version: 4.2.4
@@ -224,7 +227,7 @@ importers:
         version: 8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)
       vitest:
         specifier: ^4.1.9
-        version: 4.1.11(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))
+        version: 4.1.11(@types/node@20.19.43)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))
 
   apps/web:
     dependencies:
@@ -320,7 +323,7 @@ importers:
         specifier: ^5.2.0
         version: 5.2.0(vite@7.3.6(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.2))
       '@vitest/coverage-v8':
-        specifier: ^4.1.8
+        specifier: 4.1.8
         version: 4.1.8(vitest@4.1.8)
       eslint:
         specifier: ^9.39.4
@@ -3797,6 +3800,15 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
+
+  '@vitest/coverage-v8@4.1.11':
+    resolution: {integrity: sha512-8MVGEFnJIcdGjcbfKmeq8z0pZHH0JlVtoVZH9Q/qwUp6wyFnEJUBMrw9DCaj+ra3vShGmhavjalMIhPNxZAUcw==}
+    peerDependencies:
+      '@vitest/browser': 4.1.11
+      vitest: 4.1.11
+    peerDependenciesMeta:
+      '@vitest/browser':
+        optional: true
 
   '@vitest/coverage-v8@4.1.8':
     resolution: {integrity: sha512-lt3kovsyHwYe00wq4D1ti0Z974fWj4NLp6siqiyEufUpyFwK9Yhi7rBhac9JL5aA0zoMrJqc4vYPZRUnI7l7nw==}
@@ -11778,6 +11790,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@vitest/coverage-v8@4.1.11(vitest@4.1.11)':
+    dependencies:
+      '@bcoe/v8-coverage': 1.0.2
+      '@vitest/utils': 4.1.11
+      ast-v8-to-istanbul: 1.0.4
+      istanbul-lib-coverage: 3.2.2
+      istanbul-lib-report: 3.0.1
+      istanbul-reports: 3.2.0
+      magicast: 0.5.3
+      obug: 2.1.3
+      std-env: 4.1.0
+      tinyrainbow: 3.1.0
+      vitest: 4.1.11(@types/node@22.19.17)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))
+
   '@vitest/coverage-v8@4.1.8(vitest@4.1.8)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
@@ -11825,7 +11851,6 @@ snapshots:
       magic-string: 0.30.21
     optionalDependencies:
       vite: 8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)
-    optional: true
 
   '@vitest/mocker@4.1.8(vite@7.3.6(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.2))':
     dependencies:
@@ -12281,7 +12306,7 @@ snapshots:
 
   before-after-hook@4.0.0: {}
 
-  better-auth@1.7.1(mysql2@3.22.3(@types/node@22.19.17))(pg@8.20.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.11(@types/node@22.19.17)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))):
+  better-auth@1.7.1(mysql2@3.22.3(@types/node@22.19.17))(pg@8.20.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vitest@4.1.11):
     dependencies:
       '@better-auth/core': 1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.4.0(zod@4.4.3))(jose@6.2.9)(kysely@0.29.5)(nanostores@1.5.2)
       '@better-auth/drizzle-adapter': 1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.4.0(zod@4.4.3))(jose@6.2.9)(kysely@0.29.5)(nanostores@1.5.2))(@better-auth/utils@0.4.2)
@@ -12305,7 +12330,7 @@ snapshots:
       pg: 8.20.0
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
-      vitest: 4.1.11(@types/node@22.19.17)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))
+      vitest: 4.1.11(@types/node@22.19.17)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
@@ -16256,13 +16281,12 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.7.0
       terser: 5.46.2
-    optional: true
 
   vitefu@1.1.3(vite@8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)):
     optionalDependencies:
       vite: 8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)
 
-  vitest@4.1.11(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)):
+  vitest@4.1.11(@types/node@20.19.43)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(vite@8.3.1(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))
@@ -16286,11 +16310,12 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 20.19.43
+      '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
       jsdom: 29.1.1(@noble/hashes@2.3.0)
     transitivePeerDependencies:
       - msw
 
-  vitest@4.1.11(@types/node@22.19.17)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)):
+  vitest@4.1.11(@types/node@22.19.17)(@vitest/coverage-v8@4.1.11)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2)):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(vite@8.3.1(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.2))
@@ -16314,10 +16339,10 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.17
+      '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
       jsdom: 29.1.1(@noble/hashes@2.3.0)
     transitivePeerDependencies:
       - msw
-    optional: true
 
   vitest@4.1.8(@types/node@22.19.17)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@7.3.6(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.2)):
     dependencies:
