@@ -57,7 +57,6 @@ La suite documenta los errores que encuentra en lugar de ocultarlos. Cada uno ti
 |----|-------|----------------|------|
 | D1 | Restore a un PostgreSQL anterior a la versión 17 | El `pg_restore` de la imagen de la API es la versión 18 y se aborta en `SET transaction_timeout`, así que todo restore falla. Ver [PostgreSQL anterior a la versión 17 (D1)](#postgresql-anterior-a-la-versión-17-d1). | `restore.pipeline.spec.ts` |
 | D8 | `/`, `/restore`, `/cronjobs` y `/audit` como usuario normal (rol `user`) | La barra lateral ofrece estas pantallas, pero todos los endpoints de la API que las alimentan son exclusivos de admin y responden 403, así que el usuario ve ceros, tablas vacías o una carga que nunca termina, sin ningún mensaje. | `navigation.ui.spec.ts` |
-| D9 | Cualquier dirección que el router no conoce | Muestra la pantalla de error para desarrolladores de React Router (`Unexpected Application Error! 404 Not Found`) en lugar de una página del producto. | `navigation.ui.spec.ts` |
 | D10 | Página de conexiones, toast de éxito de **Test connection** en una conexión guardada | La descripción dice `Latencia: 5ms` en español dentro de la interfaz en inglés; el texto traducido existe pero no se usa. | `connections.ui.spec.ts` |
 
 ---
@@ -127,7 +126,7 @@ Archivos de specs de la UI (los page objects están en `e2e/support/pages/`; los
 | Archivo | Cubre |
 |---------|-------|
 | `login.ui.spec.ts` | Formulario, validación del navegador con datos vacíos o mal formados, contraseña incorrecta, mensaje del límite de intentos, inicio de sesión correcto que sobrevive a una recarga, mostrar u ocultar la contraseña, cierre de su propia sesión, visitantes con sesión que salen de `/login`, API no alcanzable |
-| `navigation.ui.spec.ts` | Secciones y enlaces de la barra lateral, abrir cada sección como admin, qué ve un usuario normal, de dónde se le redirige y qué puede abrir, los datos detrás de las pantallas que un usuario normal abre (defecto conocido), direcciones desconocidas (defecto conocido) |
+| `navigation.ui.spec.ts` | Secciones y enlaces de la barra lateral, abrir cada sección como admin, qué ve un usuario normal, de dónde se le redirige y qué puede abrir, los datos detrás de las pantallas que un usuario normal abre (defecto conocido), direcciones desconocidas |
 | `connections.ui.spec.ts` | Estado vacío, formulario de creación y su validación, crear conexiones PostgreSQL y MySQL, probar desde el formulario y desde una fila, filtrar, editar, eliminar y cancelar la confirmación, redacción del toast de éxito (defecto conocido) |
 | `dashboard.ui.spec.ts` | Título y tarjetas de KPI, paneles, solo peticiones exitosas, un sistema vacío |
 | `dumps.ui.spec.ts` | Inicia un backup desde la página Dumps y lo ve completado en el historial (detrás de la pantalla corre el pipeline real) |

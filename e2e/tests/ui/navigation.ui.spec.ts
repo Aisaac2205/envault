@@ -165,28 +165,30 @@ test.describe('unknown address', () => {
       // Wait for the router to render something before looking for what is absent.
       await expect(page.locator('#root')).not.toBeEmpty();
       await expect(new AppShell(page).sidebar).toBeHidden();
+      // The catch-all route sits behind the same guard as every other address.
+      await expect(page).toHaveURL('/login');
     });
   });
 
-  // Known defect D9: the router has no catch-all route and no errorElement, so
-  // an address it does not know shows React Router's built-in developer screen
-  // ("Unexpected Application Error! 404 Not Found ... Hey developer") to the
-  // user. A product screen (a not-found page, or a redirect to the dashboard)
-  // is the expected behavior. When it is fixed the test passes, Playwright
-  // reports an unexpected pass and fails the run: delete `fail` then.
-  test.fail(
-    'shows a product screen, not the router developer error',
-    {
-      annotation: {
-        type: 'known-defect',
-        description: 'D9: an unknown address renders React Router\'s default error screen',
-      },
-    },
-    async ({ page }) => {
-      await page.goto(UNKNOWN);
+  // Regression test for D9 (fixed): the router had no catch-all route and no
+  // errorElement, so an address it does not know showed React Router's
+  // developer screen ("Unexpected Application Error! 404 Not Found"). The
+  // catch-all route now renders a not-found screen inside the app shell for a
+  // signed-in user, with a way back to the dashboard.
+  test('shows a product screen, not the router developer error', async ({ page }) => {
+    const shell = new AppShell(page);
 
-      await expect(page.locator('#root')).not.toBeEmpty();
-      await expect(page.getByText('Unexpected Application Error!')).toBeHidden();
-    },
-  );
+    await page.goto(UNKNOWN);
+
+    await expect(shell.pageHeading).toHaveText('Page not found');
+    await expect(shell.sidebar).toBeVisible();
+    await expect(page.getByText('Unexpected Application Error!')).toBeHidden();
+    // The address stays as typed, and the screen offers a way out.
+    await expect(page).toHaveURL(UNKNOWN);
+
+    await page.getByRole('link', { name: 'Back to Dashboard' }).click();
+
+    await expect(page).toHaveURL('/');
+    await expect(new DashboardPage(page).heading).toBeVisible();
+  });
 });

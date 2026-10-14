@@ -57,7 +57,6 @@ The suite documents bugs it has found instead of hiding them. Each one has a spe
 |----|-------|--------------------|------|
 | D1 | Restore into a PostgreSQL older than 17 | The API image's `pg_restore` is version 18 and aborts on `SET transaction_timeout`, so every restore fails. See [PostgreSQL older than 17 (D1)](#postgresql-older-than-17-d1). | `restore.pipeline.spec.ts` |
 | D8 | `/`, `/restore`, `/cronjobs` and `/audit` as a regular user (role `user`) | The sidebar offers these screens, but every API endpoint behind them is admin-only and answers 403, so the user sees zeros, empty tables or a loading state that never ends, with no message. | `navigation.ui.spec.ts` |
-| D9 | Any address the router does not know | Shows React Router's developer error screen (`Unexpected Application Error! 404 Not Found`) instead of a product page. | `navigation.ui.spec.ts` |
 | D10 | Connections page, success toast of **Test connection** on a saved connection | The description reads `Latencia: 5ms` in Spanish in the English interface; the translated string exists but is not used. | `connections.ui.spec.ts` |
 
 ---
@@ -127,7 +126,7 @@ UI spec files (the page objects are in `e2e/support/pages/`; locators use the En
 | File | Covers |
 |------|--------|
 | `login.ui.spec.ts` | Form, browser validation of empty and malformed input, wrong password, rate-limit message, successful sign-in that survives a reload, password toggle, logout of its own session, signed-in visitors leaving `/login`, API unreachable |
-| `navigation.ui.spec.ts` | Sidebar sections and links, opening every section as admin, what a regular user sees, is redirected from and can open, the data behind the screens a regular user opens (known defect), unknown addresses (known defect) |
+| `navigation.ui.spec.ts` | Sidebar sections and links, opening every section as admin, what a regular user sees, is redirected from and can open, the data behind the screens a regular user opens (known defect), unknown addresses |
 | `connections.ui.spec.ts` | Empty state, creation form and its validation, creating PostgreSQL and MySQL connections, testing from the form and from a row, filtering, editing, deleting and cancelling the confirmation, wording of the success toast (known defect) |
 | `dashboard.ui.spec.ts` | Title and KPI cards, panels, only successful requests, an empty system |
 | `dumps.ui.spec.ts` | Starts a backup from the Dumps page and sees it completed in the history (the real pipeline runs behind the screen) |
