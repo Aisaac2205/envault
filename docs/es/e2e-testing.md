@@ -56,7 +56,6 @@ La suite documenta los errores que encuentra en lugar de ocultarlos. Cada uno ti
 | Id | Dónde | Qué ocurre hoy | Spec |
 |----|-------|----------------|------|
 | D1 | Restore a un PostgreSQL anterior a la versión 17 | El `pg_restore` de la imagen de la API es la versión 18 y se aborta en `SET transaction_timeout`, así que todo restore falla. Ver [PostgreSQL anterior a la versión 17 (D1)](#postgresql-anterior-a-la-versión-17-d1). | `restore.pipeline.spec.ts` |
-| D4 | `GET /api/health` | Responde 404: la API sirve el health fuera del prefijo `/api` (`/health`, solo en el puerto 3000). El cliente de API del dashboard declara una llamada a esta ruta, pero ninguna pantalla la hace, así que hoy la UI no muestra el problema (`dashboard.ui.spec.ts` falla si una pantalla empieza a llamarla). | `health.api.spec.ts` |
 | D8 | `/`, `/restore`, `/cronjobs` y `/audit` como usuario normal (rol `user`) | La barra lateral ofrece estas pantallas, pero todos los endpoints de la API que las alimentan son exclusivos de admin y responden 403, así que el usuario ve ceros, tablas vacías o una carga que nunca termina, sin ningún mensaje. | `navigation.ui.spec.ts` |
 | D9 | Cualquier dirección que el router no conoce | Muestra la pantalla de error para desarrolladores de React Router (`Unexpected Application Error! 404 Not Found`) en lugar de una página del producto. | `navigation.ui.spec.ts` |
 | D10 | Página de conexiones, toast de éxito de **Test connection** en una conexión guardada | La descripción dice `Latencia: 5ms` en español dentro de la interfaz en inglés; el texto traducido existe pero no se usa. | `connections.ui.spec.ts` |
@@ -116,7 +115,7 @@ Archivos de specs de la API:
 
 | Archivo | Cubre |
 |---------|-------|
-| `health.api.spec.ts` | Salud del stack; `/api/health` (defecto conocido) |
+| `health.api.spec.ts` | Salud del stack en el puerto de la API; `/api/health` y el proxy web no la publican (el health es interno a propósito) |
 | `auth.api.spec.ts` | Smoke: `GET /connections` responde 401 sin sesión y 200 con sesión |
 | `sign-in.api.spec.ts` | Contraseña incorrecta y correo desconocido, consulta de sesión, cookies alteradas, registro público cerrado, límite de inicios de sesión |
 | `authorization.api.spec.ts` | 401 sin sesión y 403 para un usuario no admin, un test por endpoint de admin |
@@ -366,7 +365,7 @@ El proyecto `setup` siempre se ejecuta primero, por lo que su test se cuenta en 
 | Qué | Dónde | Notas |
 |-----|-------|-------|
 | Web + proxy de la API | `http://localhost:5173` | La API está bajo `/api`. |
-| API (directa) | `http://localhost:3000` | Es el único lugar donde existe `/health`. Las specs que inician sesión la usan (ver [Iniciar sesión desde una spec](#iniciar-sesión-desde-una-spec)). |
+| API (directa) | `http://localhost:3000` | Es el único lugar donde existe `/health`: el health es interno a propósito y el proxy web no lo publica. Las specs que inician sesión la usan (ver [Iniciar sesión desde una spec](#iniciar-sesión-desde-una-spec)). |
 | MinIO (S3) | `http://localhost:9000` | Consola en `http://localhost:9001`. Ingresa con `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` de `.env.e2e`. |
 | PostgreSQL de origen | `localhost:5435` | Base `testdb`, usuario `test_user`, contraseña `test_pass123`. Las specs del pipeline crean aquí sus propias bases `e2e_...`. |
 | MySQL de origen | `localhost:3307` | Base `testdb`, usuario `test_user`, contraseña `test_pass123`. Las specs del pipeline se conectan como `root` / `root_pass123` y crean sus propias bases `e2e_...`. |

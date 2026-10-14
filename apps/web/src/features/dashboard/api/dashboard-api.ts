@@ -5,7 +5,6 @@ import type {
   RestoreJob,
   ConnectionEntity,
   CronjobEntity,
-  HealthStatus,
   AuditLog,
   R2Object,
   DashboardStats,
@@ -31,9 +30,6 @@ export const dashboardApi = {
 
   getCronjobs: () =>
     apiClient.get<CronjobEntity[]>("/cronjobs").then((r) => r.data),
-
-  getHealth: () =>
-    apiClient.get<HealthStatus>("/health").then((r) => r.data),
 
   getRecentAudit: (limit = 10) =>
     apiClient

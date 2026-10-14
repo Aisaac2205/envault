@@ -57,11 +57,10 @@ test.describe('dashboard with the real stack', () => {
     }
   });
 
-  // About defect D4: the dashboard's API client declares a health call
-  // (`dashboardApi.getHealth`, GET /api/health, which answers 404) but no
-  // screen uses it. The "System health" panel is a storage summary filled from
-  // /api/backups/r2, so the user never sees the 404. If a screen starts calling
-  // /api/health before D4 is fixed, this test fails on that 404.
+  // About defect D4: /api/health is not part of the public API (health is
+  // internal, see health.api.spec.ts) and the dashboard has no client for it.
+  // The "System health" panel is a storage summary filled from /api/backups/r2.
+  // If a screen starts calling /api/health, this test fails on that 404.
   test('makes only requests that succeed', async ({ page }) => {
     const answered = new Set<string>();
     const failed: string[] = [];
