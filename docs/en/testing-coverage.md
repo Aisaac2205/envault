@@ -32,6 +32,20 @@ How to read it: roughly half of the API code is executed by its unit tests, a qu
 
 ---
 
+## After the defect fixes
+
+Measured on 2026-10-14 with the source and tests of commit `7dadbc2`, the branch after the ten defect fixes found by the E2E work, on the same Node.js, pnpm and operating system as the baseline. Each fix was written test first and added unit tests, so this table compares the current state with the baseline above.
+
+| Package | Tests (before → after) | Statements | Branches | Functions | Lines |
+|---------|------------------------|-----------:|---------:|----------:|------:|
+| `apps/api` | 365 → 530 tests; 55 → 59 suites | 52.9% → 61.13% (+8.23 pp) | 40.89% → 43.8% (+2.91 pp) | 38.04% → 49.41% (+11.37 pp) | 52.93% → 61.15% (+8.22 pp) |
+| `apps/web` | 171 → 202 tests; 33 → 38 files | 26.44% → 33.29% (+6.85 pp) | 27.28% → 31.79% (+4.51 pp) | 24.05% → 30.77% (+6.72 pp) | 27.91% → 34.91% (+7 pp) |
+| `apps/landing` | 42 → 42 tests; 4 → 4 files | 10.19% → 10.19% (0 pp) | 7.88% → 7.88% (0 pp) | 26.78% → 26.78% (0 pp) | 10% → 10% (0 pp) |
+
+Where the gain comes from: the API gained specs for the connections controller (it had none), the restore request DTO, the UUID validation of 20 routes, the PostgreSQL manifest snapshot and the log levels; the web app gained tests for the login page, the route table (including the new not-found screen), the connections page and the dashboard API module. The landing page was not touched by the fixes, so it did not change. More executed lines is still not proof of correctness: line 535 of `restore.service.ts` ran 18 times in the baseline and still hid a defect (see [Coverage by area](#coverage-by-area) and [e2e-testing.md](e2e-testing.md)). The per-area tables and the least-covered lists below were produced from the baseline and have not been re-measured: run `pnpm test:coverage` to refresh them.
+
+---
+
 ## What white-box testing is
 
 In white-box testing (also called structural or glass-box testing) the tester sees the source and designs tests from its structure: which statements, decisions and functions exist, and whether each one has been exercised. Coverage is the measure: the share of those structural elements that ran during the tests. It answers "which code did no test reach?", never "is the behavior correct?".

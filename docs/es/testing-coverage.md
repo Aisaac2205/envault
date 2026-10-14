@@ -32,6 +32,20 @@ Cómo leerlo: sus tests unitarios ejecutan cerca de la mitad del código de la A
 
 ---
 
+## Después de las correcciones de defectos
+
+Medida el 2026-10-14 con el código y los tests del commit `7dadbc2`, la rama tras las diez correcciones de defectos que encontró el trabajo E2E, en el mismo Node.js, pnpm y sistema operativo que la línea base. Cada corrección se escribió con el test primero y sumó tests unitarios, así que esta tabla compara el estado actual con la línea base de arriba.
+
+| Paquete | Tests (antes → después) | Sentencias | Ramas | Funciones | Líneas |
+|---------|-------------------------|-----------:|------:|----------:|-------:|
+| `apps/api` | 365 → 530 tests; 55 → 59 suites | 52.9% → 61.13% (+8.23 pp) | 40.89% → 43.8% (+2.91 pp) | 38.04% → 49.41% (+11.37 pp) | 52.93% → 61.15% (+8.22 pp) |
+| `apps/web` | 171 → 202 tests; 33 → 38 archivos | 26.44% → 33.29% (+6.85 pp) | 27.28% → 31.79% (+4.51 pp) | 24.05% → 30.77% (+6.72 pp) | 27.91% → 34.91% (+7 pp) |
+| `apps/landing` | 42 → 42 tests; 4 → 4 archivos | 10.19% → 10.19% (0 pp) | 7.88% → 7.88% (0 pp) | 26.78% → 26.78% (0 pp) | 10% → 10% (0 pp) |
+
+De dónde viene la mejora: la API ganó specs del controlador de conexiones (no tenía ninguno), del DTO de la solicitud de restore, de la validación de UUID en 20 rutas, de la captura del manifest de PostgreSQL y de los niveles de log; la app web ganó tests de la página de login, de la tabla de rutas (incluida la nueva pantalla de no encontrado), de la página de conexiones y del módulo de API del dashboard. La landing no fue tocada por las correcciones, por eso no cambió. Más líneas ejecutadas sigue sin ser prueba de corrección: la línea 535 de `restore.service.ts` se ejecutó 18 veces en la línea base y aun así ocultaba un defecto (ver [Cobertura por área](#cobertura-por-área) y [e2e-testing.md](e2e-testing.md)). Las tablas por área y las listas de archivos menos cubiertos de más abajo se generaron con la línea base y no se volvieron a medir: ejecuta `pnpm test:coverage` para actualizarlas.
+
+---
+
 ## Qué es el testing de caja blanca
 
 En las pruebas de caja blanca (también llamadas estructurales o de caja de cristal) quien prueba ve el código fuente y diseña los tests a partir de su estructura: qué sentencias, decisiones y funciones existen, y si cada una se ha ejercitado. La cobertura es la medida: la proporción de esos elementos estructurales que se ejecutaron durante los tests. Responde "¿qué código no alcanzó ningún test?", nunca "¿es correcto el comportamiento?".
