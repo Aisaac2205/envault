@@ -95,12 +95,10 @@ services:
       # The base file derives this from ${PORT}, which a PORT exported in the
       # developer's shell would silently win over. The api listens on 3000.
       API_UPSTREAM: api:3000
-    # The image healthcheck probes http://localhost/. Inside the container
-    # `localhost` resolves to ::1 first, but nginx only listens on 0.0.0.0:80, so
-    # the probe is refused and `up --wait` aborts with "web is unhealthy" even
-    # though the site answers. Probe the IPv4 loopback explicitly.
+    # Only the timings are overridden: the image healthcheck (apps/web/Dockerfile)
+    # keeps its own probe but polls every 30 s, which would make `up --wait` slow
+    # to report the stack ready.
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
