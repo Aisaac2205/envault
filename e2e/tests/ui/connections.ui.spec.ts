@@ -238,31 +238,23 @@ test.describe('testing a connection', () => {
     await expect(connections.row(input.name)).not.toContainText('Connected');
   });
 
-  // Known defect D10: the success toast of a saved connection's test builds its
-  // description in Spanish ("Latencia: 5ms", apps/web/src/features/connections/index.tsx)
-  // instead of using the existing `toast.testSuccess.latency` string, so it
-  // does not follow the language of the interface. This asserts the English
-  // copy. When it is fixed the test passes, Playwright reports an unexpected
-  // pass and fails the run: delete `fail` then.
-  test.fail(
-    'words the latency of a successful test in the interface language',
-    {
-      annotation: {
-        type: 'known-defect',
-        description: 'D10: the toast says "Latencia: Nms" in the English interface',
-      },
-    },
-    async ({ page, createConnection }) => {
-      const { input } = await createConnection();
-      const connections = new ConnectionsPage(page);
-      await connections.goto();
+  // Regression test for D10 (fixed): the success toast used to build its
+  // description in Spanish ("Latencia: 5ms") regardless of the interface
+  // language. It now uses the `toast.testSuccess.latency` string, so the
+  // English interface says "Latency: 5ms".
+  test('words the latency of a successful test in the interface language', async ({
+    page,
+    createConnection,
+  }) => {
+    const { input } = await createConnection();
+    const connections = new ConnectionsPage(page);
+    await connections.goto();
 
-      await connections.row(input.name).getByRole('button', { name: 'Test connection' }).click();
+    await connections.row(input.name).getByRole('button', { name: 'Test connection' }).click();
 
-      await expect(page.getByText('Connection successful', { exact: true })).toBeVisible();
-      await expect(page.getByText(/^Latency: \d+ms$/)).toBeVisible();
-    },
-  );
+    await expect(page.getByText('Connection successful', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Latency: \d+ms$/)).toBeVisible();
+  });
 });
 
 test.describe('existing connections', () => {

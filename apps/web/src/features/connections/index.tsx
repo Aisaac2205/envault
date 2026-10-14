@@ -132,7 +132,7 @@ export default function Connections() {
         setTestResults((prev) => ({ ...prev, [id]: result }));
         if (result.success) {
           toast.success(t('toast.testSuccess'), {
-            description: `Latencia: ${result.latencyMs}ms`,
+            description: t('toast.testSuccess.latency', { latency: result.latencyMs }),
           });
         } else {
           toast.error(t('toast.testFailed'), {
