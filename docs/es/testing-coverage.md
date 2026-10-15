@@ -36,15 +36,17 @@ Cómo leerlo: sus tests unitarios ejecutan cerca de la mitad del código de la A
 
 ## Después de las correcciones de defectos
 
-Medida el 2026-10-14 con el código y los tests del commit `23eedc4`, la rama tras las once correcciones de defectos que encontró el trabajo E2E, en el mismo Node.js, pnpm y sistema operativo que la línea base. Cada corrección se escribió con el test primero y sumó tests unitarios, así que esta tabla compara el estado actual con la línea base de arriba.
+Medida dos veces, en el mismo Node.js, pnpm y sistema operativo que la línea base: el 2026-10-14 con el código y los tests del commit `23eedc4`, la rama tras las once primeras correcciones de defectos que encontró el trabajo E2E, y el 2026-10-15 con el commit `60fe003`, tras dos correcciones más (D17, una actualización de cronjob que lo sacaba del planificador, y D18, `null` aceptado en campos obligatorios de una actualización parcial). Cada corrección se escribió con el test primero y sumó tests unitarios, así que cada celda se lee línea base → tras once correcciones → tras trece, y el paréntesis es el cambio respecto de la línea base en puntos porcentuales (pp).
 
-| Paquete | Tests (antes → después) | Sentencias | Ramas | Funciones | Líneas |
-|---------|-------------------------|-----------:|------:|----------:|-------:|
-| `apps/api` | 365 → 548 tests; 55 → 61 suites | 52.9% → 61.14% (+8.24 pp) | 40.89% → 43.8% (+2.91 pp) | 38.04% → 49.49% (+11.45 pp) | 52.93% → 61.18% (+8.25 pp) |
-| `apps/web` | 171 → 202 tests; 33 → 38 archivos | 26.44% → 33.29% (+6.85 pp) | 27.28% → 31.79% (+4.51 pp) | 24.05% → 30.77% (+6.72 pp) | 27.91% → 34.91% (+7 pp) |
-| `apps/landing` | 42 → 42 tests; 4 → 4 archivos | 10.19% → 10.19% (0 pp) | 7.88% → 7.88% (0 pp) | 26.78% → 26.78% (0 pp) | 10% → 10% (0 pp) |
+| Paquete | Tests (línea base → 11 correcciones → 13 correcciones) | Sentencias | Ramas | Funciones | Líneas |
+|---------|--------------------------------------------------------|-----------:|------:|----------:|-------:|
+| `apps/api` | 365 → 548 → 585 tests; 55 → 61 → 63 suites | 52.9% → 61.14% → 62.32% (+9.42 pp) | 40.89% → 43.8% → 45.25% (+4.36 pp) | 38.04% → 49.49% → 51.17% (+13.13 pp) | 52.93% → 61.18% → 62.43% (+9.5 pp) |
+| `apps/web` | 171 → 202 → 202 tests; 33 → 38 → 38 archivos | 26.44% → 33.29% → 33.29% (+6.85 pp) | 27.28% → 31.79% → 31.79% (+4.51 pp) | 24.05% → 30.77% → 30.77% (+6.72 pp) | 27.91% → 34.91% → 34.91% (+7 pp) |
+| `apps/landing` | 42 → 42 → 42 tests; 4 → 4 → 4 archivos | 10.19% → 10.19% → 10.19% (0 pp) | 7.88% → 7.88% → 7.88% (0 pp) | 26.78% → 26.78% → 26.78% (0 pp) | 10% → 10% → 10% (0 pp) |
 
-De dónde viene la mejora: la API ganó specs del controlador de conexiones (no tenía ninguno), del DTO de la solicitud de restore, de la validación de UUID en 20 rutas, de la captura del manifest de PostgreSQL, de los niveles de log y de los DTO de conexión y su actualización parcial; la app web ganó tests de la página de login, de la tabla de rutas (incluida la nueva pantalla de no encontrado), de la página de conexiones y del módulo de API del dashboard. La landing no fue tocada por las correcciones, por eso no cambió. Más líneas ejecutadas sigue sin ser prueba de corrección: la línea 535 de `restore.service.ts` se ejecutó 18 veces en la línea base y aun así ocultaba un defecto (ver [Cobertura por área](#cobertura-por-área) y [e2e-testing.md](e2e-testing.md)). Las tablas por área y las listas de archivos menos cubiertos de más abajo se generaron con la línea base y no se volvieron a medir: ejecuta `pnpm test:coverage` para actualizarlas.
+En `60fe003` las cifras de la API son sentencias 2187 / 3509, ramas 510 / 1127, funciones 305 / 596 y líneas 2044 / 3274.
+
+De dónde viene la mejora: la API ganó specs del controlador de conexiones (no tenía ninguno), del DTO de la solicitud de restore, de la validación de UUID en 20 rutas, de la captura del manifest de PostgreSQL, de los niveles de log y de los DTO de conexión y su actualización parcial; luego, con D17 y D18, dos suites nuevas (el repositorio de cronjobs y el DTO de actualización de cronjob) y más casos en los specs del servicio de cronjobs y del DTO de actualización de conexión. La app web ganó tests de la página de login, de la tabla de rutas (incluida la nueva pantalla de no encontrado), de la página de conexiones y del módulo de API del dashboard; D17 y D18 no la tocaron. La landing no fue tocada por las correcciones, por eso no cambió. Más líneas ejecutadas sigue sin ser prueba de corrección: la línea 535 de `restore.service.ts` se ejecutó 18 veces en la línea base y aun así ocultaba un defecto (ver [Cobertura por área](#cobertura-por-área) y [e2e-testing.md](e2e-testing.md)). Las tablas por área y las listas de archivos menos cubiertos de más abajo se generaron con la línea base y no se volvieron a medir: ejecuta `pnpm test:coverage` para actualizarlas.
 
 ---
 
@@ -68,9 +70,11 @@ Tampoco se miden los criterios a nivel de condición (cobertura de condición/de
 
 | Paquete | Runner | Archivos | Tests | Qué prueban |
 |---------|--------|----------|-------|-------------|
-| `apps/api` | Jest 30 con ts-jest, entorno Node | 55 ejecutados, 4 omitidos | 365 pasados, 32 omitidos | Servicios, repositorios, controladores, procesadores de colas, estrategias de backup y restore, middleware e interceptores, sanitización, configuración y tres migraciones, siempre con la base de datos, Redis y el almacenamiento de objetos simulados. Los 4 archivos omitidos necesitan una base de datos real (ver [Excluido de la medición](#excluido-de-la-medición)). |
-| `apps/web` | Vitest 4 con jsdom y Testing Library | 33 | 171 | Componentes de UI compartidos, hooks y providers, más partes de las pantallas de auditoría, cron jobs, dashboard, dumps y restore. |
+| `apps/api` | Jest 30 con ts-jest, entorno Node | 63 ejecutados, 4 omitidos | 585 pasados, 32 omitidos | Servicios, repositorios, controladores, procesadores de colas, estrategias de backup y restore, middleware e interceptores, sanitización, configuración y tres migraciones, siempre con la base de datos, Redis y el almacenamiento de objetos simulados. Los 4 archivos omitidos necesitan una base de datos real (ver [Excluido de la medición](#excluido-de-la-medición)). |
+| `apps/web` | Vitest 4 con jsdom y Testing Library | 38 | 202 | Componentes de UI compartidos, hooks y providers, más partes de las pantallas de auditoría, cron jobs, dashboard, dumps y restore, la página de login, la tabla de rutas y la página de conexiones. |
 | `apps/landing` | Vitest 4, entorno Node | 4 | 42 | Lógica pura de la sección de documentación: contenido, resaltado de sintaxis, resolución de contenido y fragmentos de enlaces. |
+
+Las cantidades son las del commit `60fe003`; la línea base tenía 55 suites de la API con 365 tests y 33 archivos web con 171 tests (ver [Línea base](#línea-base)).
 
 ---
 

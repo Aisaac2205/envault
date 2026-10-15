@@ -36,15 +36,17 @@ How to read it: roughly half of the API code is executed by its unit tests, a qu
 
 ## After the defect fixes
 
-Measured on 2026-10-14 with the source and tests of commit `23eedc4`, the branch after the eleven defect fixes found by the E2E work, on the same Node.js, pnpm and operating system as the baseline. Each fix was written test first and added unit tests, so this table compares the current state with the baseline above.
+Measured twice, on the same Node.js, pnpm and operating system as the baseline: on 2026-10-14 with the source and tests of commit `23eedc4`, the branch after the first eleven defect fixes found by the E2E work, and on 2026-10-15 with commit `60fe003`, after two more fixes (D17, a cronjob update that dropped the cronjob from the scheduler, and D18, `null` accepted for required fields of a partial update). Each fix was written test first and added unit tests, so each cell reads baseline → after eleven fixes → after thirteen, and the bracket is the change from the baseline in percentage points (pp).
 
-| Package | Tests (before → after) | Statements | Branches | Functions | Lines |
-|---------|------------------------|-----------:|---------:|----------:|------:|
-| `apps/api` | 365 → 548 tests; 55 → 61 suites | 52.9% → 61.14% (+8.24 pp) | 40.89% → 43.8% (+2.91 pp) | 38.04% → 49.49% (+11.45 pp) | 52.93% → 61.18% (+8.25 pp) |
-| `apps/web` | 171 → 202 tests; 33 → 38 files | 26.44% → 33.29% (+6.85 pp) | 27.28% → 31.79% (+4.51 pp) | 24.05% → 30.77% (+6.72 pp) | 27.91% → 34.91% (+7 pp) |
-| `apps/landing` | 42 → 42 tests; 4 → 4 files | 10.19% → 10.19% (0 pp) | 7.88% → 7.88% (0 pp) | 26.78% → 26.78% (0 pp) | 10% → 10% (0 pp) |
+| Package | Tests (baseline → 11 fixes → 13 fixes) | Statements | Branches | Functions | Lines |
+|---------|----------------------------------------|-----------:|---------:|----------:|------:|
+| `apps/api` | 365 → 548 → 585 tests; 55 → 61 → 63 suites | 52.9% → 61.14% → 62.32% (+9.42 pp) | 40.89% → 43.8% → 45.25% (+4.36 pp) | 38.04% → 49.49% → 51.17% (+13.13 pp) | 52.93% → 61.18% → 62.43% (+9.5 pp) |
+| `apps/web` | 171 → 202 → 202 tests; 33 → 38 → 38 files | 26.44% → 33.29% → 33.29% (+6.85 pp) | 27.28% → 31.79% → 31.79% (+4.51 pp) | 24.05% → 30.77% → 30.77% (+6.72 pp) | 27.91% → 34.91% → 34.91% (+7 pp) |
+| `apps/landing` | 42 → 42 → 42 tests; 4 → 4 → 4 files | 10.19% → 10.19% → 10.19% (0 pp) | 7.88% → 7.88% → 7.88% (0 pp) | 26.78% → 26.78% → 26.78% (0 pp) | 10% → 10% → 10% (0 pp) |
 
-Where the gain comes from: the API gained specs for the connections controller (it had none), the restore request DTO, the UUID validation of 20 routes, the PostgreSQL manifest snapshot, the log levels and the connection DTOs and partial update; the web app gained tests for the login page, the route table (including the new not-found screen), the connections page and the dashboard API module. The landing page was not touched by the fixes, so it did not change. More executed lines is still not proof of correctness: line 535 of `restore.service.ts` ran 18 times in the baseline and still hid a defect (see [Coverage by area](#coverage-by-area) and [e2e-testing.md](e2e-testing.md)). The per-area tables and the least-covered lists below were produced from the baseline and have not been re-measured: run `pnpm test:coverage` to refresh them.
+At `60fe003` the API figures are statements 2187 / 3509, branches 510 / 1127, functions 305 / 596 and lines 2044 / 3274.
+
+Where the gain comes from: the API gained specs for the connections controller (it had none), the restore request DTO, the UUID validation of 20 routes, the PostgreSQL manifest snapshot, the log levels and the connection DTOs and partial update; then, with D17 and D18, two new suites (the cronjobs repository and the cronjob update DTO) and more cases in the cronjobs service and connection update DTO specs. The web app gained tests for the login page, the route table (including the new not-found screen), the connections page and the dashboard API module; D17 and D18 did not touch it. The landing page was not touched by the fixes, so it did not change. More executed lines is still not proof of correctness: line 535 of `restore.service.ts` ran 18 times in the baseline and still hid a defect (see [Coverage by area](#coverage-by-area) and [e2e-testing.md](e2e-testing.md)). The per-area tables and the least-covered lists below were produced from the baseline and have not been re-measured: run `pnpm test:coverage` to refresh them.
 
 ---
 
@@ -68,9 +70,11 @@ Condition-level criteria (condition/decision and MC/DC coverage) are not measure
 
 | Package | Runner | Files | Tests | What they test |
 |---------|--------|-------|-------|----------------|
-| `apps/api` | Jest 30 with ts-jest, Node environment | 55 run, 4 skipped | 365 passed, 32 skipped | Services, repositories, controllers, queue processors, backup and restore strategies, middleware and interceptors, sanitization, configuration and three migrations, always with the database, Redis and object storage mocked. The 4 skipped files need a live database (see [Excluded from the measurement](#excluded-from-the-measurement)). |
-| `apps/web` | Vitest 4 with jsdom and Testing Library | 33 | 171 | Shared UI components, hooks and providers, plus parts of the audit, cron jobs, dashboard, dumps and restore screens. |
+| `apps/api` | Jest 30 with ts-jest, Node environment | 63 run, 4 skipped | 585 passed, 32 skipped | Services, repositories, controllers, queue processors, backup and restore strategies, middleware and interceptors, sanitization, configuration and three migrations, always with the database, Redis and object storage mocked. The 4 skipped files need a live database (see [Excluded from the measurement](#excluded-from-the-measurement)). |
+| `apps/web` | Vitest 4 with jsdom and Testing Library | 38 | 202 | Shared UI components, hooks and providers, plus parts of the audit, cron jobs, dashboard, dumps and restore screens, the login page, the route table and the connections page. |
 | `apps/landing` | Vitest 4, Node environment | 4 | 42 | Pure logic of the documentation section: content, syntax highlighting, content resolution and link fragments. |
+
+The counts are those of commit `60fe003`; the baseline had 55 API suites with 365 tests and 33 web files with 171 tests (see [Baseline](#baseline)).
 
 ---
 

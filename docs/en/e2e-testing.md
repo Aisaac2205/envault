@@ -23,7 +23,7 @@ From the repository root:
 | 5 | `pnpm test:e2e` | Runs the suite. |
 | 6 | `pnpm docker:e2e:down` | Stops the stack and deletes its data. |
 
-A healthy run ends with `255 passed` and `1 skipped` (the numbers grow as suites are added). Specs for known product defects are written to fail and count as passed, and the one skipped test only runs against an old PostgreSQL; see [Known defects](#known-defects) and [Backup and restore tests](#backup-and-restore-tests).
+A healthy run ends with `276 passed` and `1 skipped` (the numbers grow as suites are added). Specs for known product defects are written to fail and count as passed, and the one skipped test only runs against an old PostgreSQL; see [Known defects](#known-defects) and [Backup and restore tests](#backup-and-restore-tests).
 
 > The first `pnpm docker:e2e` builds the images and takes about 3 minutes. Later starts are much faster.
 

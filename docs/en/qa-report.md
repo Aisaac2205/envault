@@ -2,7 +2,7 @@
 
 > 🇪🇸 Versión en español: [../es/qa-report.md](../es/qa-report.md)
 
-This report presents the quality assurance (QA) work done on EnVault with an automated test suite built on [Playwright](https://playwright.dev): what was tested, how, what was found, how far the results can be trusted and what is still open. It describes the branch `feat/e2e-playwright-suite` at commit `9902fee`, on 2026-10-15. Every numbered section is written to stand on its own, so it can be copied alone into another document.
+This report presents the quality assurance (QA) work done on EnVault with an automated test suite built on [Playwright](https://playwright.dev): what was tested, how, what was found, how far the results can be trusted and what is still open. It describes the branch `feat/e2e-playwright-suite` at commit `60fe003`, on 2026-10-15, after the fixes of D17 and D18. Some evidence was gathered on earlier commits and says so where it is reported: the first reliability study and the clean-clone check ran at `9902fee`, and the performance reference run predates every defect fix. Every numbered section is written to stand on its own, so it can be copied alone into another document.
 
 ---
 
@@ -12,18 +12,18 @@ EnVault is a self-hosted application that backs up PostgreSQL and MySQL database
 
 | Item | Result |
 |------|--------|
-| Functional suite (`pnpm test:e2e`) | 256 tests in 18 files: 149 API tests, 42 backup and restore tests, 64 browser tests and 1 sign-in step; 24.7 to 29.8 s per run with 8 parallel workers |
+| Functional suite (`pnpm test:e2e`) | 277 tests in 19 files: 170 API tests, 42 backup and restore tests, 64 browser tests and 1 sign-in step; 24.6 to 26.4 s per run with 8 parallel workers |
 | Performance suite (`pnpm test:e2e:perf`) | 55 tests: 13 measurements, 41 unit tests of its own helpers and 1 sign-in step; about 17 minutes per full run |
-| White-box unit tests (Jest and Vitest, already in the project) | API 548 tests, web app 202, landing page 42 |
-| Reliability | 13 consecutive runs of the whole functional suite with different parallelism and repetition: 3838 test executions, 0 failures, 0 flaky tests |
-| Reproducibility | A fresh clone of the repository, set up by following the written instructions literally, gave the same results; no instruction was wrong |
-| Defects found | 18 (D1 to D18), among them a security defect (D6), a safety defect (D12) and a data-integrity defect (D15) |
-| Defects fixed | 11, each one with a failing test written before the fix; 4 left open for a product or design decision, 1 confirmed and waiting for approval, 2 not confirmed |
-| Code coverage of the API (lines) | 52.93% before the fixes, 61.18% after them |
+| White-box unit tests (Jest and Vitest, already in the project) | API 585 tests, web app 202, landing page 42 |
+| Reliability | 19 runs of the whole functional suite over two commits, with different parallelism and repetition: 13 runs at `9902fee` (3838 test executions) and 6 at `60fe003`, after the last two fixes (2214); 0 failures and 0 flaky tests in both |
+| Reproducibility | A fresh clone of the repository at `9902fee`, set up by following the written instructions literally, gave the same results; no instruction was wrong |
+| Defects found | 18 (D1 to D18), among them a security defect (D6), a safety defect (D12), a data-integrity defect (D15) and a schedule-integrity defect (D17) |
+| Defects fixed | 13, each one with a failing test written before the fix; 4 left open for a product or design decision, 1 not confirmed |
+| Code coverage of the API (lines) | 52.93% before the fixes, 61.18% after the first eleven, 62.43% after all thirteen |
 | Backup time of a 500 MiB database (median, reference run) | PostgreSQL 8.73 s, MySQL 3.70 s |
 | Restore time of the same database (median, reference run) | PostgreSQL 4.74 s, MySQL 19.86 s |
 
-Verdict: within the conditions tested (one Windows machine, the Chromium browser, and object storage simulated locally with MinIO), the suite is reliable. Its results did not depend on the order of the tests, on the number of parallel workers or on repetition, and it runs from a fresh clone with the documented commands. It is not yet evidence for other operating systems, other browsers, the real Cloudflare R2 storage or heavy load, and it does not run in continuous integration (CI, an automatic run on every change) yet.
+Verdict: within the conditions tested (one Windows machine, the Chromium browser, and object storage simulated locally with MinIO), the suite is reliable. Its results did not depend on the order of the tests, on the number of parallel workers or on repetition, it stayed free of failures after the last two fixes, and it runs from a fresh clone with the documented commands. It is not yet evidence for other operating systems, other browsers, the real Cloudflare R2 storage or heavy load, and it does not run in continuous integration (CI, an automatic run on every change) yet.
 
 ---
 
@@ -111,21 +111,22 @@ EnVault (a self-hosted application that backs up and restores PostgreSQL and MyS
 
 | Type | Level | Command | Tests | What it checks |
 |------|-------|---------|------:|----------------|
-| API tests | Black-box | `pnpm test:e2e` (project `api`) | 149 | Sign-in, permissions, connections, error format and the shape of the read-only endpoints |
+| API tests | Black-box | `pnpm test:e2e` (project `api`) | 170 | Sign-in, permissions, connections, scheduled backups (cron jobs), error format and the shape of the read-only endpoints |
 | Interface tests | Black-box | `pnpm test:e2e` (project `ui-chromium`) | 64 | Login, navigation and roles, connections screen, dashboard, unknown addresses, a backup started from the Dumps screen |
 | Backup and restore pipeline | Black-box, end to end | `pnpm test:e2e` (project `pipeline`) | 42 | Real backups and restores of PostgreSQL and MySQL, with the data checked at both ends |
 | Sign-in step | Support | `pnpm test:e2e` (project `setup`) | 1 | Signs in once and saves the session for the other tests |
 | Performance | Black-box, measurement | `pnpm test:e2e:perf` | 13 + 41 + 1 | Backup and restore speed, queue behavior, page load times, API latency (13 measurements, 41 unit tests of the helpers, 1 sign-in step) |
-| Unit tests | White-box | `pnpm test`, `pnpm test:coverage` | 548 + 202 + 42 | API (Jest), web app and landing page (Vitest), with code coverage |
+| Unit tests | White-box | `pnpm test`, `pnpm test:coverage` | 585 + 202 + 42 | API (Jest), web app and landing page (Vitest), with code coverage |
 
-The test counts come from `playwright test --list` on commit `9902fee` (functional suite: 256 tests in 18 files; performance suite: 55 tests) and, for the unit tests, from the runs of `pnpm test` recorded after the last defect fix (2026-10-14 and 2026-10-15).
+The test counts come from `playwright test --list` on commit `60fe003` (functional suite: 277 tests in 19 files; performance suite: 55 tests) and, for the unit tests, from the run of `pnpm test` on the same commit, after the last defect fix (2026-10-15).
 
 | File | Project | Tests |
 |------|---------|------:|
 | `setup/auth.setup.ts` | `setup` | 1 |
 | `api/auth.api.spec.ts` | `api` | 2 |
 | `api/authorization.api.spec.ts` | `api` | 33 |
-| `api/connections.api.spec.ts` | `api` | 45 |
+| `api/connections.api.spec.ts` | `api` | 53 |
+| `api/cronjobs.api.spec.ts` | `api` | 13 |
 | `api/error-envelope.api.spec.ts` | `api` | 26 |
 | `api/health.api.spec.ts` | `api` | 3 |
 | `api/read-contracts.api.spec.ts` | `api` | 30 |
@@ -143,7 +144,7 @@ The test counts come from `playwright test --list` on commit `9902fee` (function
 
 ### API tests
 
-What they do: they call the API over HTTP with Playwright's request context, as any client program would, and check status codes and response bodies. Example: one test creates a database connection and checks that no response ever contains its password, neither as typed nor encrypted; another table of tests calls every admin-only endpoint without a session (it must answer 401, "not signed in") and as a regular user (it must answer 403, "not allowed"). Why it matters: the API is the contract every other part depends on, and security rules are best checked where they are enforced.
+What they do: they call the API over HTTP with Playwright's request context, as any client program would, and check status codes and response bodies. Example: one test creates a database connection and checks that no response ever contains its password, neither as typed nor encrypted; another table of tests calls every admin-only endpoint without a session (it must answer 401, "not signed in") and as a regular user (it must answer 403, "not allowed"). The cron job tests cover scheduled backups, the backups EnVault starts on its own from a cron expression (a timetable written in the standard cron notation): they create one, rename it and check that it stays scheduled with a next run time, change its expression and check that the next run moves, pause and resume it, ask for one that does not exist (404), and send `null` for a required field (400). Their expressions fire only on 1 January and 1 July, so no backup starts while the suite runs. Why it matters: the API is the contract every other part depends on, and security rules are best checked where they are enforced.
 
 ### Interface tests
 
@@ -170,7 +171,7 @@ The black-box tests of EnVault (a self-hosted application that backs up and rest
 | Technique | What it means | Where it is used |
 |-----------|---------------|------------------|
 | Table-driven tests | One test body run over a table of inputs, so each case is one row and a missing case is easy to see | `authorization.api.spec.ts`: one test per admin endpoint, 401 without a session and 403 for a regular user; the not-found and error-format tables in `error-envelope.api.spec.ts` |
-| Equivalence classes and boundary values | Inputs are grouped into classes that should behave the same, and the values at or just past the limits are tried | Connection validation: port 0, a port above 65535, a fractional or non-numeric port, a name over 100 characters, an unknown engine or environment, an unexpected field |
+| Equivalence classes and boundary values | Inputs are grouped into classes that should behave the same, and the values at or just past the limits are tried | Connection validation: port 0, a port above 65535, a fractional or non-numeric port, a name over 100 characters, an unknown engine or environment, an unexpected field; `null` for each required field of a connection or cron job update, against `null` for a retention limit, where it is valid and removes the limit |
 | Authorization matrix by role | Each action is tried with no session, as a regular user and as an administrator | API (401 and 403 tables) and interface (which links a regular user sees and which addresses send them away) |
 | Negative testing | Invalid or hostile inputs that must be refused cleanly | Wrong password, unknown email, tampered session cookie, body that is not JSON, an unknown host, a closed port, a restore into production |
 | State transitions of jobs | A job must move through valid states in a valid order | A backup or restore goes from pending to completed or failed; its timestamps satisfy `createdAt <= startedAt <= completedAt`; a pending backup requested again returns the same job and can be cancelled |
@@ -179,7 +180,7 @@ The black-box tests of EnVault (a self-hosted application that backs up and rest
 | Test doubles in the browser | A prepared answer replaces a real one, only where the real state cannot be guaranteed | `page.route` returns an empty list, a rate-limit error or a network failure; all other traffic is real |
 | One sign-in per run | The session is created once and shared | The `setup` project saves it with `storageState`, because EnVault accepts only 3 sign-ins per 10 seconds from one address |
 | Known defects as executable tests | A test asserts the correct behavior and is marked as expected to fail | `test.fail` on the 4 D8 tests; until the defect is fixed Playwright counts them as passed |
-| Checking that the tests can fail | The code or the expectation is broken on purpose, to prove the test notices | While the API, interface, pipeline and performance suites were written, expectations were broken on purpose (for example a wrong checksum or a wrong status); every defect fix was checked by restoring the old code and seeing the new tests fail |
+| Checking that the tests can fail | The code or the expectation is broken on purpose, to prove the test notices | While the API, interface, pipeline and performance suites were written, expectations were broken on purpose (for example a wrong checksum or a wrong status); every defect fix was checked by restoring the old code and seeing the new tests fail; for D17 and D18 the new API tests were also run against a test environment built from the code before the fix, where they failed, and passed once the fix was in |
 
 ---
 
@@ -205,16 +206,16 @@ Writing and running the tests of EnVault (a self-hosted application that backs u
 | D14 | A backup that will be retried is reported `failed` for about 5 seconds before the retry rewrites it | Not rated (candidate) | Pipeline tests | Open: needs a design decision |
 | D15 | Renaming a MySQL connection silently changed its engine to PostgreSQL | Data integrity | Code reading during the first batch of fixes, then confirmed at runtime | Fixed in `23eedc4` |
 | D16 | Two `connectionId` fields are validated as text, not as UUID | Not rated (candidate) | Code reading during the fixes | Not confirmed: partial checks found no error and one case was inconclusive |
-| D17 | Renaming an active scheduled backup cleared its next run time and dropped its schedule | Data and schedule integrity | Code reading during the fix of D15, then confirmed at runtime | Confirmed, waiting for the owner's approval to fix |
-| D18 | Partial updates may accept `null` for required fields | Not rated (candidate) | Code reading during the fixes | Not confirmed, waiting for approval to check |
+| D17 | Renaming an active scheduled backup cleared its next run time and dropped its schedule | Data and schedule integrity | Code reading during the fix of D15, then confirmed at runtime | Fixed in `7d4d4e4` (an update now saves and returns the whole scheduled backup, not only the fields sent) |
+| D18 | A partial update with `null` for a required field of a connection or a scheduled backup answered with an internal error (500) instead of a validation error (400); nothing was saved | Not rated | Code reading during the fixes, then confirmed at runtime | Fixed in `60fe003` (`null` now fails validation, except for the retention limits, where it removes the limit) |
 
-Summary: 11 fixed (D2, D4, D5, D6, D7, D9, D10, D11, D12, D13, D15), 4 open for a product or design decision (D1, D3, D8, D14), 1 confirmed and waiting for approval (D17) and 2 not confirmed (D16, D18). The number of tests marked as expected failures went from 17 to 4 (only D8 remains).
+Summary: 13 fixed (D2, D4, D5, D6, D7, D9, D10, D11, D12, D13, D15, D17, D18), 4 open for a product or design decision (D1, D3, D8, D14) and 1 not confirmed (D16). The number of tests marked as expected failures went from 17 to 4 (only D8 remains).
 
 How every fix was made (test-driven development, TDD: the test is written before the fix):
 
 1. Write a unit test that reproduces the defect and watch it fail (red). For D2, a container setting, the failing check was the test environment itself refusing to start.
 2. Fix the code and watch the test pass (green).
-3. Turn the matching Playwright test from `test.fail` into a normal test, or add a new one.
+3. Turn the matching Playwright test from `test.fail` into a normal test, or add a new one. For D17 and D18 the new Playwright tests were first run against a test environment built from the code before the fix, and seen failing there.
 4. Run the package's unit tests, the type checker and the linter, then rebuild the Docker environment and run the whole Playwright suite.
 5. Mutation check: put the old, defective code back and confirm that the new tests fail, then restore the fix. This proves the tests really detect the defect.
 
@@ -231,24 +232,28 @@ How every fix was made (test-driven development, TDD: the test is written before
 | D10 | `999b710` | 1 of 3 connection page tests failed |
 | D2 | `7dadbc2` | Before the fix the test environment refused to start with `envault-e2e-web-1 is unhealthy` |
 | D15 | `23eedc4` | 3 of 36 connection tests failed, and 1 of 8 repository tests |
+| D17 | `7d4d4e4` | 6 of 13 scheduled-backup tests failed (with the old repository and service restored) |
+| D18 | `60fe003` | 15 of 39 tests failed (with the old update rules restored) |
 
-Why some defects stay open: D1 depends on which PostgreSQL versions EnVault decides to support (the test environment uses PostgreSQL 18 and a dedicated test runs D1 against PostgreSQL 16); D3 is the hard-coded default of the sign-in library, and making it configurable is a security design choice; D8 depends on whether those screens are meant for regular users at all (if they are admin-only, the fix is to hide them); D14 depends on how a job that is about to be retried should be reported. D17 was confirmed after the approved list of fixes was closed and waits for the owner's approval; D16 and D18 are suspicions from reading the code that have not been proven. The tests of D1 and D8 are kept in the suite so that the run changes state when they are fixed. Details are in [e2e-testing.md](e2e-testing.md#known-defects).
+The last two fixes in detail. D17: when a scheduled backup (cron job) was updated, the data layer handed back only the fields that had been sent, so after a rename the service found no "active" value, treated the cron job as paused, removed it from the scheduler and cleared its next run time; it came back only when the API restarted. The fix loads the stored cron job, saves the merged version and returns all of it, and an unknown id now answers 404 (not found). D18: the rules that validate an update (the update DTOs, data transfer objects) marked every field as optional, and in the validation library EnVault uses an optional field skips validation for `null` as well as for a missing value, so `null` reached the database and the API answered 500 (an internal error); for the expression of a cron job it answered 400 only by accident, with an internal JavaScript error message in the body. The fix skips validation only for a missing field, so `null` now answers 400 with the standard error body. The retention limits of a cron job still accept `null` on purpose, because that is how a limit is removed. Unit tests went from red to green for both (D17: 6 failed and 7 passed before the fix, 13 of 13 after; D18: 15 failed before the fix, 75 of 75 after for the connections and cron jobs modules), and the new Playwright tests, in `cronjobs.api.spec.ts` (a new file with 13 tests) and `connections.api.spec.ts` (8 more `null` cases), were run against a test environment built from the code before each fix, where the tests aimed at the defect failed (4 for D17, the `null` cases for D18), and passed after it.
+
+Why some defects stay open: D1 depends on which PostgreSQL versions EnVault decides to support (the test environment uses PostgreSQL 18 and a dedicated test runs D1 against PostgreSQL 16); D3 is the hard-coded default of the sign-in library, and making it configurable is a security design choice; D8 depends on whether those screens are meant for regular users at all (if they are admin-only, the fix is to hide them); D14 depends on how a job that is about to be retried should be reported. D16 is a suspicion from reading the code that has not been proven. The tests of D1 and D8 are kept in the suite so that the run changes state when they are fixed. Details are in [e2e-testing.md](e2e-testing.md#known-defects).
 
 ---
 
 ## 8. White-box coverage
 
-Code coverage is the share of the code that the unit tests actually execute: statements (instructions), branches (each outcome of an `if`, a `switch` or a logical operator), functions and lines. EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases) measures it with `pnpm test:coverage` over its three packages: the API (Jest, with the Istanbul counter) and the web app and landing page (Vitest, with the V8 counter). The baseline was taken on 2026-10-13 (commit `e1612c4`), before any defect fix; the second measurement on 2026-10-14 (commit `23eedc4`), after the eleven fixes. Each fix added unit tests.
+Code coverage is the share of the code that the unit tests actually execute: statements (instructions), branches (each outcome of an `if`, a `switch` or a logical operator), functions and lines. EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases) measures it with `pnpm test:coverage` over its three packages: the API (Jest, with the Istanbul counter) and the web app and landing page (Vitest, with the V8 counter). The baseline was taken on 2026-10-13 (commit `e1612c4`), before any defect fix; the second measurement on 2026-10-14 (commit `23eedc4`), after the first eleven fixes; the third on 2026-10-15 (commit `60fe003`), after the fixes of D17 and D18. Each fix added unit tests. Each cell reads baseline → after eleven fixes → after thirteen.
 
-| Package | Tests before → after | Statements | Branches | Functions | Lines |
-|---------|----------------------|-----------:|---------:|----------:|------:|
-| API | 365 → 548 | 52.9% → 61.14% | 40.89% → 43.8% | 38.04% → 49.49% | 52.93% → 61.18% |
-| Web app | 171 → 202 | 26.44% → 33.29% | 27.28% → 31.79% | 24.05% → 30.77% | 27.91% → 34.91% |
-| Landing page | 42 → 42 | 10.19% → 10.19% | 7.88% → 7.88% | 26.78% → 26.78% | 10% → 10% |
+| Package | Tests | Statements | Branches | Functions | Lines |
+|---------|-------|-----------:|---------:|----------:|------:|
+| API | 365 → 548 → 585 | 52.9% → 61.14% → 62.32% | 40.89% → 43.8% → 45.25% | 38.04% → 49.49% → 51.17% | 52.93% → 61.18% → 62.43% |
+| Web app | 171 → 202 → 202 | 26.44% → 33.29% → 33.29% | 27.28% → 31.79% → 31.79% | 24.05% → 30.77% → 30.77% | 27.91% → 34.91% → 34.91% |
+| Landing page | 42 → 42 → 42 | 10.19% → 10.19% → 10.19% | 7.88% → 7.88% → 7.88% | 26.78% → 26.78% → 26.78% | 10% → 10% → 10% |
 
-The numbers are deterministic (a repeated run gave identical results), and the clean-clone run of 2026-10-15 reproduced the "after" figures for statements and lines exactly.
+The numbers are deterministic (a repeated run gave identical results), and the clean-clone run of 2026-10-15, at commit `9902fee`, reproduced the second measurement for statements and lines exactly.
 
-What the numbers mean: about six tenths of the API code, a third of the web app and a tenth of the landing page run under unit tests. The landing page was not touched by the fixes, so it did not change.
+What the numbers mean: about six tenths of the API code, a third of the web app and a tenth of the landing page run under unit tests. The fixes of D17 and D18 touched only the API (new unit tests for the scheduled-backup repository and service and for the update rules of connections and cron jobs), so the web app and the landing page did not change in the third measurement; the landing page was not touched by any fix.
 
 What they do not mean:
 
@@ -263,7 +268,7 @@ The black-box suite found defects that coverage could not show: D6 lived in a mo
 
 ## 9. Performance results
 
-The performance suite of EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases) times backups and restores, the job queue, page loads and API responses against the hermetic Docker environment, with object storage provided by MinIO on the same machine. The reference run used here was taken on 2026-10-13 (UTC) at commit `490f42eba8` plus the then-uncommitted performance-suite work (later committed as `235b64d`). That is before the defect fixes and before the MySQL binary log was turned off in the test environment; this report makes no claim about whether those changes affect the figures.
+The performance suite of EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases) times backups and restores, the job queue, page loads and API responses against the hermetic Docker environment, with object storage provided by MinIO on the same machine. The reference run used here was taken on 2026-10-13 (UTC) at commit `490f42eba8` plus the then-uncommitted performance-suite work (later committed as `235b64d`). That is before all thirteen defect fixes (D17 and D18 included) and before the MySQL binary log was turned off in the test environment; this report makes no claim about whether those changes affect the figures.
 
 How to read the figures:
 
@@ -338,7 +343,7 @@ Repeatability of the measurements: two full runs during development agreed withi
 
 ## 10. Reliability evidence
 
-A test suite is only useful if its result can be trusted: a red run must mean a real problem, and a green run must not be luck. A flaky test is one that passes or fails on the same code without any change, usually because of timing, shared data or the order of the tests. To measure this, the whole Playwright functional suite of EnVault (256 tests: API, browser and backup/restore) was run 13 times in a row on 2026-10-15, at commit `9902fee`, against one hermetic Docker environment started once with `pnpm docker:e2e` (24.9 s with images already built). Retries are set to 0 on purpose: Playwright can rerun a failed test automatically, which would hide a flaky test, so here a single failure turns the run red. By default Playwright used 8 workers (parallel processes) on this machine.
+A test suite is only useful if its result can be trusted: a red run must mean a real problem, and a green run must not be luck. A flaky test is one that passes or fails on the same code without any change, usually because of timing, shared data or the order of the tests. The evidence comes from three checks on two commits. First study: to measure this, the whole Playwright functional suite of EnVault (256 tests: API, browser and backup/restore) was run 13 times in a row on 2026-10-15, at commit `9902fee`, against one hermetic Docker environment started once with `pnpm docker:e2e` (24.9 s with images already built). Retries are set to 0 on purpose: Playwright can rerun a failed test automatically, which would hide a flaky test, so here a single failure turns the run red. By default Playwright used 8 workers (parallel processes) on this machine.
 
 | Run | Command | Why this variation | Result | Playwright time |
 |-----|---------|--------------------|--------|-----------------|
@@ -351,7 +356,7 @@ Totals: 13 runs, 3838 test executions, 3823 passed, 15 skipped by design, 0 fail
 
 What this shows: the results do not depend on the order of the tests, on parallelism or on repetition, and the tests clean up after themselves, since 13 runs shared one environment without interfering. This agrees with the history of the work: during development the full suite had already passed more than 30 consecutive full runs with identical counts, and every defect fix was mutation-checked (the old code restored, the new tests seen failing, the fix restored).
 
-Second check, a clean clone (2026-10-15, 13:55 to 14:00, UTC-6): to test that the repository and its documentation are enough on their own, the branch was cloned with `git clone --branch feat/e2e-playwright-suite` into a new folder and the "Quick path" of [e2e-testing.md](e2e-testing.md) was followed literally.
+Second check, a clean clone (2026-10-15, 13:55 to 14:00, UTC-6, at commit `9902fee`): to test that the repository and its documentation are enough on their own, the branch was cloned with `git clone --branch feat/e2e-playwright-suite` into a new folder and the "Quick path" of [e2e-testing.md](e2e-testing.md) was followed literally.
 
 | Step | Command | Outcome | Time |
 |------|---------|---------|------|
@@ -366,6 +371,15 @@ Second check, a clean clone (2026-10-15, 13:55 to 14:00, UTC-6): to test that th
 
 No documented step was wrong. The limit of this check: it ran on the same physical machine, so the package store, the Chromium download and the Docker base images were already present. It proves that the repository plus its documentation are self-sufficient, not what a first installation on a new machine costs (a first `pnpm docker:e2e` build took about 3 minutes, 194.5 s, earlier in the project).
 
+Third check, a re-check after the last two fixes (2026-10-15, 14:33 to 14:39, UTC-6, at commit `60fe003`): the fixes of D17 and D18 changed API code and added 21 API tests, so the suite (now 277 tests) was run again against a test environment rebuilt from that code (`pnpm docker:e2e`, 66.1 s), with retries at 0 and the default 8 workers.
+
+| Run | Command | Result | Playwright time |
+|-----|---------|--------|-----------------|
+| 1-5 | `pnpm test:e2e`, 5 times in a row | Each: 276 passed, 1 skipped, 0 failed | 26.4, 25.8, 25.3, 24.6, 25.2 s |
+| 6 | `pnpm test:e2e --repeat-each=3` | 829 tests (the sign-in step once, plus 3 x 276), 826 passed, 3 skipped | 1.2 min |
+
+Totals of this check: 6 runs, 2214 test executions, 2206 passed, 8 skipped by design (the same D1 check), 0 failures, 0 flaky tests. The runs with 1 and 16 workers were not repeated. Afterwards the environment was removed (0 containers, volumes and networks left), and on the same code `pnpm test` passed (API: 63 test files passed and 4 skipped, 585 tests passed and 32 skipped; web app: 38 files, 202 tests; landing page: 4 files, 42 tests), and `pnpm typecheck` and `pnpm lint` ended with exit code 0 (no error). Counting both commits, the suite has run 19 times, 6052 test executions, with 0 failures; that figure spans two versions of the code, `9902fee` and `60fe003`.
+
 ---
 
 ## 11. Limitations and threats to validity
@@ -378,14 +392,16 @@ The results of this QA work on EnVault (a self-hosted application that backs up 
 | Chromium only | Firefox and WebKit (Safari) were not tested, and neither were mobile screen sizes. |
 | No CI yet | The suite runs on a developer machine; nothing runs it automatically on every change. |
 | MinIO instead of Cloudflare R2 | Storage behavior specific to R2 and the network trip to it are not covered; the performance figures exclude that trip. |
-| Performance measured before the fixes | The reference run predates the eleven defect fixes and the change that turned off the MySQL binary log. It was not repeated afterwards. |
+| Performance measured before the fixes | The reference run predates all thirteen defect fixes and the change that turned off the MySQL binary log. It was not repeated afterwards. |
+| Shorter re-check after the last fixes | At `60fe003` the suite ran 6 times (5 normal runs and one with `--repeat-each=3`); the runs with 1 and 16 workers and the clean clone were done only at `9902fee`. |
 | One performance reference run | The figures come from one full run (with a second one used only to check repeatability) on one machine; they are reference values, not guarantees. |
 | D8 still expected to fail | Four tests document an open defect instead of checking working behavior. |
-| Clean clone on a warm machine | The clean-clone check reused caches already on the machine, so it does not measure a first installation. |
+| Clean clone on a warm machine | The clean-clone check reused caches already on the machine, so it does not measure a first installation; it ran at `9902fee`, before the last two fixes. |
 | No load or stress testing | The behavior with many simultaneous users was not tested; the queue test used at most 6 simultaneous backups. |
 | No accessibility or visual tests | Screen-reader support, contrast and visual regressions were not checked. |
 | The tests are new code | The test code itself has had limited independent review; some test-helper improvements suggested by an automated review are still pending. |
 | Coverage tables partly old | The per-area and per-file coverage tables are from the baseline; only the totals were measured again after the fixes. |
+| Possible issues not verified | While D17 and D18 were fixed, three possible issues were noticed in the code; none was checked at runtime or numbered as a defect. Creating a connection or a scheduled backup may still let `null` through for the fields that are optional on creation (`dbType`, `retentionEnabled`), probably answering 500, the same kind of problem as D18. The endpoint that pauses and resumes a scheduled backup answers 201 ("created") instead of 200 ("OK"). Before the D17 fix, the audit record of a scheduled-backup update probably looked up an arbitrary connection; this is inferred from the code, and the D17 fix removed that path. |
 
 ---
 
@@ -397,8 +413,8 @@ Every result in this QA report on EnVault (a self-hosted application that backs 
 |------|----------|
 | Prepare once | `cp .env.e2e.example .env.e2e`, `pnpm install`, `pnpm e2e:install` |
 | Start the test environment | `pnpm docker:e2e` |
-| Run the functional suite | `pnpm test:e2e` (expected: 255 passed, 1 skipped) |
-| Repeat the reliability study | `pnpm test:e2e` ten times, then `pnpm test:e2e --workers=1`, `pnpm test:e2e --workers=16` and `pnpm test:e2e --repeat-each=3` |
+| Run the functional suite | `pnpm test:e2e` (expected at `60fe003`: 276 passed, 1 skipped) |
+| Repeat the reliability study | `pnpm test:e2e` ten times, then `pnpm test:e2e --workers=1`, `pnpm test:e2e --workers=16` and `pnpm test:e2e --repeat-each=3` (the first study; the re-check after the last fixes used 5 normal runs and `--repeat-each=3`) |
 | Open the HTML report of the last run | `pnpm test:e2e:report` |
 | Run the performance suite | `pnpm test:e2e:perf` (about 17 minutes; results in `e2e/perf-results/`) |
 | Stop and delete the environment | `pnpm docker:e2e:down` |
@@ -413,15 +429,15 @@ Full instructions, the variants of each command and the troubleshooting table ar
 Conclusions of the QA work on EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases), tested with a Playwright black-box suite and the existing Jest and Vitest unit tests:
 
 - Playwright was enough to cover the API, the browser interface and the whole backup and restore path with one tool, and to measure performance with the same tool.
-- The black-box suite found 18 defects; 11 were fixed with a test written first, among them one security defect (D6), one safety defect (D12) and one data-integrity defect (D15); D6 and D12 were in code that the unit tests did not reach or did not run with the input that breaks it.
-- The suite proved stable: 3838 test executions in 13 runs with different parallelism and repetition, 0 failures and 0 flaky tests, and the same result from a clean clone.
-- The fixes raised unit-test coverage of the API from 52.93% to 61.18% of lines and of the web app from 27.91% to 34.91%.
+- The black-box suite found 18 defects; 13 were fixed with a test written first, among them one security defect (D6), one safety defect (D12), one data-integrity defect (D15) and one that dropped scheduled backups from the scheduler (D17); D6 and D12 were in code that the unit tests did not reach or did not run with the input that breaks it.
+- The suite proved stable: 3838 test executions in 13 runs with different parallelism and repetition at `9902fee`, and 2214 more in 6 runs at `60fe003` after the last two fixes, with 0 failures and 0 flaky tests; a clean clone at `9902fee` gave the same result.
+- The fixes raised unit-test coverage of the API from 52.93% to 62.43% of lines (61.18% after the first eleven) and of the web app from 27.91% to 34.91%.
 - The performance reference shows backups of a 500 MiB database in under 9 s and makes visible the slowest step, the MySQL restore (about 23 MiB/s).
 
 Next steps:
 
 1. Run the suite in CI on every change, ideally on Linux, to remove the single-machine limitation.
-2. Decide on the open defects D1, D3, D8 and D14, and approve or reject the fix of D17 and the checks of D16 and D18.
+2. Decide on the open defects D1, D3, D8 and D14, confirm or discard D16, and check the possible issues noted in the limitations that may still be present (`null` on creation, the 201 answer of pause and resume).
 3. Repeat the performance run on the current code, and once against a real Cloudflare R2 bucket.
 4. Extend the browser tests to Firefox and WebKit, and add accessibility checks.
 5. Add unit tests where the baseline coverage was weakest: the MySQL restore strategy, the connections module and the web screens for cleanup, users and cron jobs.

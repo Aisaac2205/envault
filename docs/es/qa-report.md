@@ -2,7 +2,7 @@
 
 > 🇬🇧 English version: [../en/qa-report.md](../en/qa-report.md)
 
-Este informe presenta el trabajo de aseguramiento de la calidad (QA) realizado sobre EnVault con una suite de pruebas automatizadas construida con [Playwright](https://playwright.dev): qué se probó, cómo, qué se encontró, hasta qué punto se puede confiar en los resultados y qué queda pendiente. Describe la rama `feat/e2e-playwright-suite` en el commit `9902fee`, al 2026-10-15. Cada sección numerada está escrita para entenderse por sí sola, de modo que pueda copiarse aislada en otro documento.
+Este informe presenta el trabajo de aseguramiento de la calidad (QA) realizado sobre EnVault con una suite de pruebas automatizadas construida con [Playwright](https://playwright.dev): qué se probó, cómo, qué se encontró, hasta qué punto se puede confiar en los resultados y qué queda pendiente. Describe la rama `feat/e2e-playwright-suite` en el commit `60fe003`, al 2026-10-15, después de las correcciones de D17 y D18. Parte de la evidencia se obtuvo en commits anteriores y así se indica donde se presenta: el primer estudio de fiabilidad y la verificación con un clon limpio se hicieron en `9902fee`, y la ejecución de referencia de rendimiento es anterior a todas las correcciones de defectos. Cada sección numerada está escrita para entenderse por sí sola, de modo que pueda copiarse aislada en otro documento.
 
 ---
 
@@ -12,18 +12,18 @@ EnVault es una aplicación autoalojada que hace backups de bases de datos Postgr
 
 | Elemento | Resultado |
 |----------|-----------|
-| Suite funcional (`pnpm test:e2e`) | 256 tests en 18 archivos: 149 tests de API, 42 de backup y restore, 64 de navegador y 1 paso de inicio de sesión; entre 24,7 y 29,8 s por ejecución con 8 workers en paralelo |
+| Suite funcional (`pnpm test:e2e`) | 277 tests en 19 archivos: 170 tests de API, 42 de backup y restore, 64 de navegador y 1 paso de inicio de sesión; entre 24,6 y 26,4 s por ejecución con 8 workers en paralelo |
 | Suite de rendimiento (`pnpm test:e2e:perf`) | 55 tests: 13 mediciones, 41 tests unitarios de sus propias funciones auxiliares y 1 paso de inicio de sesión; unos 17 minutos por ejecución completa |
-| Tests unitarios de caja blanca (Jest y Vitest, ya presentes en el proyecto) | API 548 tests, app web 202, landing 42 |
-| Fiabilidad | 13 ejecuciones consecutivas de toda la suite funcional con distinto paralelismo y repetición: 3838 ejecuciones de tests, 0 fallos, 0 tests inestables |
-| Reproducibilidad | Un clon nuevo del repositorio, preparado siguiendo al pie de la letra las instrucciones escritas, dio los mismos resultados; ninguna instrucción estaba mal |
-| Defectos encontrados | 18 (D1 a D18), entre ellos un defecto de seguridad (D6), uno de protección de datos ante operaciones peligrosas (D12) y uno de integridad de datos (D15) |
-| Defectos corregidos | 11, cada uno con un test que fallaba escrito antes de la corrección; 4 quedan abiertos a la espera de una decisión de producto o de diseño, 1 confirmado y a la espera de aprobación, 2 sin confirmar |
-| Cobertura de código de la API (líneas) | 52,93 % antes de las correcciones, 61,18 % después |
+| Tests unitarios de caja blanca (Jest y Vitest, ya presentes en el proyecto) | API 585 tests, app web 202, landing 42 |
+| Fiabilidad | 19 ejecuciones de toda la suite funcional sobre dos commits, con distinto paralelismo y repetición: 13 ejecuciones en `9902fee` (3838 ejecuciones de tests) y 6 en `60fe003`, después de las dos últimas correcciones (2214); 0 fallos y 0 tests inestables en ambos |
+| Reproducibilidad | Un clon nuevo del repositorio en `9902fee`, preparado siguiendo al pie de la letra las instrucciones escritas, dio los mismos resultados; ninguna instrucción estaba mal |
+| Defectos encontrados | 18 (D1 a D18), entre ellos un defecto de seguridad (D6), uno de protección de datos ante operaciones peligrosas (D12), uno de integridad de datos (D15) y uno de integridad de la programación de backups (D17) |
+| Defectos corregidos | 13, cada uno con un test que fallaba escrito antes de la corrección; 4 quedan abiertos a la espera de una decisión de producto o de diseño, 1 sin confirmar |
+| Cobertura de código de la API (líneas) | 52,93 % antes de las correcciones, 61,18 % después de las once primeras, 62,43 % después de las trece |
 | Tiempo de backup de una base de 500 MiB (mediana, ejecución de referencia) | PostgreSQL 8,73 s, MySQL 3,70 s |
 | Tiempo de restore de la misma base (mediana, ejecución de referencia) | PostgreSQL 4,74 s, MySQL 19,86 s |
 
-Veredicto: dentro de las condiciones probadas (una máquina Windows, el navegador Chromium y un almacenamiento de objetos simulado localmente con MinIO), la suite es fiable. Sus resultados no dependieron del orden de los tests, de la cantidad de workers en paralelo ni de la repetición, y se ejecuta desde un clon nuevo con los comandos documentados. Todavía no es evidencia para otros sistemas operativos, otros navegadores, el almacenamiento real de Cloudflare R2 ni carga elevada, y aún no se ejecuta en integración continua (CI, una ejecución automática con cada cambio).
+Veredicto: dentro de las condiciones probadas (una máquina Windows, el navegador Chromium y un almacenamiento de objetos simulado localmente con MinIO), la suite es fiable. Sus resultados no dependieron del orden de los tests, de la cantidad de workers en paralelo ni de la repetición, siguió sin fallos después de las dos últimas correcciones, y se ejecuta desde un clon nuevo con los comandos documentados. Todavía no es evidencia para otros sistemas operativos, otros navegadores, el almacenamiento real de Cloudflare R2 ni carga elevada, y aún no se ejecuta en integración continua (CI, una ejecución automática con cada cambio).
 
 ---
 
@@ -111,21 +111,22 @@ EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreS
 
 | Tipo | Nivel | Comando | Tests | Qué verifica |
 |------|-------|---------|------:|--------------|
-| Tests de API | Caja negra | `pnpm test:e2e` (proyecto `api`) | 149 | Inicio de sesión, permisos, conexiones, formato de errores y la forma de los endpoints de solo lectura |
+| Tests de API | Caja negra | `pnpm test:e2e` (proyecto `api`) | 170 | Inicio de sesión, permisos, conexiones, backups programados (cron jobs), formato de errores y la forma de los endpoints de solo lectura |
 | Tests de interfaz | Caja negra | `pnpm test:e2e` (proyecto `ui-chromium`) | 64 | Login, navegación y roles, pantalla de conexiones, dashboard, direcciones desconocidas, un backup iniciado desde la pantalla Dumps |
 | Pipeline de backup y restore | Caja negra, de extremo a extremo | `pnpm test:e2e` (proyecto `pipeline`) | 42 | Backups y restores reales de PostgreSQL y MySQL, con los datos verificados en ambos extremos |
 | Paso de inicio de sesión | Soporte | `pnpm test:e2e` (proyecto `setup`) | 1 | Inicia sesión una vez y guarda la sesión para los demás tests |
 | Rendimiento | Caja negra, medición | `pnpm test:e2e:perf` | 13 + 41 + 1 | Velocidad de backup y restore, comportamiento de la cola, tiempos de carga de páginas, latencia de la API (13 mediciones, 41 tests unitarios de las funciones auxiliares, 1 paso de inicio de sesión) |
-| Tests unitarios | Caja blanca | `pnpm test`, `pnpm test:coverage` | 548 + 202 + 42 | API (Jest), app web y landing (Vitest), con cobertura de código |
+| Tests unitarios | Caja blanca | `pnpm test`, `pnpm test:coverage` | 585 + 202 + 42 | API (Jest), app web y landing (Vitest), con cobertura de código |
 
-Las cantidades de tests salen de `playwright test --list` sobre el commit `9902fee` (suite funcional: 256 tests en 18 archivos; suite de rendimiento: 55 tests) y, para los tests unitarios, de las ejecuciones de `pnpm test` registradas después de la última corrección de defectos (2026-10-14 y 2026-10-15).
+Las cantidades de tests salen de `playwright test --list` sobre el commit `60fe003` (suite funcional: 277 tests en 19 archivos; suite de rendimiento: 55 tests) y, para los tests unitarios, de la ejecución de `pnpm test` sobre ese mismo commit, después de la última corrección de defectos (2026-10-15).
 
 | Archivo | Proyecto | Tests |
 |---------|----------|------:|
 | `setup/auth.setup.ts` | `setup` | 1 |
 | `api/auth.api.spec.ts` | `api` | 2 |
 | `api/authorization.api.spec.ts` | `api` | 33 |
-| `api/connections.api.spec.ts` | `api` | 45 |
+| `api/connections.api.spec.ts` | `api` | 53 |
+| `api/cronjobs.api.spec.ts` | `api` | 13 |
 | `api/error-envelope.api.spec.ts` | `api` | 26 |
 | `api/health.api.spec.ts` | `api` | 3 |
 | `api/read-contracts.api.spec.ts` | `api` | 30 |
@@ -143,7 +144,7 @@ Las cantidades de tests salen de `playwright test --list` sobre el commit `9902f
 
 ### Tests de API
 
-Qué hacen: llaman a la API por HTTP con el contexto de peticiones de Playwright, como lo haría cualquier programa cliente, y verifican códigos de estado y cuerpos de respuesta. Ejemplo: un test crea una conexión a una base de datos y verifica que ninguna respuesta contenga nunca su contraseña, ni tal como se escribió ni cifrada; otra tabla de tests llama a cada endpoint exclusivo de administradores sin sesión (debe responder 401, "sin sesión iniciada") y como usuario común (debe responder 403, "no permitido"). Por qué importa: la API es el contrato del que dependen todas las demás partes, y las reglas de seguridad se verifican mejor donde se aplican.
+Qué hacen: llaman a la API por HTTP con el contexto de peticiones de Playwright, como lo haría cualquier programa cliente, y verifican códigos de estado y cuerpos de respuesta. Ejemplo: un test crea una conexión a una base de datos y verifica que ninguna respuesta contenga nunca su contraseña, ni tal como se escribió ni cifrada; otra tabla de tests llama a cada endpoint exclusivo de administradores sin sesión (debe responder 401, "sin sesión iniciada") y como usuario común (debe responder 403, "no permitido"). Los tests de cron jobs cubren los backups programados, los que EnVault inicia por su cuenta a partir de una expresión cron (un horario escrito en la notación cron estándar): crean uno, lo renombran y verifican que siga programado con una próxima ejecución, cambian su expresión y verifican que la próxima ejecución se mueva, lo pausan y lo reanudan, piden uno que no existe (404) y envían `null` en un campo obligatorio (400). Sus expresiones solo se disparan el 1 de enero y el 1 de julio, así que ningún backup arranca mientras se ejecuta la suite. Por qué importa: la API es el contrato del que dependen todas las demás partes, y las reglas de seguridad se verifican mejor donde se aplican.
 
 ### Tests de interfaz
 
@@ -170,7 +171,7 @@ Las pruebas de caja negra de EnVault (una aplicación autoalojada que hace backu
 | Técnica | Qué significa | Dónde se usa |
 |---------|---------------|--------------|
 | Tests guiados por tablas | Un mismo cuerpo de test se ejecuta sobre una tabla de entradas, así cada caso es una fila y un caso faltante salta a la vista | `authorization.api.spec.ts`: un test por endpoint de administrador, 401 sin sesión y 403 para un usuario común; las tablas de "no encontrado" y de formato de errores de `error-envelope.api.spec.ts` |
-| Clases de equivalencia y valores límite | Las entradas se agrupan en clases que deberían comportarse igual, y se prueban los valores en los límites o justo fuera de ellos | Validación de conexiones: puerto 0, un puerto mayor que 65535, un puerto fraccionario o no numérico, un nombre de más de 100 caracteres, un motor o entorno desconocido, un campo inesperado |
+| Clases de equivalencia y valores límite | Las entradas se agrupan en clases que deberían comportarse igual, y se prueban los valores en los límites o justo fuera de ellos | Validación de conexiones: puerto 0, un puerto mayor que 65535, un puerto fraccionario o no numérico, un nombre de más de 100 caracteres, un motor o entorno desconocido, un campo inesperado; `null` en cada campo obligatorio de una actualización de conexión o de cron job, frente a `null` en un límite de retención, donde es válido y quita el límite |
 | Matriz de autorización por rol | Cada acción se prueba sin sesión, como usuario común y como administrador | API (tablas de 401 y 403) e interfaz (qué enlaces ve un usuario común y qué direcciones lo redirigen) |
 | Pruebas negativas | Entradas inválidas u hostiles que deben rechazarse de forma limpia | Contraseña incorrecta, email desconocido, cookie de sesión alterada, cuerpo que no es JSON, un host desconocido, un puerto cerrado, un restore sobre producción |
 | Transiciones de estado de los jobs | Un job debe pasar por estados válidos en un orden válido | Un backup o restore pasa de pendiente a completado o fallido; sus marcas de tiempo cumplen `createdAt <= startedAt <= completedAt`; un backup pendiente pedido otra vez devuelve el mismo job y se puede cancelar |
@@ -179,7 +180,7 @@ Las pruebas de caja negra de EnVault (una aplicación autoalojada que hace backu
 | Dobles de prueba en el navegador | Una respuesta preparada reemplaza a una real, solo donde el estado real no se puede garantizar | `page.route` devuelve una lista vacía, un error de límite de intentos o un fallo de red; todo el resto del tráfico es real |
 | Un inicio de sesión por ejecución | La sesión se crea una vez y se comparte | El proyecto `setup` la guarda con `storageState`, porque EnVault acepta solo 3 inicios de sesión cada 10 segundos desde una misma dirección |
 | Defectos conocidos como tests ejecutables | Un test afirma el comportamiento correcto y se marca como fallo esperado | `test.fail` en los 4 tests de D8; hasta que se corrija el defecto, Playwright los cuenta como pasados |
-| Verificar que los tests pueden fallar | Se rompe a propósito el código o la expectativa para probar que el test lo detecta | Mientras se escribían las suites de API, interfaz, pipeline y rendimiento se rompieron expectativas a propósito (por ejemplo una suma de verificación o un estado incorrectos); cada corrección de defecto se verificó restaurando el código anterior y viendo fallar los tests nuevos |
+| Verificar que los tests pueden fallar | Se rompe a propósito el código o la expectativa para probar que el test lo detecta | Mientras se escribían las suites de API, interfaz, pipeline y rendimiento se rompieron expectativas a propósito (por ejemplo una suma de verificación o un estado incorrectos); cada corrección de defecto se verificó restaurando el código anterior y viendo fallar los tests nuevos; para D17 y D18 los tests de API nuevos además se ejecutaron contra un entorno de pruebas construido con el código anterior a la corrección, donde fallaron, y pasaron una vez aplicada la corrección |
 
 ---
 
@@ -205,16 +206,16 @@ Escribir y ejecutar las pruebas de EnVault (una aplicación autoalojada que hace
 | D14 | Un backup que va a reintentarse figura como `failed` durante unos 5 segundos antes de que el reintento lo reescriba | Sin calificar (candidato) | Tests del pipeline | Abierto: requiere una decisión de diseño |
 | D15 | Renombrar una conexión MySQL cambiaba su motor a PostgreSQL sin aviso | Integridad de datos | Lectura del código durante la primera tanda de correcciones, luego confirmado en ejecución | Corregido en `23eedc4` |
 | D16 | Dos campos `connectionId` se validan como texto, no como UUID | Sin calificar (candidato) | Lectura del código durante las correcciones | Sin confirmar: las verificaciones parciales no encontraron error y un caso no fue concluyente |
-| D17 | Renombrar un backup programado activo borraba su próxima ejecución y desactivaba su programación | Integridad de datos y de la programación | Lectura del código durante la corrección de D15, luego confirmado en ejecución | Confirmado, a la espera de la aprobación del dueño para corregirlo |
-| D18 | Las actualizaciones parciales podrían aceptar `null` en campos obligatorios | Sin calificar (candidato) | Lectura del código durante las correcciones | Sin confirmar, a la espera de aprobación para verificarlo |
+| D17 | Renombrar un backup programado activo borraba su próxima ejecución y desactivaba su programación | Integridad de datos y de la programación | Lectura del código durante la corrección de D15, luego confirmado en ejecución | Corregido en `7d4d4e4` (una actualización ahora guarda y devuelve el backup programado completo, no solo los campos enviados) |
+| D18 | Una actualización parcial con `null` en un campo obligatorio de una conexión o de un backup programado respondía con un error interno (500) en lugar de un error de validación (400); no se guardaba nada | Sin calificar | Lectura del código durante las correcciones, luego confirmado en ejecución | Corregido en `60fe003` (`null` ahora no pasa la validación, salvo en los límites de retención, donde quita el límite) |
 
-Resumen: 11 corregidos (D2, D4, D5, D6, D7, D9, D10, D11, D12, D13, D15), 4 abiertos a la espera de una decisión de producto o de diseño (D1, D3, D8, D14), 1 confirmado y a la espera de aprobación (D17) y 2 sin confirmar (D16, D18). La cantidad de tests marcados como fallo esperado bajó de 17 a 4 (solo queda D8).
+Resumen: 13 corregidos (D2, D4, D5, D6, D7, D9, D10, D11, D12, D13, D15, D17, D18), 4 abiertos a la espera de una decisión de producto o de diseño (D1, D3, D8, D14) y 1 sin confirmar (D16). La cantidad de tests marcados como fallo esperado bajó de 17 a 4 (solo queda D8).
 
 Cómo se hizo cada corrección (desarrollo guiado por pruebas, TDD: el test se escribe antes que la corrección):
 
 1. Escribir un test unitario que reproduzca el defecto y verlo fallar (rojo). Para D2, un ajuste de contenedor, la verificación que fallaba era el propio entorno de pruebas negándose a arrancar.
 2. Corregir el código y ver pasar el test (verde).
-3. Convertir el test de Playwright correspondiente de `test.fail` en un test normal, o agregar uno nuevo.
+3. Convertir el test de Playwright correspondiente de `test.fail` en un test normal, o agregar uno nuevo. Para D17 y D18 los tests de Playwright nuevos se ejecutaron primero contra un entorno de pruebas construido con el código anterior a la corrección, y se los vio fallar allí.
 4. Ejecutar los tests unitarios del paquete, el verificador de tipos y el linter; luego reconstruir el entorno Docker y ejecutar toda la suite de Playwright.
 5. Verificación por mutación: volver a poner el código anterior, defectuoso, y confirmar que los tests nuevos fallan; luego restaurar la corrección. Esto prueba que los tests detectan de verdad el defecto.
 
@@ -231,24 +232,28 @@ Cómo se hizo cada corrección (desarrollo guiado por pruebas, TDD: el test se e
 | D10 | `999b710` | Falló 1 de 3 tests de la página de conexiones |
 | D2 | `7dadbc2` | Antes de la corrección el entorno de pruebas se negaba a arrancar con `envault-e2e-web-1 is unhealthy` |
 | D15 | `23eedc4` | Fallaron 3 de 36 tests de conexiones, y 1 de 8 tests del repositorio |
+| D17 | `7d4d4e4` | Fallaron 6 de 13 tests de backups programados (con el repositorio y el servicio anteriores restaurados) |
+| D18 | `60fe003` | Fallaron 15 de 39 tests (con las reglas de actualización anteriores restauradas) |
 
-Por qué algunos defectos siguen abiertos: D1 depende de qué versiones de PostgreSQL decida soportar EnVault (el entorno de pruebas usa PostgreSQL 18 y un test dedicado ejecuta D1 contra PostgreSQL 16); D3 es el valor por defecto fijo de la biblioteca de inicio de sesión, y hacerlo configurable es una decisión de diseño de seguridad; D8 depende de si esas pantallas están pensadas para usuarios comunes (si son solo para administradores, la corrección es ocultarlas); D14 depende de cómo deba informarse un job que está por reintentarse. D17 se confirmó después de cerrada la lista aprobada de correcciones y espera la aprobación del dueño; D16 y D18 son sospechas surgidas de leer el código que no se han demostrado. Los tests de D1 y D8 se mantienen en la suite para que la ejecución cambie de estado cuando se corrijan. Hay más detalle en [e2e-testing.md](e2e-testing.md#defectos-conocidos).
+Las dos últimas correcciones en detalle. D17: al actualizar un backup programado (cron job), la capa de datos devolvía solo los campos enviados, así que tras un cambio de nombre el servicio no encontraba el valor "activo", trataba el cron job como pausado, lo quitaba del planificador y borraba su próxima ejecución; solo volvía cuando se reiniciaba la API. La corrección carga el cron job guardado, guarda la versión combinada y la devuelve completa, y un id desconocido ahora responde 404 (no encontrado). D18: las reglas que validan una actualización (los DTO de actualización, objetos de transferencia de datos) marcaban todos los campos como opcionales, y en la biblioteca de validación que usa EnVault un campo opcional se salta la validación tanto con `null` como cuando falta, así que `null` llegaba a la base de datos y la API respondía 500 (un error interno); para la expresión de un cron job respondía 400 solo por casualidad, con un mensaje de error interno de JavaScript en el cuerpo. La corrección se salta la validación solo cuando el campo falta, así que `null` ahora responde 400 con el cuerpo de error estándar. Los límites de retención de un cron job siguen aceptando `null` a propósito, porque es la forma de quitar un límite. Los tests unitarios pasaron de rojo a verde en ambos casos (D17: 6 fallidos y 7 pasados antes de la corrección, 13 de 13 después; D18: 15 fallidos antes de la corrección, 75 de 75 después en los módulos de conexiones y de cron jobs), y los tests de Playwright nuevos, en `cronjobs.api.spec.ts` (un archivo nuevo con 13 tests) y `connections.api.spec.ts` (8 casos de `null` más), se ejecutaron contra un entorno de pruebas construido con el código anterior a cada corrección, donde fallaron los tests dirigidos al defecto (4 para D17, los casos de `null` para D18), y pasaron después de ella.
+
+Por qué algunos defectos siguen abiertos: D1 depende de qué versiones de PostgreSQL decida soportar EnVault (el entorno de pruebas usa PostgreSQL 18 y un test dedicado ejecuta D1 contra PostgreSQL 16); D3 es el valor por defecto fijo de la biblioteca de inicio de sesión, y hacerlo configurable es una decisión de diseño de seguridad; D8 depende de si esas pantallas están pensadas para usuarios comunes (si son solo para administradores, la corrección es ocultarlas); D14 depende de cómo deba informarse un job que está por reintentarse. D16 es una sospecha surgida de leer el código que no se ha demostrado. Los tests de D1 y D8 se mantienen en la suite para que la ejecución cambie de estado cuando se corrijan. Hay más detalle en [e2e-testing.md](e2e-testing.md#defectos-conocidos).
 
 ---
 
 ## 8. Cobertura de caja blanca
 
-La cobertura de código es la proporción del código que los tests unitarios realmente ejecutan: sentencias (instrucciones), ramas (cada resultado de un `if`, un `switch` o un operador lógico), funciones y líneas. EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreSQL y MySQL y las restaura) la mide con `pnpm test:coverage` sobre sus tres paquetes: la API (Jest, con el contador Istanbul) y la app web y la landing (Vitest, con el contador V8). La línea base se tomó el 2026-10-13 (commit `e1612c4`), antes de cualquier corrección; la segunda medición el 2026-10-14 (commit `23eedc4`), después de las once correcciones. Cada corrección agregó tests unitarios.
+La cobertura de código es la proporción del código que los tests unitarios realmente ejecutan: sentencias (instrucciones), ramas (cada resultado de un `if`, un `switch` o un operador lógico), funciones y líneas. EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreSQL y MySQL y las restaura) la mide con `pnpm test:coverage` sobre sus tres paquetes: la API (Jest, con el contador Istanbul) y la app web y la landing (Vitest, con el contador V8). La línea base se tomó el 2026-10-13 (commit `e1612c4`), antes de cualquier corrección; la segunda medición el 2026-10-14 (commit `23eedc4`), después de las once primeras correcciones; la tercera el 2026-10-15 (commit `60fe003`), después de las correcciones de D17 y D18. Cada corrección agregó tests unitarios. Cada celda se lee línea base → después de once correcciones → después de trece.
 
-| Paquete | Tests antes → después | Sentencias | Ramas | Funciones | Líneas |
-|---------|-----------------------|-----------:|------:|----------:|-------:|
-| API | 365 → 548 | 52,9 % → 61,14 % | 40,89 % → 43,8 % | 38,04 % → 49,49 % | 52,93 % → 61,18 % |
-| App web | 171 → 202 | 26,44 % → 33,29 % | 27,28 % → 31,79 % | 24,05 % → 30,77 % | 27,91 % → 34,91 % |
-| Landing | 42 → 42 | 10,19 % → 10,19 % | 7,88 % → 7,88 % | 26,78 % → 26,78 % | 10 % → 10 % |
+| Paquete | Tests | Sentencias | Ramas | Funciones | Líneas |
+|---------|-------|-----------:|------:|----------:|-------:|
+| API | 365 → 548 → 585 | 52,9 % → 61,14 % → 62,32 % | 40,89 % → 43,8 % → 45,25 % | 38,04 % → 49,49 % → 51,17 % | 52,93 % → 61,18 % → 62,43 % |
+| App web | 171 → 202 → 202 | 26,44 % → 33,29 % → 33,29 % | 27,28 % → 31,79 % → 31,79 % | 24,05 % → 30,77 % → 30,77 % | 27,91 % → 34,91 % → 34,91 % |
+| Landing | 42 → 42 → 42 | 10,19 % → 10,19 % → 10,19 % | 7,88 % → 7,88 % → 7,88 % | 26,78 % → 26,78 % → 26,78 % | 10 % → 10 % → 10 % |
 
-Los números son deterministas (una ejecución repetida dio resultados idénticos), y la ejecución desde un clon limpio del 2026-10-15 reprodujo exactamente las cifras "después" de sentencias y de líneas.
+Los números son deterministas (una ejecución repetida dio resultados idénticos), y la ejecución desde un clon limpio del 2026-10-15, en el commit `9902fee`, reprodujo exactamente la segunda medición de sentencias y de líneas.
 
-Qué significan los números: alrededor de seis décimas del código de la API, un tercio de la app web y una décima parte de la landing se ejecutan bajo tests unitarios. Las correcciones no tocaron la landing, así que no cambió.
+Qué significan los números: alrededor de seis décimas del código de la API, un tercio de la app web y una décima parte de la landing se ejecutan bajo tests unitarios. Las correcciones de D17 y D18 solo tocaron la API (tests unitarios nuevos del repositorio y del servicio de backups programados y de las reglas de actualización de conexiones y de cron jobs), así que la app web y la landing no cambiaron en la tercera medición; ninguna corrección tocó la landing.
 
 Qué no significan:
 
@@ -263,7 +268,7 @@ La suite de caja negra encontró defectos que la cobertura no podía mostrar: D6
 
 ## 9. Resultados de rendimiento
 
-La suite de rendimiento de EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreSQL y MySQL y las restaura) mide el tiempo de backups y restores, de la cola de jobs, de la carga de páginas y de las respuestas de la API contra el entorno Docker hermético, con el almacenamiento de objetos a cargo de MinIO en la misma máquina. La ejecución de referencia que se usa aquí se tomó el 2026-10-13 (UTC) en el commit `490f42eba8` más el trabajo de la suite de rendimiento todavía sin commitear (luego commiteado como `235b64d`). Eso fue antes de las correcciones de defectos y antes de que se desactivara el log binario de MySQL en el entorno de pruebas; este informe no afirma nada sobre si esos cambios afectan las cifras.
+La suite de rendimiento de EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreSQL y MySQL y las restaura) mide el tiempo de backups y restores, de la cola de jobs, de la carga de páginas y de las respuestas de la API contra el entorno Docker hermético, con el almacenamiento de objetos a cargo de MinIO en la misma máquina. La ejecución de referencia que se usa aquí se tomó el 2026-10-13 (UTC) en el commit `490f42eba8` más el trabajo de la suite de rendimiento todavía sin commitear (luego commiteado como `235b64d`). Eso fue antes de las trece correcciones de defectos (incluidas las de D17 y D18) y antes de que se desactivara el log binario de MySQL en el entorno de pruebas; este informe no afirma nada sobre si esos cambios afectan las cifras.
 
 Cómo leer las cifras:
 
@@ -338,7 +343,7 @@ Repetibilidad de las mediciones: dos ejecuciones completas durante el desarrollo
 
 ## 10. Evidencia de fiabilidad
 
-Una suite de pruebas solo sirve si se puede confiar en su resultado: una ejecución en rojo debe significar un problema real, y una en verde no debe ser cuestión de suerte. Un test inestable (flaky) es el que pasa o falla sobre el mismo código sin ningún cambio, casi siempre por tiempos, datos compartidos o el orden de los tests. Para medirlo, toda la suite funcional de Playwright de EnVault (256 tests: API, navegador y backup/restore) se ejecutó 13 veces seguidas el 2026-10-15, en el commit `9902fee`, contra un único entorno Docker hermético levantado una sola vez con `pnpm docker:e2e` (24,9 s con las imágenes ya construidas). Los reintentos están en 0 a propósito: Playwright puede volver a ejecutar automáticamente un test fallido, lo que ocultaría un test inestable, así que aquí un solo fallo pone la ejecución en rojo. Por defecto Playwright usó 8 workers (procesos en paralelo) en esta máquina.
+Una suite de pruebas solo sirve si se puede confiar en su resultado: una ejecución en rojo debe significar un problema real, y una en verde no debe ser cuestión de suerte. Un test inestable (flaky) es el que pasa o falla sobre el mismo código sin ningún cambio, casi siempre por tiempos, datos compartidos o el orden de los tests. La evidencia proviene de tres verificaciones sobre dos commits. Primer estudio: para medirlo, toda la suite funcional de Playwright de EnVault (256 tests: API, navegador y backup/restore) se ejecutó 13 veces seguidas el 2026-10-15, en el commit `9902fee`, contra un único entorno Docker hermético levantado una sola vez con `pnpm docker:e2e` (24,9 s con las imágenes ya construidas). Los reintentos están en 0 a propósito: Playwright puede volver a ejecutar automáticamente un test fallido, lo que ocultaría un test inestable, así que aquí un solo fallo pone la ejecución en rojo. Por defecto Playwright usó 8 workers (procesos en paralelo) en esta máquina.
 
 | Ejecución | Comando | Por qué esta variante | Resultado | Tiempo de Playwright |
 |-----------|---------|-----------------------|-----------|----------------------|
@@ -351,7 +356,7 @@ Totales: 13 ejecuciones, 3838 ejecuciones de tests, 3823 pasadas, 15 omitidas po
 
 Qué muestra esto: los resultados no dependen del orden de los tests, del paralelismo ni de la repetición, y los tests limpian lo que crean, ya que 13 ejecuciones compartieron un mismo entorno sin interferir. Esto coincide con la historia del trabajo: durante el desarrollo la suite completa ya había superado más de 30 ejecuciones completas consecutivas con conteos idénticos, y cada corrección de defecto se verificó por mutación (el código anterior restaurado, los tests nuevos vistos fallar, la corrección restaurada).
 
-Segunda verificación, un clon limpio (2026-10-15, de 13:55 a 14:00, UTC-6): para probar que el repositorio y su documentación bastan por sí solos, la rama se clonó con `git clone --branch feat/e2e-playwright-suite` en una carpeta nueva y se siguió al pie de la letra el "Camino rápido" de [e2e-testing.md](e2e-testing.md).
+Segunda verificación, un clon limpio (2026-10-15, de 13:55 a 14:00, UTC-6, en el commit `9902fee`): para probar que el repositorio y su documentación bastan por sí solos, la rama se clonó con `git clone --branch feat/e2e-playwright-suite` en una carpeta nueva y se siguió al pie de la letra el "Camino rápido" de [e2e-testing.md](e2e-testing.md).
 
 | Paso | Comando | Resultado | Tiempo |
 |------|---------|-----------|--------|
@@ -366,6 +371,15 @@ Segunda verificación, un clon limpio (2026-10-15, de 13:55 a 14:00, UTC-6): par
 
 Ningún paso documentado estaba mal. El límite de esta verificación: se hizo en la misma máquina física, así que el almacén de paquetes, la descarga de Chromium y las imágenes base de Docker ya estaban presentes. Prueba que el repositorio más su documentación se bastan a sí mismos, no lo que cuesta una primera instalación en una máquina nueva (una primera construcción con `pnpm docker:e2e` tardó unos 3 minutos, 194,5 s, en una etapa anterior del proyecto).
 
+Tercera verificación, una repetición después de las dos últimas correcciones (2026-10-15, de 14:33 a 14:39, UTC-6, en el commit `60fe003`): las correcciones de D17 y D18 cambiaron código de la API y agregaron 21 tests de API, así que la suite (ahora de 277 tests) se volvió a ejecutar contra un entorno de pruebas reconstruido con ese código (`pnpm docker:e2e`, 66,1 s), con los reintentos en 0 y los 8 workers por defecto.
+
+| Ejecución | Comando | Resultado | Tiempo de Playwright |
+|-----------|---------|-----------|----------------------|
+| 1-5 | `pnpm test:e2e`, 5 veces seguidas | Cada una: 276 passed, 1 skipped, 0 failed | 26,4; 25,8; 25,3; 24,6; 25,2 s |
+| 6 | `pnpm test:e2e --repeat-each=3` | 829 tests (el paso de inicio de sesión una vez, más 3 x 276), 826 passed, 3 skipped | 1,2 min |
+
+Totales de esta verificación: 6 ejecuciones, 2214 ejecuciones de tests, 2206 pasadas, 8 omitidas por diseño (la misma verificación de D1), 0 fallos, 0 tests inestables. Las ejecuciones con 1 y con 16 workers no se repitieron. Después el entorno se eliminó (no quedaron contenedores, volúmenes ni redes: 0), y sobre el mismo código `pnpm test` pasó (API: 63 archivos de tests pasados y 4 omitidos, 585 tests pasados y 32 omitidos; app web: 38 archivos, 202 tests; landing: 4 archivos, 42 tests), y `pnpm typecheck` y `pnpm lint` terminaron con código de salida 0 (sin errores). Sumando ambos commits, la suite se ejecutó 19 veces, 6052 ejecuciones de tests, con 0 fallos; esa cifra abarca dos versiones del código, `9902fee` y `60fe003`.
+
 ---
 
 ## 11. Limitaciones y amenazas a la validez
@@ -378,14 +392,16 @@ Los resultados de este trabajo de QA sobre EnVault (una aplicación autoalojada 
 | Solo Chromium | No se probaron Firefox ni WebKit (Safari), ni tamaños de pantalla de móviles. |
 | Todavía sin CI | La suite se ejecuta en una máquina de desarrollo; nada la ejecuta automáticamente con cada cambio. |
 | MinIO en lugar de Cloudflare R2 | No se cubren el comportamiento de almacenamiento propio de R2 ni el viaje por la red hasta él; las cifras de rendimiento excluyen ese viaje. |
-| Rendimiento medido antes de las correcciones | La ejecución de referencia es anterior a las once correcciones de defectos y al cambio que desactivó el log binario de MySQL. No se repitió después. |
+| Rendimiento medido antes de las correcciones | La ejecución de referencia es anterior a las trece correcciones de defectos y al cambio que desactivó el log binario de MySQL. No se repitió después. |
+| Repetición más corta después de las últimas correcciones | En `60fe003` la suite se ejecutó 6 veces (5 ejecuciones normales y una con `--repeat-each=3`); las ejecuciones con 1 y con 16 workers y el clon limpio se hicieron solo en `9902fee`. |
 | Una sola ejecución de referencia de rendimiento | Las cifras vienen de una ejecución completa (con una segunda usada solo para verificar la repetibilidad) en una máquina; son valores de referencia, no garantías. |
 | D8 sigue como fallo esperado | Cuatro tests documentan un defecto abierto en lugar de verificar un comportamiento que funciona. |
-| Clon limpio en una máquina con cachés | La verificación con un clon limpio reutilizó cachés que ya estaban en la máquina, así que no mide una primera instalación. |
+| Clon limpio en una máquina con cachés | La verificación con un clon limpio reutilizó cachés que ya estaban en la máquina, así que no mide una primera instalación; se hizo en `9902fee`, antes de las dos últimas correcciones. |
 | Sin pruebas de carga ni de estrés | No se probó el comportamiento con muchos usuarios simultáneos; la prueba de la cola usó como máximo 6 backups simultáneos. |
 | Sin pruebas de accesibilidad ni visuales | No se verificaron el soporte de lectores de pantalla, el contraste ni las regresiones visuales. |
 | Los tests son código nuevo | El propio código de las pruebas tuvo una revisión independiente limitada; algunas mejoras de las funciones auxiliares sugeridas por una revisión automatizada siguen pendientes. |
 | Tablas de cobertura en parte antiguas | Las tablas de cobertura por área y por archivo son de la línea base; después de las correcciones solo se volvieron a medir los totales. |
+| Posibles problemas sin verificar | Mientras se corregían D17 y D18 se notaron en el código tres posibles problemas; ninguno se verificó en ejecución ni se numeró como defecto. Crear una conexión o un backup programado podría seguir dejando pasar `null` en los campos que son opcionales al crear (`dbType`, `retentionEnabled`), probablemente con una respuesta 500, el mismo tipo de problema que D18. El endpoint que pausa y reanuda un backup programado responde 201 ("creado") en lugar de 200 ("OK"). Antes de la corrección de D17, el registro de auditoría de una actualización de backup programado probablemente buscaba una conexión arbitraria; esto se deduce del código, y la corrección de D17 eliminó ese camino. |
 
 ---
 
@@ -397,8 +413,8 @@ Todos los resultados de este informe de QA sobre EnVault (una aplicación autoal
 |----------|----------|
 | Preparar una sola vez | `cp .env.e2e.example .env.e2e`, `pnpm install`, `pnpm e2e:install` |
 | Levantar el entorno de pruebas | `pnpm docker:e2e` |
-| Ejecutar la suite funcional | `pnpm test:e2e` (esperado: 255 passed, 1 skipped) |
-| Repetir el estudio de fiabilidad | `pnpm test:e2e` diez veces, luego `pnpm test:e2e --workers=1`, `pnpm test:e2e --workers=16` y `pnpm test:e2e --repeat-each=3` |
+| Ejecutar la suite funcional | `pnpm test:e2e` (esperado en `60fe003`: 276 passed, 1 skipped) |
+| Repetir el estudio de fiabilidad | `pnpm test:e2e` diez veces, luego `pnpm test:e2e --workers=1`, `pnpm test:e2e --workers=16` y `pnpm test:e2e --repeat-each=3` (el primer estudio; la repetición después de las últimas correcciones usó 5 ejecuciones normales y `--repeat-each=3`) |
 | Abrir el informe HTML de la última ejecución | `pnpm test:e2e:report` |
 | Ejecutar la suite de rendimiento | `pnpm test:e2e:perf` (unos 17 minutos; resultados en `e2e/perf-results/`) |
 | Detener y borrar el entorno | `pnpm docker:e2e:down` |
@@ -413,15 +429,15 @@ Las instrucciones completas, las variantes de cada comando y la tabla de soluci�
 Conclusiones del trabajo de QA sobre EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreSQL y MySQL y las restaura), probada con una suite de caja negra en Playwright y los tests unitarios existentes en Jest y Vitest:
 
 - Playwright alcanzó para cubrir la API, la interfaz en el navegador y todo el camino de backup y restore con una sola herramienta, y para medir el rendimiento con esa misma herramienta.
-- La suite de caja negra encontró 18 defectos; 11 se corrigieron con un test escrito primero, entre ellos un defecto de seguridad (D6), uno de protección ante operaciones peligrosas (D12) y uno de integridad de datos (D15); D6 y D12 estaban en código que los tests unitarios no alcanzaban o no ejecutaban con la entrada que lo rompe.
-- La suite demostró ser estable: 3838 ejecuciones de tests en 13 ejecuciones con distinto paralelismo y repetición, 0 fallos y 0 tests inestables, y el mismo resultado desde un clon limpio.
-- Las correcciones subieron la cobertura por tests unitarios de la API del 52,93 % al 61,18 % de las líneas y la de la app web del 27,91 % al 34,91 %.
+- La suite de caja negra encontró 18 defectos; 13 se corrigieron con un test escrito primero, entre ellos un defecto de seguridad (D6), uno de protección ante operaciones peligrosas (D12), uno de integridad de datos (D15) y uno que sacaba backups programados del planificador (D17); D6 y D12 estaban en código que los tests unitarios no alcanzaban o no ejecutaban con la entrada que lo rompe.
+- La suite demostró ser estable: 3838 ejecuciones de tests en 13 ejecuciones con distinto paralelismo y repetición en `9902fee`, y 2214 más en 6 ejecuciones en `60fe003` después de las dos últimas correcciones, con 0 fallos y 0 tests inestables; un clon limpio en `9902fee` dio el mismo resultado.
+- Las correcciones subieron la cobertura por tests unitarios de la API del 52,93 % al 62,43 % de las líneas (61,18 % después de las once primeras) y la de la app web del 27,91 % al 34,91 %.
 - La referencia de rendimiento muestra backups de una base de 500 MiB en menos de 9 s y deja a la vista el paso más lento, el restore de MySQL (unos 23 MiB/s).
 
 Próximos pasos:
 
 1. Ejecutar la suite en CI con cada cambio, idealmente sobre Linux, para eliminar la limitación de una sola máquina.
-2. Decidir sobre los defectos abiertos D1, D3, D8 y D14, y aprobar o rechazar la corrección de D17 y las verificaciones de D16 y D18.
+2. Decidir sobre los defectos abiertos D1, D3, D8 y D14, confirmar o descartar D16, y verificar los posibles problemas anotados en las limitaciones que podrían seguir presentes (`null` al crear, la respuesta 201 de pausar y reanudar).
 3. Repetir la ejecución de rendimiento sobre el código actual, y una vez contra un bucket real de Cloudflare R2.
 4. Extender las pruebas de navegador a Firefox y WebKit, y agregar verificaciones de accesibilidad.
 5. Agregar tests unitarios donde la cobertura de la línea base era más débil: la estrategia de restore de MySQL, el módulo de conexiones y las pantallas web de limpieza, usuarios y cron jobs.
