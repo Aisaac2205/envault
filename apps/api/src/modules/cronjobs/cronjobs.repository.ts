@@ -34,8 +34,14 @@ export class CronjobsRepository {
     return this.repository.save(entity);
   }
 
-  update(id: string, data: Partial<CronjobEntity>): Promise<CronjobEntity> {
-    return this.repository.save({ id, ...data });
+  // Merges into the stored row so that save() resolves with the whole cronjob.
+  // Saving `{ id, ...data }` resolved with the request's fields only, and the
+  // service, which reads `isActive` and `cronExpression` from the result,
+  // unscheduled an active cronjob on every rename. Null when the row is gone.
+  async update(id: string, data: Partial<CronjobEntity>): Promise<CronjobEntity | null> {
+    const existing = await this.findById(id);
+    if (!existing) return null;
+    return this.repository.save(this.repository.merge(existing, data));
   }
 
   async updateRunMetadata(id: string, data: RunMetadata): Promise<void> {
