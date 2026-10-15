@@ -6,6 +6,8 @@ Pruebas de extremo a extremo (E2E) que ejercitan EnVault desde afuera, como lo h
 
 Es testing de **caja negra**: la suite solo habla HTTP y maneja un navegador real. Las pruebas unitarias de **caja blanca** siguen donde estaban, en Jest (`apps/api`) y Vitest (`apps/web`, `apps/landing`), y se ejecutan con `pnpm test`; su cobertura se mide con `pnpm test:coverage` (ver [testing-coverage.md](testing-coverage.md)). `pnpm test` nunca recoge las specs E2E; estas tienen su propio comando, `pnpm test:e2e`. La suite de rendimiento es un benchmark aparte, con su propio comando, `pnpm test:e2e:perf`, y tampoco forma parte de `pnpm test:e2e`.
 
+Los resultados de esta suite, su evidencia de fiabilidad y los defectos que encontró se resumen en el [informe de QA](qa-report.md).
+
 ---
 
 ## Camino rápido

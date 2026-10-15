@@ -4,6 +4,8 @@
 
 White-box testing looks inside the code: the tests are written knowing how the program is built, and a coverage tool reports which statements, branches and functions they actually ran. EnVault measures it on its unit suites (Jest in `apps/api`, Vitest in `apps/web` and `apps/landing`) with one command, `pnpm test:coverage`. It is the counterpart of the black-box E2E suite described in [e2e-testing.md](e2e-testing.md).
 
+The coverage results, together with the rest of the QA evidence, are summarised in the [QA report](qa-report.md).
+
 ---
 
 ## Quick path

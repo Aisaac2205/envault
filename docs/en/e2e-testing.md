@@ -6,6 +6,8 @@ End-to-end (E2E) tests that exercise EnVault from the outside, the way a user or
 
 This is **black-box** testing: the suite only talks HTTP and drives a real browser. The **white-box** unit tests stay where they were, in Jest (`apps/api`) and Vitest (`apps/web`, `apps/landing`), and run with `pnpm test`; their coverage is measured with `pnpm test:coverage` (see [testing-coverage.md](testing-coverage.md)). E2E specs are never collected by `pnpm test`; they have their own command, `pnpm test:e2e`. The performance suite is a separate benchmark with its own command, `pnpm test:e2e:perf`, and is never part of `pnpm test:e2e` either.
 
+The results of this suite, its reliability evidence and the defects it found are summarised in the [QA report](qa-report.md).
+
 ---
 
 ## Quick path

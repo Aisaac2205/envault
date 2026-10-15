@@ -4,6 +4,8 @@
 
 Las pruebas de caja blanca miran dentro del código: los tests se escriben conociendo cómo está construido el programa, y una herramienta de cobertura informa qué sentencias, ramas y funciones ejecutaron en realidad. EnVault la mide en sus suites unitarias (Jest en `apps/api`, Vitest en `apps/web` y `apps/landing`) con un solo comando, `pnpm test:coverage`. Es la contraparte de la suite E2E de caja negra descrita en [e2e-testing.md](e2e-testing.md).
 
+Los resultados de cobertura, junto con el resto de la evidencia de QA, se resumen en el [informe de QA](qa-report.md).
+
 ---
 
 ## Camino rápido
