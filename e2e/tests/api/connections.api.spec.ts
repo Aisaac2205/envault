@@ -236,6 +236,25 @@ test.describe('update', () => {
     );
   });
 
+  // Regression guard for D18: the update DTO marked every field optional with
+  // `@IsOptional()`, which lets `null` skip validation as well, so a `null` for
+  // a required field reached the database and came back as a 500.
+  for (const field of ['name', 'environment', 'dbType', 'host', 'port', 'database', 'username', 'password']) {
+    test(`rejects a null ${field} with 400 and keeps the connection`, async ({ request, createConnection }) => {
+      const { connection } = await createConnection({ ...MYSQL_SOURCE });
+
+      await expectErrorEnvelope(
+        await request.patch(`connections/${connection.id}`, { data: { [field]: null } }),
+        400,
+      );
+
+      const reread = await expectSuccessEnvelope<Connection>(
+        await request.get(`connections/${connection.id}`),
+      );
+      expect(reread).toEqual(connection);
+    });
+  }
+
   test('answers 404 for an unknown id', async ({ request }) => {
     await expectErrorEnvelope(
       await request.patch(`connections/${UNKNOWN_ID}`, { data: { name: uniqueName('ghost') } }),

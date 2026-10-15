@@ -41,4 +41,19 @@ describe('UpdateConnectionDto', () => {
   it('rejects an unknown engine with 400', async () => {
     await expect(validate({ dbType: 'oracle' })).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  // PartialType marks every field with @IsOptional(), which skips validation for
+  // null as well as for a missing field, so `{ name: null }` reached the
+  // database and failed there with a 500. Every column of a connection is
+  // required, so null is never a value an update can set.
+  it.each(['name', 'environment', 'dbType', 'host', 'port', 'database', 'username', 'password'])(
+    'rejects a null %s with 400',
+    async (field) => {
+      await expect(validate({ [field]: null })).rejects.toBeInstanceOf(BadRequestException);
+    },
+  );
+
+  it('still accepts a body that leaves a field out', async () => {
+    await expect(validate({ host: 'db.internal' })).resolves.toEqual({ host: 'db.internal' });
+  });
 });

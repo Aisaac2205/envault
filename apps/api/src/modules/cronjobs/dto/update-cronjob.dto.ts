@@ -1,9 +1,23 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IntersectionType, OmitType, PartialType } from '@nestjs/mapped-types';
+import { IsBoolean } from 'class-validator';
 import { CreateCronjobDto } from './create-cronjob.dto';
 
-export class UpdateCronjobDto extends PartialType(CreateCronjobDto) {
-  @IsOptional()
+// Switches an update may change. `retentionEnabled` is optional on create and
+// carries @IsOptional() there, which would let `null` through on an update too.
+class CronjobSwitchesDto {
   @IsBoolean()
-  isActive?: boolean;
+  isActive!: boolean;
+
+  @IsBoolean()
+  retentionEnabled!: boolean;
 }
+
+// Every field may be left out. `skipNullProperties: false` makes PartialType
+// skip validation only for a missing field; its default, @IsOptional(), also
+// skips it for null, which then failed in the database with a 500. The
+// retention limits keep the @IsOptional() of the create DTO on purpose: they
+// are nullable columns, and null is how a limit is removed.
+export class UpdateCronjobDto extends PartialType(
+  IntersectionType(OmitType(CreateCronjobDto, ['retentionEnabled'] as const), CronjobSwitchesDto),
+  { skipNullProperties: false },
+) {}

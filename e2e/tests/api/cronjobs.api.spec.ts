@@ -166,3 +166,48 @@ test.describe('toggle', () => {
     expectFutureDate(resumed.nextRunAt);
   });
 });
+
+// Regression guard for D18: the update DTO marked every field optional with
+// `@IsOptional()`, which lets `null` skip validation as well, so a `null` for a
+// required field reached the database and came back as a 500.
+test.describe('update with null', () => {
+  for (const field of ['name', 'cronExpression', 'frequency', 'connectionId', 'isActive', 'retentionEnabled']) {
+    test(`rejects a null ${field} with 400 and keeps the cronjob`, async ({ request, createCronjob }) => {
+      const cronjob = await createCronjob();
+
+      await expectErrorEnvelope(
+        await request.patch(`cronjobs/${cronjob.id}`, { data: { [field]: null } }),
+        400,
+      );
+
+      const reread = await expectSuccessEnvelope<Cronjob>(await request.get(`cronjobs/${cronjob.id}`));
+      expect(reread).toMatchObject({
+        name: cronjob.name,
+        cronExpression: cronjob.cronExpression,
+        frequency: cronjob.frequency,
+        connectionId: cronjob.connectionId,
+        isActive: true,
+        nextRunAt: cronjob.nextRunAt,
+      });
+    });
+  }
+
+  // The retention limits are nullable columns: null is how a limit is removed.
+  test('clears a retention limit with null', async ({ request, createCronjob }) => {
+    const cronjob = await createCronjob();
+    await assertOk(
+      await request.patch(`cronjobs/${cronjob.id}`, { data: { retentionKeepLast: 3 } }),
+      'Setting a retention limit',
+    );
+
+    const updated = await expectSuccessEnvelope<Cronjob & { retentionKeepLast: number | null }>(
+      await request.patch(`cronjobs/${cronjob.id}`, { data: { retentionKeepLast: null } }),
+    );
+
+    expect(updated).toMatchObject({ retentionKeepLast: null, isActive: true });
+    const reread = await expectSuccessEnvelope<{ retentionKeepLast: number | null }>(
+      await request.get(`cronjobs/${cronjob.id}`),
+    );
+    expect(reread.retentionKeepLast).toBeNull();
+  });
+});
