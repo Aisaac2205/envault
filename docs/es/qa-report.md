@@ -407,7 +407,7 @@ Los resultados de este trabajo de QA sobre EnVault (una aplicación autoalojada 
 
 ## 12. Cómo reproducir los resultados
 
-Todos los resultados de este informe de QA sobre EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreSQL y MySQL y las restaura) se pueden reproducir desde el repositorio con los comandos siguientes, ejecutados desde su raíz. Requisitos: Node.js 22 o posterior, pnpm 10 o posterior, Docker con Compose, y los puertos 5173, 3000, 5435, 3307, 9000 y 9001 libres.
+Todos los resultados de este informe de QA sobre EnVault (una aplicación autoalojada que hace backups de bases de datos PostgreSQL y MySQL y las restaura) se pueden reproducir desde el repositorio con los comandos siguientes, ejecutados desde su raíz. Requisitos: Node.js 22.23.4 o una versión 22.x posterior (fijada en `.nvmrc`), pnpm 10 o posterior, Docker con Compose, y los puertos 5173, 3000, 5435, 3307, 9000 y 9001 libres.
 
 | Objetivo | Comandos |
 |----------|----------|
