@@ -12,6 +12,10 @@ export const envValidationSchema = Joi.object({
   R2_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
   R2_BUCKET_NAME: Joi.string().allow('').default(''),
   R2_PUBLIC_BASE_URL: Joi.string().uri().allow('').default(''),
+  // Optional S3 endpoint override for S3-compatible stores such as MinIO. Leave
+  // it unset (or blank) for Cloudflare R2: the endpoint is then derived from
+  // R2_ACCOUNT_ID. When set, requests use path-style addressing.
+  R2_ENDPOINT: Joi.string().uri({ scheme: ['http', 'https'] }).allow('').optional(),
   // Better Auth
   BETTER_AUTH_SECRET: Joi.string().required(),
   BETTER_AUTH_URL: Joi.string().uri().required(),

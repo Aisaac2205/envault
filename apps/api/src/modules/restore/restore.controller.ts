@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Param,
+  ParseUUIDPipe,
   Body,
   Req,
   UseGuards,
@@ -53,7 +54,7 @@ export class RestoreController {
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   async cancelRestore(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
   ) {
@@ -71,7 +72,7 @@ export class RestoreController {
   }
 
   @Get(':id')
-  getRestoreById(@Param('id') id: string) {
+  getRestoreById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getRestoreById(id);
   }
 }

@@ -16,8 +16,20 @@ import { BackupCategory } from '../../database/enums/backup-category.enum';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
 import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 
+// The PostgreSQL source snapshot opens its own connection to the database being
+// backed up; the specs below that exercise it answer from this fake client.
+const mockPgClient = {
+  connect: jest.fn(),
+  query: jest.fn(),
+  end: jest.fn(),
+};
+jest.mock('pg', () => ({
+  Client: jest.fn().mockImplementation(() => mockPgClient),
+}));
+
 describe('BackupService', () => {
   let service: BackupService;
+  let captureSourceSnapshotSpy: jest.SpyInstance;
   let mockBackupRepository: {
     create: jest.Mock;
     updateStatus: jest.Mock;
@@ -133,12 +145,14 @@ describe('BackupService', () => {
     }).compile();
 
     service = module.get<BackupService>(BackupService);
-    jest.spyOn(service as never, 'captureSourceSnapshot' as never).mockResolvedValue({
-      serverVersion: 'PostgreSQL 16.0',
-      tableCount: 1,
-      estimatedRows: 10,
-      tables: [{ name: 'users', estimatedRows: 10 }],
-    } as never);
+    captureSourceSnapshotSpy = jest
+      .spyOn(service as never, 'captureSourceSnapshot' as never)
+      .mockResolvedValue({
+        serverVersion: 'PostgreSQL 16.0',
+        tableCount: 1,
+        estimatedRows: 10,
+        tables: [{ name: 'users', estimatedRows: 10 }],
+      } as never);
   });
 
   it('createBackup enqueues job in BullMQ and registers SSE', async () => {
@@ -445,6 +459,67 @@ describe('BackupService', () => {
       'job-123',
       expect.any(String),
     );
+  });
+
+  describe('executeQueuedBackup manifest source snapshot (PostgreSQL)', () => {
+    const tableRows = [{ name: 'public.users', estimated_rows: '10' }];
+
+    // Answers each query the way the server does: `SHOW server_version` returns
+    // a column named `server_version`, and the table statistics return their rows.
+    const answerQueries = (versionRows: Array<{ server_version: string }>): void => {
+      mockPgClient.query.mockImplementation((sql: string) =>
+        Promise.resolve({ rows: sql.includes('SHOW server_version') ? versionRows : tableRows }),
+      );
+    };
+
+    const uploadedManifest = async (): Promise<{
+      source: { serverVersion: string; tableCount: number; estimatedRows: number };
+    }> => {
+      const body = mockR2Service.upload.mock.calls[0][1] as AsyncIterable<string>;
+      let json = '';
+      for await (const chunk of body) json += chunk;
+      return JSON.parse(json);
+    };
+
+    beforeEach(() => {
+      // Run the real snapshot capture against the fake pg client.
+      captureSourceSnapshotSpy.mockRestore();
+      mockPgClient.connect.mockResolvedValue(undefined);
+      mockPgClient.end.mockResolvedValue(undefined);
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-snapshot',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/snapshot.dump',
+        category: BackupCategory.MANUAL,
+        triggeredBy: mockUser.id,
+      });
+    });
+
+    it('records the version the server reports in the manifest', async () => {
+      answerQueries([{ server_version: '18.6 (Debian 18.6-1.pgdg13+1)' }]);
+
+      const outcome = await service.executeQueuedBackup('job-snapshot');
+
+      expect(outcome.kind).toBe('finished');
+      expect(mockPgClient.query).toHaveBeenCalledWith('SHOW server_version');
+      const manifest = await uploadedManifest();
+      expect(manifest.source).toMatchObject({
+        serverVersion: '18.6 (Debian 18.6-1.pgdg13+1)',
+        tableCount: 1,
+        estimatedRows: 10,
+      });
+    });
+
+    it('falls back to "unknown" when the server returns no version row', async () => {
+      answerQueries([]);
+
+      const outcome = await service.executeQueuedBackup('job-snapshot');
+
+      expect(outcome.kind).toBe('finished');
+      const manifest = await uploadedManifest();
+      expect(manifest.source.serverVersion).toBe('unknown');
+    });
   });
 
   it('executeQueuedBackup updates DB to FAILED and completes SSE when strategy fails', async () => {

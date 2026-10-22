@@ -55,5 +55,8 @@ ENV CLIENT_IP_MODE=auto
 
 EXPOSE 80
 
+# Probe the IPv4 loopback: inside the container `localhost` resolves to ::1
+# first and nginx only listens on 0.0.0.0:80, so a probe to `localhost` is
+# refused and the container is reported unhealthy while the site answers.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1

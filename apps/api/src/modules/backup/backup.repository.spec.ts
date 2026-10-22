@@ -19,6 +19,7 @@ describe('BackupRepository', () => {
     mockRepo = {
       find: jest.fn(),
       findAndCount: jest.fn(),
+      findOne: jest.fn(),
     };
     dataSource = new DataSource({
       type: 'postgres',
@@ -156,6 +157,23 @@ describe('BackupRepository', () => {
         expect.objectContaining({ where: {} }),
       );
       expect(result.data).toHaveLength(1);
+    });
+  });
+
+  describe('findById', () => {
+    it('looks the job up by its id', async () => {
+      const job = { id: 'job-1' } as BackupJobEntity;
+      mockRepo.findOne!.mockResolvedValue(job);
+
+      await expect(backupRepo.findById('job-1')).resolves.toBe(job);
+      expect(mockRepo.findOne).toHaveBeenCalledWith({ where: { id: 'job-1' } });
+    });
+
+    // TypeORM drops a condition whose value is undefined, so findOne({ where: { id } })
+    // with no id is a query without a where clause and returns an arbitrary row.
+    it.each([undefined, null, ''])('never queries with the empty id %p', async (id) => {
+      await expect(backupRepo.findById(id as unknown as string)).resolves.toBeNull();
+      expect(mockRepo.findOne).not.toHaveBeenCalled();
     });
   });
 

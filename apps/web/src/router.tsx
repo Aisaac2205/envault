@@ -1,9 +1,10 @@
 import { Suspense, lazy, type ReactNode } from "react";
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, type RouteObject } from "react-router-dom";
 import { ProtectedRoute } from "./shared/components/ProtectedRoute";
 import { Layout } from "./shared/components/Layout";
 import { GlobalLoadingOverlay } from "./shared/ui/TetrominoLoader";
 import { useAuth } from "./shared/hooks/useAuth";
+import NotFound from "./features/not-found";
 import {
   LazyDashboard,
   LazyDumps,
@@ -30,7 +31,7 @@ function AuthenticatedLayout({ children }: { children: ReactNode }) {
   );
 }
 
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     path: "/login",
     element: (
@@ -132,4 +133,19 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
   },
-]);
+  {
+    // Anything the table above does not know. It sits behind the same guard as
+    // every other address: a signed-in user sees the not-found screen inside
+    // the app shell, a signed-out visitor is sent to the login screen.
+    path: "*",
+    element: (
+      <ProtectedRoute>
+        <AuthenticatedLayout>
+          <NotFound />
+        </AuthenticatedLayout>
+      </ProtectedRoute>
+    ),
+  },
+];
+
+export const router = createBrowserRouter(routes);

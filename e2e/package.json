@@ -1,0 +1,21 @@
+{
+  "name": "@vaultly-control/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:perf": "playwright test --config playwright.perf.config.ts",
+    "test:e2e:perf:unit": "playwright test --config playwright.perf.config.ts --project=perf-unit",
+    "test:e2e:report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.14.1",
+    "@types/pg": "8.20.0",
+    "mysql2": "3.22.3",
+    "pg": "8.20.0",
+    "typescript": "^5.8.3"
+  }
+}

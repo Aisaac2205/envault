@@ -140,6 +140,9 @@ export class CronjobsService implements OnApplicationBootstrap {
       this.validateCronExpression(dto.cronExpression);
     }
     const updated = await this.repository.update(id, dto);
+    if (!updated) {
+      throw new NotFoundException(`Cronjob con ID "${id}" no encontrado`);
+    }
     this.unregisterCronJob(id);
     if (updated.isActive) {
       this.registerCronJob(updated);
@@ -163,6 +166,9 @@ export class CronjobsService implements OnApplicationBootstrap {
       throw new NotFoundException(`Cronjob con ID "${id}" no encontrado`);
     }
     const updated = await this.repository.update(id, { isActive: !existing.isActive });
+    if (!updated) {
+      throw new NotFoundException(`Cronjob con ID "${id}" no encontrado`);
+    }
     if (updated.isActive) {
       this.registerCronJob(updated);
     } else {

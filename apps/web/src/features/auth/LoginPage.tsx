@@ -52,19 +52,25 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const { error: authError } = await authClient.signIn.email({
-      email,
-      password,
-    });
+    try {
+      const { error: authError } = await authClient.signIn.email({
+        email,
+        password,
+      });
 
-    setLoading(false);
+      if (authError) {
+        setError(authError.message ?? t("error.invalidCredentials"));
+        return;
+      }
 
-    if (authError) {
-      setError(authError.message ?? t("error.invalidCredentials"));
-      return;
+      navigate("/");
+    } catch {
+      // The request never got an answer (API down, connection reset): the
+      // client rejects instead of returning an error object.
+      setError(t("error.network"));
+    } finally {
+      setLoading(false);
     }
-
-    navigate("/");
   }
 
   return (

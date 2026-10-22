@@ -38,6 +38,9 @@ R2_ACCESS_KEY_ID=<your-r2-access-key-id>
 R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
 R2_BUCKET_NAME=envault-dumps
 R2_PUBLIC_BASE_URL=
+# Override opcional del endpoint para stores compatibles con S3 como MinIO.
+# Dejarlo sin setear para Cloudflare R2. Ver la nota debajo del bloque.
+# R2_ENDPOINT=http://minio:9000
 
 # ── Restore y Backup (opcional) ────────────────────────────────
 # Timeout en milisegundos para restauraciones (default: 1800000 = 30 min).
@@ -65,6 +68,8 @@ DB_PASSWORD=changeme
 ```
 
 > En Docker Compose, `DATABASE_URL` usa el nombre del servicio como host (`db` en lugar de `localhost`).
+>
+> `R2_ENDPOINT` (opcional) apunta el almacenamiento de backups a un servidor compatible con S3 como MinIO en lugar de Cloudflare R2. Tiene que ser una URL `http://` o `https://`. Cuando está seteada, el endpoint deja de derivarse de `R2_ACCOUNT_ID` (que puede quedar vacía), las requests usan path-style (`<endpoint>/<bucket>/<key>`), y la access key, la secret key y el bucket siguen siendo obligatorios. Las URLs firmadas de descarga embeben este endpoint, así que tiene que ser alcanzable por quien las abra. Dejarla sin setear (o vacía) para Cloudflare R2: el comportamiento no cambia.
 >
 > `CORS_ORIGIN` la sigue exigiendo la validación de env aunque las topologías same-origin de Docker Compose / Railway de más abajo hagan que el browser nunca llegue a la API cross-origin — ver la nota al lado, ahí abajo.
 
@@ -132,6 +137,7 @@ R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=envault-dumps
 R2_PUBLIC_BASE_URL=
+# R2_ENDPOINT=http://minio:9000  # solo stores compatibles con S3; sin setear para Cloudflare R2
 ```
 
 Ver `.env.example` en la raíz para la plantilla completa con todas las claves y comentarios.

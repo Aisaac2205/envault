@@ -12,6 +12,7 @@ import esCronjobs from './locales/es/cronjobs.json'
 import esConnections from './locales/es/connections.json'
 import esUsers from './locales/es/users.json'
 import esAudit from './locales/es/audit.json'
+import esNotFound from './locales/es/notFound.json'
 
 import enCommon from './locales/en/common.json'
 import enAuth from './locales/en/auth.json'
@@ -23,6 +24,7 @@ import enCronjobs from './locales/en/cronjobs.json'
 import enConnections from './locales/en/connections.json'
 import enUsers from './locales/en/users.json'
 import enAudit from './locales/en/audit.json'
+import enNotFound from './locales/en/notFound.json'
 
 void i18n
   .use(LanguageDetector)
@@ -42,6 +44,7 @@ void i18n
       'connections',
       'users',
       'audit',
+      'notFound',
     ],
     detection: {
       order: ['localStorage'],
@@ -62,6 +65,7 @@ void i18n
         connections: esConnections,
         users: esUsers,
         audit: esAudit,
+        notFound: esNotFound,
       },
       en: {
         common: enCommon,
@@ -74,6 +78,7 @@ void i18n
         connections: enConnections,
         users: enUsers,
         audit: enAudit,
+        notFound: enNotFound,
       },
     },
   })

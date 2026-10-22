@@ -80,6 +80,53 @@ describe('envValidationSchema Redis configuration', () => {
   });
 });
 
+describe('envValidationSchema R2_ENDPOINT', () => {
+  it('is optional and has no default, so absence keeps the derived R2 endpoint', () => {
+    const { error, value } = envValidationSchema.validate(validEnvironment);
+
+    expect(error).toBeUndefined();
+    expect(value.R2_ENDPOINT).toBeUndefined();
+  });
+
+  it.each([
+    'http://minio:9000',
+    'http://localhost:9000',
+    'https://s3.example.internal',
+  ])('accepts an http(s) endpoint URL: %s', (endpoint) => {
+    const { error, value } = envValidationSchema.validate({
+      ...validEnvironment,
+      R2_ENDPOINT: endpoint,
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.R2_ENDPOINT).toBe(endpoint);
+  });
+
+  it('treats a blank value as unset', () => {
+    const { error } = envValidationSchema.validate({
+      ...validEnvironment,
+      R2_ENDPOINT: '',
+    });
+
+    expect(error).toBeUndefined();
+  });
+
+  it.each([
+    'not a uri',
+    'minio/9000',
+    // Parses as a URI whose scheme is "minio" — the classic forgotten "http://".
+    'minio:9000',
+    'ftp://minio:9000',
+  ])('rejects a value that is not an http(s) URL: %s', (endpoint) => {
+    const { error } = envValidationSchema.validate({
+      ...validEnvironment,
+      R2_ENDPOINT: endpoint,
+    });
+
+    expect(error).toBeDefined();
+  });
+});
+
 describe('envValidationSchema CORS_ORIGIN', () => {
   it.each([
     '*',

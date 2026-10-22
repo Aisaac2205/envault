@@ -76,7 +76,15 @@ export class ConnectionsRepository {
     return this.dataSource.transaction(async (manager) => {
       const connection = await this.lockAndCheckLease(manager, id);
       if (connection === 'missing' || connection === 'leased') return connection;
-      return manager.save(ConnectionEntity, { ...connection, ...data });
+      // Keep the loaded entity instance: spreading it into a plain object would
+      // make save() return a plain object, and the @Exclude() on `password`
+      // (applied by ClassSerializerInterceptor) only works on class instances.
+      // A field set to undefined means "not provided": assigning it would erase
+      // the stored value on the entity that is saved and returned.
+      const changes = Object.fromEntries(
+        Object.entries(data).filter(([, value]) => value !== undefined),
+      );
+      return manager.save(Object.assign(connection, changes));
     });
   }
 

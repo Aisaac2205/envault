@@ -220,6 +220,10 @@ Bring up:
 pnpm docker:db:test
 ```
 
+> End-to-end tests against a separate hermetic Docker stack: see [e2e-testing.md](e2e-testing.md).
+
+> White-box coverage of the unit suites (`pnpm test:coverage`): see [testing-coverage.md](testing-coverage.md).
+
 ---
 
 ## Comparison

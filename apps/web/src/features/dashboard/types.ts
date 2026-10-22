@@ -52,15 +52,6 @@ export interface CronjobEntity {
   lastStatus: "pending" | "running" | "completed" | "failed" | null;
 }
 
-export interface HealthStatus {
-  status: string;
-  info: {
-    database: {
-      status: string;
-    };
-  };
-}
-
 export interface AuditLog {
   id: string;
   userId: string;

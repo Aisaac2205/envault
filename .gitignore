@@ -12,6 +12,8 @@ out/
 .env
 .env.local
 .env.*.local
+# Local copy of .env.e2e.example (hermetic E2E stack); the example stays tracked
+.env.e2e
 apps/*/.env
 apps/*/.env.*
 
@@ -48,6 +50,14 @@ tsconfig.tsbuildinfo
 coverage/
 .nyc_output/
 
+# Playwright (e2e/): run output, HTML report and the saved admin session
+e2e/test-results/
+e2e/playwright-report/
+e2e/.auth/
+# Performance suite (e2e/): its own run output and one results folder per run
+e2e/test-results-perf/
+e2e/perf-results/
+
 # Cache
 .cache/
 .turbo/
@@ -68,6 +78,7 @@ settings.json
 .agents/
 .claude/
 openspec/
+odd/
 
 # UI/UX & Planning
 PRODUCT.md

@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Param,
+  ParseUUIDPipe,
   Body,
   Req,
   UseGuards,
@@ -33,7 +34,7 @@ export class CronjobsController {
   }
 
   @Get(':id')
-  findById(@Param('id') id: string) {
+  findById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.findById(id);
   }
 
@@ -51,7 +52,7 @@ export class CronjobsController {
 
   @Patch(':id')
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCronjobDto,
     @Req() req: Request,
   ) {
@@ -62,7 +63,7 @@ export class CronjobsController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string, @Req() req: Request) {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     const existing = await this.service.findById(id);
     const connection = await this.connectionsService.findById(existing.connectionId);
     setAuditContext(req, { environment: connection.environment });
@@ -70,7 +71,7 @@ export class CronjobsController {
   }
 
   @Post(':id/toggle')
-  async toggle(@Param('id') id: string, @Req() req: Request) {
+  async toggle(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     const result = await this.service.toggle(id);
     const connection = await this.connectionsService.findById(result.connectionId);
     setAuditContext(req, { environment: connection.environment });

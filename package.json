@@ -13,13 +13,21 @@
     "build": "pnpm --parallel -r run build",
     "lint": "pnpm --parallel -r run lint",
     "test": "pnpm --parallel -r run test",
+    "test:coverage": "pnpm --parallel -r run test:coverage",
     "typecheck": "pnpm --parallel -r run typecheck",
     "audit:production": "pnpm audit --prod --audit-level high",
     "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
     "docker:dev:test": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile test up",
     "docker:db": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up db",
     "docker:db:test": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile test up db db-test-pg db-test-mysql",
-    "docker:prod": "docker compose -f docker-compose.yml up --build"
+    "docker:prod": "docker compose -f docker-compose.yml up --build",
+    "docker:e2e": "docker compose -p envault-e2e --env-file .env.e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait --wait-timeout 300",
+    "docker:e2e:down": "docker compose -p envault-e2e --env-file .env.e2e -f docker-compose.yml -f docker-compose.e2e.yml down -v --remove-orphans",
+    "e2e:install": "pnpm --filter @vaultly-control/e2e exec playwright install chromium",
+    "test:e2e": "pnpm --filter @vaultly-control/e2e run test:e2e",
+    "test:e2e:perf": "pnpm --filter @vaultly-control/e2e run test:e2e:perf",
+    "test:e2e:perf:unit": "pnpm --filter @vaultly-control/e2e run test:e2e:perf:unit",
+    "test:e2e:report": "pnpm --filter @vaultly-control/e2e run test:e2e:report"
   },
   "devDependencies": {
     "@semantic-release/commit-analyzer": "^13.0.1",

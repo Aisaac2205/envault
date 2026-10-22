@@ -7,8 +7,23 @@ const config: Config = {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
-  collectCoverageFrom: ['src/**/*.(t|j)s'],
+  // Coverage is opt-in (`pnpm test:coverage`); a plain `pnpm test` never collects it.
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/*.spec.ts',
+    // Process entry point: bootstraps Nest and listens on a port.
+    '!src/main.ts',
+    // TypeORM CLI data source and generated DDL migrations: they run against a real database.
+    '!src/data-source.ts',
+    '!src/database/migrations/**',
+    // Barrel files that only re-export.
+    '!src/**/index.ts',
+  ],
+  // Istanbul instrumentation (the Jest default, stated here on purpose): it counts real statements,
+  // branches and functions and ran 3x or more faster than `v8` on this suite, where `v8` reports ranges.
+  coverageProvider: 'babel',
   coverageDirectory: './coverage',
+  coverageReporters: ['text-summary', 'lcovonly', 'html', 'json-summary'],
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/jest-setup.ts'],
   moduleNameMapper: {

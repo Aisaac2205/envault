@@ -49,6 +49,8 @@ export class R2Service {
     this.client = new S3Client({
       region: 'auto',
       endpoint,
+      // Only true when R2_ENDPOINT overrides the derived Cloudflare endpoint.
+      forcePathStyle: this.configService.get<boolean>('r2.forcePathStyle', false),
       credentials: {
         accessKeyId: accessKey,
         secretAccessKey: secretKey,

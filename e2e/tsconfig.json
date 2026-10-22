@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    // DOM types are for the callbacks that run inside the browser page.
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["playwright.config.ts", "support/**/*.ts", "tests/**/*.ts"]
+}

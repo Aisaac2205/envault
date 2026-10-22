@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, ParseUUIDPipe, Put, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { BetterAuthGuard } from '../../auth/auth.guard';
 import { RolesGuard, Roles } from '../../auth/roles.guard';
@@ -18,7 +18,7 @@ export class BackupSettingsController {
 
   @Put(':connectionId')
   async upsertSchedule(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId', ParseUUIDPipe) connectionId: string,
     @Body() dto: UpdateScheduleDto,
     @Req() req: Request,
   ) {

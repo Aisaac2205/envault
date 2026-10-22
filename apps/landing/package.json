@@ -12,6 +12,7 @@
     "astro": "astro",
     "type-check": "astro sync && tsc --noEmit",
     "test": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:run": "vitest run --maxWorkers=2 --no-file-parallelism",
     "test:ci": "vitest run --maxWorkers=2 --no-file-parallelism"
   },
@@ -31,6 +32,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "4.1.11",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^8.0.16",

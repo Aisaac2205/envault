@@ -532,7 +532,15 @@ export class RestoreService implements OnApplicationBootstrap {
       return dto.r2Key;
     }
 
-    const backup = await this.backupService.getBackupById(dto.sourceBackupId!);
+    // Defense in depth behind CreateRestoreDto: a lookup by an undefined id
+    // would be a query without a where clause and resolve an arbitrary backup.
+    if (!dto.sourceBackupId) {
+      throw new BadRequestException(
+        'Debe indicar sourceBackupId o r2Key como origen de la restauración.',
+      );
+    }
+
+    const backup = await this.backupService.getBackupById(dto.sourceBackupId);
     if (backup.status !== JobStatus.COMPLETED || !backup.fileKey) {
       throw new ForbiddenException('El backup fuente no está completado o no tiene archivo.');
     }

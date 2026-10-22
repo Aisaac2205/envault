@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
+import { DbTypeEnum } from '../../database/enums/db-type.enum';
+import { Environment } from '../../database/enums/environment.enum';
 import { ConnectionsRepository } from './connections.repository';
 
 describe('ConnectionsRepository', () => {
@@ -77,6 +79,80 @@ describe('ConnectionsRepository', () => {
 
       expect(result).toBe('missing');
       expect(manager.query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('partial updates', () => {
+    const storedMysql = () =>
+      Object.assign(new ConnectionEntity(), {
+        id: 'conn-1',
+        name: 'Test',
+        dbType: DbTypeEnum.MYSQL,
+        host: 'db.internal',
+        isActive: true,
+      });
+
+    beforeEach(() => {
+      (manager.findOne as jest.Mock).mockResolvedValue(storedMysql());
+      (manager.query as jest.Mock).mockResolvedValue([]);
+      (manager.save as jest.Mock).mockImplementation(async (...args: unknown[]) => args[args.length - 1]);
+    });
+
+    it('keeps the stored engine when the update does not name it', async () => {
+      const result = await repository.update('conn-1', { name: 'Updated' });
+
+      expect(result).toMatchObject({ name: 'Updated', dbType: DbTypeEnum.MYSQL });
+    });
+
+    it('changes the engine when the update names it', async () => {
+      const result = await repository.update('conn-1', { dbType: DbTypeEnum.POSTGRES });
+
+      expect(result).toMatchObject({ dbType: DbTypeEnum.POSTGRES });
+    });
+
+    it('does not let a field set to undefined erase the stored value', async () => {
+      const result = await repository.update('conn-1', {
+        name: 'Updated',
+        dbType: undefined,
+        host: undefined,
+      });
+
+      expect(result).toMatchObject({ name: 'Updated', dbType: DbTypeEnum.MYSQL, host: 'db.internal' });
+    });
+  });
+
+  describe('secret handling', () => {
+    it('saves an updated connection as a ConnectionEntity so that @Exclude() still applies to the result', async () => {
+      const stored = Object.assign(new ConnectionEntity(), {
+        id: 'conn-1',
+        name: 'Test',
+        password: 'stored-secret-password',
+        isActive: true,
+      });
+      (manager.findOne as jest.Mock).mockResolvedValue(stored);
+      (manager.query as jest.Mock).mockResolvedValue([]);
+      (manager.save as jest.Mock).mockImplementation(async (...args: unknown[]) => args[args.length - 1]);
+
+      const result = await repository.update('conn-1', { name: 'Updated' });
+
+      expect(result).toBeInstanceOf(ConnectionEntity);
+      expect(result).toMatchObject({ id: 'conn-1', name: 'Updated' });
+    });
+
+    it('never selects the password in list queries', async () => {
+      (connectionRepo.find as jest.Mock).mockResolvedValue([]);
+
+      await repository.findAll();
+      await repository.findByEnvironment(Environment.DEV);
+      await repository.findByIds(['conn-1']);
+
+      const queries = (connectionRepo.find as jest.Mock).mock.calls.map(
+        ([options]: [{ select: Record<string, boolean> }]) => options.select,
+      );
+      expect(queries).toHaveLength(3);
+      for (const select of queries) {
+        expect(select.password).toBeUndefined();
+      }
     });
   });
 });
