@@ -14,7 +14,7 @@ overrides:
   nanoid: 3.3.18
   postcss: 8.5.26
   undici: 7.29.1
-  '@vaultly-control/web>vite': 7.3.7
+  '@vaultly-control/web>vite': ^7.3.7
 
 importers:
 
@@ -348,7 +348,7 @@ importers:
         specifier: ^8.61.0
         version: 8.61.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       vite:
-        specifier: 7.3.7
+        specifier: ^7.3.7
         version: 7.3.7(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.46.2)
       vitest:
         specifier: ^4.1.8
