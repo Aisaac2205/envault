@@ -10,10 +10,11 @@ ignoredBuiltDependencies:
 
 overrides:
   brace-expansion: 2.1.7
+  follow-redirects: ^1.16.1
   browserslist: ^4.28.7
   js-yaml: ^4.3.2
   multer: ^2.3.0
   nanoid: 3.3.18
   postcss: 8.5.26
   undici: 7.29.1
-  '@vaultly-control/web>vite': 7.3.6
+  '@vaultly-control/web>vite': ^7.3.7
