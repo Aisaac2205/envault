@@ -407,7 +407,7 @@ The results of this QA work on EnVault (a self-hosted application that backs up 
 
 ## 12. How to reproduce
 
-Every result in this QA report on EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases) can be reproduced from the repository with the commands below, run from its root. Requirements: Node.js 22 or newer, pnpm 10 or newer, Docker with Compose, and the ports 5173, 3000, 5435, 3307, 9000 and 9001 free.
+Every result in this QA report on EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases) can be reproduced from the repository with the commands below, run from its root. Requirements: Node.js 22.23.4 or a later 22.x release (pinned in `.nvmrc`), pnpm 10 or newer, Docker with Compose, and the ports 5173, 3000, 5435, 3307, 9000 and 9001 free.
 
 | Goal | Commands |
 |------|----------|

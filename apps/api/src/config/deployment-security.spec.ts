@@ -102,4 +102,20 @@ describe('production deployment security contract', () => {
       );
     }
   });
+
+  it('pins one patched Node.js release across .nvmrc files and Docker images', () => {
+    const nodeVersion = readRepositoryFile('.nvmrc').trim();
+    expect(nodeVersion).toMatch(/^22\.\d+\.\d+$/);
+    // Cloudflare Pages builds the landing from apps/landing and only reads
+    // the .nvmrc in that directory.
+    expect(readRepositoryFile('apps/landing/.nvmrc').trim()).toBe(nodeVersion);
+    for (const dockerfile of ['apps/api/Dockerfile', 'apps/web/Dockerfile']) {
+      expect(readRepositoryFile(dockerfile)).toMatch(
+        new RegExp(
+          `^FROM node:${nodeVersion.replace(/\./g, '\\.')}-[a-z-]+@sha256:[0-9a-f]{64} AS base`,
+          'm',
+        ),
+      );
+    }
+  });
 });
