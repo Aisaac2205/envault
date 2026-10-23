@@ -8,6 +8,13 @@ export interface GetHistoryParams {
   filters?: DumpsFilters;
 }
 
+/** 202 body of `POST /backups/trigger/:connectionId`: the job is only queued. */
+export interface TriggerBackupResponse {
+  jobId: string;
+  fileKey: string;
+  status: string;
+}
+
 export const dumpsApi = {
   getHistory: (params?: GetHistoryParams) =>
     apiClient
@@ -35,7 +42,9 @@ export const dumpsApi = {
     apiClient.get<Connection[]>("/connections").then((r) => r.data),
 
   triggerBackup: (connectionId: string) =>
-    apiClient.post(`/backups/trigger/${connectionId}`),
+    apiClient
+      .post<TriggerBackupResponse>(`/backups/trigger/${connectionId}`)
+      .then((r) => r.data),
 
   getDownloadUrl: (id: string) =>
     apiClient

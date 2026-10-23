@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { useDumps, useProdConnections } from "./hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { useBackupStreams, useDumps, useProdConnections } from "./hooks";
 import { dumpsApi } from "./api/dumps-api";
 import { PageHeader } from "@/shared/ui/page-header";
 import { Button } from "@/shared/ui/button";
@@ -43,6 +44,7 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export default function Dumps() {
   const { t } = useTranslation('dumps');
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const [filters, setFilters] = useState<DumpsFiltersType>({});
@@ -52,8 +54,10 @@ export default function Dumps() {
     total,
     isLoading: dumpsLoading,
     error: dumpsError,
-    refetch,
   } = useDumps({ page, pageSize, filters });
+
+  // Follows pending/running backups (and the ones triggered here) until they finish.
+  const { track } = useBackupStreams(dumps);
 
   const { data: connections = [], isLoading: connectionsLoading } = useProdConnections();
   const [selectedConnectionId, setSelectedConnectionId] = useState("");
@@ -82,9 +86,11 @@ export default function Dumps() {
     setBackupError(null);
 
     try {
-      await dumpsApi.triggerBackup(selectedConnectionId);
-      toast.success(t('toast.created'));
-      await refetch();
+      const { jobId } = await dumpsApi.triggerBackup(selectedConnectionId);
+      // The API only queues the job; the final toast comes from its SSE stream.
+      toast.success(t('toast.queued'));
+      track(jobId);
+      await queryClient.invalidateQueries({ queryKey: ["dumps"] });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : t('toast.createError');

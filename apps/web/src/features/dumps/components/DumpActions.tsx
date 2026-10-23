@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { dumpsApi } from "../api/dumps-api";
+import { markBackupCancelled, unmarkBackupCancelled } from "../hooks/useBackupStreams";
 import type { BackupJob } from "../types";
 
 interface DumpActionsProps {
@@ -32,12 +33,14 @@ export function DumpActions({ job }: DumpActionsProps) {
 
   const handleCancel = async () => {
     setCancelling(true);
+    markBackupCancelled(job.id);
     try {
       await dumpsApi.cancelBackup(job.id);
       toast.success(t("dumps:toast.cancelled"));
       await queryClient.invalidateQueries({ queryKey: ["dumps"] });
       setConfirmCancelOpen(false);
     } catch (err) {
+      unmarkBackupCancelled(job.id);
       const message = err instanceof Error ? err.message : t("dumps:toast.cancelError");
       toast.error(t("dumps:toast.cancelError"), { description: message });
     } finally {
