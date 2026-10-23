@@ -185,6 +185,23 @@ describe("useBackupStreams", () => {
     expect(toastError).toHaveBeenCalledWith("El respaldo falló: boom");
   });
 
+  it("reads frames wrapped in the API envelope ({ data: event })", () => {
+    // The API's global TransformInterceptor also maps every SSE message, so
+    // the stack sends `data: {"data":{"type":"completed","payload":{...}}}`.
+    const { dumpsInvalidations } = setup([job("j-1", "running")]);
+    const [source] = openFor("j-1");
+
+    act(() => {
+      source.emit({
+        data: { type: "completed", payload: { jobId: "j-1", completedAt: "now" } },
+      });
+    });
+
+    expect(source.closed).toBe(true);
+    expect(toastSuccess).toHaveBeenCalledWith("Respaldo completado");
+    expect(dumpsInvalidations()).toBe(1);
+  });
+
   it("keeps the stream open without toasting on progress and retry logs", () => {
     const { dumpsInvalidations } = setup([job("j-1", "running")]);
     const [source] = openFor("j-1");

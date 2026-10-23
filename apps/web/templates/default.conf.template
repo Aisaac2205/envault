@@ -24,11 +24,12 @@ server {
     gzip_min_length 256;
     gzip_vary on;
 
-    # SSE progress stream — no buffering, or events queue up and never
-    # reach the client until the response ends. Declared before the
-    # general /api/ block: nginx always prefers a matching regex location
-    # over a prefix match, regardless of source order.
-    location ~ ^/api/restores/.*/stream$ {
+    # SSE progress streams (restore and backup jobs) — no buffering, or
+    # events queue up and never reach the client until the response ends,
+    # and a long read timeout so a slow job does not cut its stream at 60s.
+    # Declared before the general /api/ block: nginx always prefers a
+    # matching regex location over a prefix match, regardless of source order.
+    location ~ ^/api/(restores|backups)/[^/]+/stream$ {
         set $api_upstream ${API_UPSTREAM};
         proxy_pass http://$api_upstream;
 

@@ -49,12 +49,27 @@ export function backupStreamUrl(jobId: string): string {
   return `${APP_CONFIG.apiBaseUrl}/backups/${encodeURIComponent(jobId)}/stream`;
 }
 
+function isStreamEvent(value: unknown): value is BackupStreamEvent {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "type" in value &&
+    typeof value.type === "string"
+  );
+}
+
+/**
+ * The API's global TransformInterceptor maps every SSE message too, so each
+ * frame arrives as `{"data":{"type":...,"payload":...}}` rather than the bare
+ * event. Both shapes are accepted.
+ */
 function parseEvent(raw: unknown): BackupStreamEvent | null {
   if (typeof raw !== "string") return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && "type" in parsed) {
-      return parsed as BackupStreamEvent;
+    if (isStreamEvent(parsed)) return parsed;
+    if (parsed && typeof parsed === "object" && "data" in parsed && isStreamEvent(parsed.data)) {
+      return parsed.data;
     }
   } catch {
     // Malformed frames are ignored; the terminal event still closes the stream.
