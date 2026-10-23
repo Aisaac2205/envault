@@ -6,8 +6,11 @@ import {
   HealthCheckResult,
 } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
+import { Public } from '../common/authorization/public.decorator';
 import { R2Service } from '../modules/backup/r2.service';
 
+// Probed directly by Docker and Kubernetes, which carry no session.
+@Public()
 @SkipThrottle()
 @Controller('health')
 export class HealthController {

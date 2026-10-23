@@ -68,13 +68,56 @@ This is **the most critical rule**. Restoring over PROD would destroy live data.
 | `session.user.id` | User ID, goes into `audit_logs.userId` and `backup_jobs.triggeredBy` |
 | `session.user.name` | Human-readable identifier, used in logs |
 | `session.user.email` | Used in `audit_logs.userEmail` |
-| `session.user.role` | Role check (`admin` vs regular user) |
+| `session.user.role` | Looked up in the permission map (see [Authorization](#authorization-the-permission-map)) |
 
 ### Guard
 
-`BetterAuthGuard` (in `apps/api/src/auth/auth.guard.ts`) is applied **explicitly** on every controller. There is no global guard. If you add a new controller, **remember to protect its endpoints**.
+`BetterAuthGuard` (in `apps/api/src/auth/auth.guard.ts`) and `PermissionsGuard` (see Authorization below) are registered **globally** (`APP_GUARD`, in that order, after the throttler). Every route needs a session and a feature that the permission map grants to the caller, unless it opts out, so a controller written without any decorator answers 401 without a session and 403 with one.
 
-Conscious exception: `/health` does not require auth (it is hit by the K8s probe).
+Conscious exceptions, all listed in `permission-coverage.spec.ts`: `@Public()` on `/health` (it is hit by the K8s probe) and on the Better Auth catch-all `/api/auth/*` (sign-in has to work without a session, and its admin routes check the session and role inside Better Auth), and `@AuthenticatedOnly()` on `GET /api/me/permissions`.
+
+### Authorization: the permission map
+
+Who may use what is decided in **one place**: `apps/api/src/common/authorization/permissions.ts`. Everything else is derived from it: the guard on each controller, the endpoint the web app reads, and through that endpoint the sidebar and the route guards. Before the map existed, the API (`@Roles('admin')` on every controller) and the web app (a hand-kept `adminOnly` list) each kept their own copy and drifted apart, so a regular user was offered screens whose every request answered 403 (defect D8).
+
+```typescript
+export const PERMISSIONS = {
+  dashboard: ['admin'],
+  dumps: ['admin'],
+  restore: ['admin'],
+  cronjobs: ['admin'],
+  connections: ['admin'],
+  cleanup: ['admin'],
+  audit: ['admin'],
+  users: ['admin'],
+} as const satisfies Record<string, readonly Role[]>;
+```
+
+| Feature | Backs (API) | Web section |
+|---------|-------------|-------------|
+| `dashboard` | `/jobs`, `/jobs/analytics` | `/` |
+| `dumps` | `/backups` | `/dumps` |
+| `restore` | `/restores`, including its progress stream | `/restore` |
+| `cronjobs` | `/cronjobs`, `/backups/settings` | `/cronjobs` |
+| `connections` | `/connections` | `/connections` |
+| `cleanup` | `/maintenance` | `/cleanup` |
+| `audit` | `/audit` | `/audit`, `/audit/:id` |
+| `users` | Better Auth admin plugin (`/api/auth/admin/*`) | `/users` |
+
+How it works:
+
+- **The server is authoritative.** The API checks the map on every request. The web app only uses it to decide what to show, which is a usability matter and never a security control (OWASP Authorization Cheat Sheet: enforce on the server, deny by default, least privilege).
+- **Default-deny, at runtime.** The guards are global, so nothing is open by accident: a route that declares nothing, a feature that is not in the map, and a role that is not listed under a feature all end in 403 (401 without a session). The ways out are explicit: `@Public()` (no session needed), `@AuthenticatedOnly()` (a session, no feature) and, for everything else, `@RequirePermission('<feature>')`. A forgotten decorator closes the route instead of opening it.
+- **Enforcement.** `BetterAuthGuard` and `PermissionsGuard` are registered globally (`common/authorization/global-guards.ts`, spread into `AppModule` after the throttler). Each controller only declares `@RequirePermission('<feature>')`. `BetterAuthGuard` answers 401 without a session; `PermissionsGuard` answers 403 when the map does not grant the feature to the caller's roles. A `@RequirePermission` on a single handler overrides the one on the class.
+- **Several roles.** Better Auth stores a user's role as one comma-separated string (`"admin,user"`). The API splits it on commas, exactly as Better Auth does (no trimming: names are exact, case and spaces included, so `"user, admin"` does not grant `admin`), and grants a feature when any of the roles has it; `/me/permissions` returns the union.
+- **Endpoint.** `GET /api/me/permissions` returns what the signed-in user may use, wrapped like every response: `{ "data": { "role": "admin", "features": ["dashboard", "dumps", ...] }, "timestamp": "..." }`. Any authenticated user may call it; without a session it answers 401.
+- **Web.** The `usePermissions` hook (`apps/web/src/shared/hooks/usePermissions.ts`) loads that answer after the session. The sidebar offers the sections whose feature was granted, and `ProtectedRoute feature="..."` guards each route with the same answer. The app loader is shown while it loads, so a forbidden section never flashes. A user who is granted nothing lands on `/no-access` ("You don't have access to any section"), which keeps logging out reachable; a direct visit to a forbidden address redirects to the first section the user may open, or to that page. The answer is cached per user and per session, and dropped on sign-out. A 401 from the endpoint, even on a background refetch, ends the stale session and goes to the login screen (if the sign-out request itself fails, the login screen is told not to send the visitor straight back); any other failure, or being offline, shows a retry and log-out screen instead of a spinner. The web app compares no roles: a unit test fails if `adminOnly`, `requiredRole` or a `role === '...'` check comes back.
+- **Drift tests.** `permission-coverage.spec.ts` (API) loads every controller in the source tree and fails when a route is neither public, session-only nor tied to a feature of the map, names a feature missing from it, or when a feature has no controller behind it. The public controllers (`HealthController`, `AuthController`) and the session-only one (`PermissionsController`) are an explicit list in that test, so opting a route out of the guards takes a reviewed change there. `default-deny.spec.ts` boots a small Nest app with the real global guards and proves that an undecorated controller answers 401 or 403. On the web, a route-table test checks that the sidebar and the routes agree for every section.
+- **The `users` feature** has no Nest controller: its endpoints belong to the Better Auth admin plugin, which enforces its own `adminRoles` (default `['admin']`). The map entry only drives what the web app offers. A role that must manage users has to be added to both.
+
+To add a feature: add its key to `PERMISSIONS`, put `@RequirePermission('<key>')` on its controller, and add the section (`shared/lib/sections.ts`) and the `ProtectedRoute` in the web app; the coverage test and the pinned feature list in `e2e/tests/api/authorization.api.spec.ts` fail until each side agrees.
+
+To add a role (for example a read-only `viewer`): add it to `ROLES` and list it under the features it may use; the guard, the endpoint and the web app need no change, and the web app shows a role it has no translation for by its name. Because a feature grants a whole controller today, a read-only role also needs the endpoint-level split (reads and writes under different features, or a `@RequirePermission` per handler). That is a follow-up in the controllers, not in the guard. The `viewer` role does not exist yet.
 
 ---
 
@@ -194,6 +237,7 @@ Combined with `class-validator` on each DTO (`@IsString`, `@IsUUID`, `@IsEnum`, 
 | Control DB compromised → leak of PROD credentials | Mitigated: passwords encrypted with AES-256-GCM. Requires `ENCRYPTION_KEY` to decrypt. See §4 |
 | Audit log tampered with by a DBA with access | Mitigated: append-only trigger prevents UPDATE/DELETE on `audit_logs`. See §3 |
 | Cronjob points at attacker host | Mitigated: cronjob requires a `connectionId` that can only be created via `POST /connections` (audited) |
+| Regular user reaches an admin feature because the API and the UI disagree | Mitigated: one permission map, enforced by the API with default-deny and read by the web app from `GET /api/me/permissions`; a coverage test fails when a controller escapes it. See §2 |
 | Admin account compromised | Rotate `BETTER_AUTH_SECRET` to invalidate all sessions; reset admin password via Better Auth admin API |
 
 Remaining unmitigated threats (SSRF on connection hosts, lack of credential rotation) are **conscious decisions** for the current scope of the system (internal tool, small team, private cloud).

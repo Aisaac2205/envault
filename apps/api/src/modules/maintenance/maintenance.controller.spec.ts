@@ -4,14 +4,6 @@ import { MaintenanceController } from './maintenance.controller';
 import { MaintenanceService } from './maintenance.service';
 import { BackupCategory } from '../../database/enums/backup-category.enum';
 
-jest.mock('../../auth/auth.guard', () => ({
-  BetterAuthGuard: class {},
-}));
-jest.mock('../../auth/roles.guard', () => ({
-  RolesGuard: class {},
-  Roles: () => () => {},
-}));
-
 describe('MaintenanceController', () => {
   let controller: MaintenanceController;
 

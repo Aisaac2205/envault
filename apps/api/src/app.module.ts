@@ -20,6 +20,8 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
 import { AuthModule } from './auth/auth.module';
+import { AuthorizationModule } from './common/authorization/authorization.module';
+import { GLOBAL_AUTHORIZATION_GUARDS } from './common/authorization/global-guards';
 import { ConnectionsModule } from './modules/connections/connections.module';
 import { BackupModule } from './modules/backup/backup.module';
 import { RestoreModule } from './modules/restore/restore.module';
@@ -52,6 +54,7 @@ import { QueueModule } from './modules/queue/queue.module';
     }),
     DatabaseModule,
     AuthModule,
+    AuthorizationModule,
     ConnectionsModule,
     BackupModule,
     RestoreModule,
@@ -69,6 +72,10 @@ import { QueueModule } from './modules/queue/queue.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    // Default-deny: every route needs a session (BetterAuthGuard) and a feature
+    // the permission map grants to its roles (PermissionsGuard), in that order,
+    // unless it opts out with @Public() or @AuthenticatedOnly().
+    ...GLOBAL_AUTHORIZATION_GUARDS,
     {
       provide: APP_PIPE,
       useValue: new ValidationPipe(validationPipeOptions),

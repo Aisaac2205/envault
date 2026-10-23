@@ -4,8 +4,6 @@ import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { AddressInfo } from 'net';
 import { EMPTY } from 'rxjs';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard } from '../../auth/roles.guard';
 import { SseService } from '../../shared/sse/sse.service';
 import { AuditController } from '../../modules/audit/audit.controller';
 import { AuditService } from '../../modules/audit/audit.service';
@@ -24,10 +22,6 @@ import { RestoreService } from '../../modules/restore/restore.service';
 import { HttpExceptionFilter } from '../filters/http-exception.filter';
 import { TransformInterceptor } from '../interceptors/transform.interceptor';
 import { validationPipeOptions } from './validation-pipe.options';
-
-jest.mock('../../auth/auth.guard', () => ({
-  BetterAuthGuard: class {},
-}));
 
 // Every id in a path (a UUID column) is validated before it reaches a service,
 // and so before it reaches the database, which rejects a malformed uuid with an
@@ -105,10 +99,6 @@ describe('UUID path parameters', () => {
         { provide: APP_FILTER, useClass: HttpExceptionFilter },
       ],
     })
-      .overrideGuard(BetterAuthGuard)
-      .useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard)
-      .useValue({ canActivate: () => true })
       .compile();
 
     app = moduleRef.createNestApplication();

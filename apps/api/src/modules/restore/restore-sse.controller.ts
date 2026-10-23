@@ -4,12 +4,10 @@ import {
   Param,
   ParseUUIDPipe,
   Sse,
-  UseGuards,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { RequirePermission } from '../../common/authorization';
 import { SseService, SseEvent } from '../../shared/sse/sse.service';
 import { RestoreService } from './restore.service';
 
@@ -21,8 +19,7 @@ interface MessageEvent {
 }
 
 @Controller('restores')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('restore')
 export class RestoreSseController {
   constructor(
     private readonly sseService: SseService,

@@ -1,75 +1,73 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { ExecutionContext, UseGuards } from '@nestjs/common';
+import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
 import { AuthUser } from '../../auth/decorators/current-user.decorator';
+import {
+  AUTHENTICATED_ONLY_KEY,
+  PERMISSION_KEY,
+  PUBLIC_KEY,
+  PermissionsGuard,
+} from '../../common/authorization';
+import { AuditController } from './audit.controller';
 
-// AuditController itself is not imported here: it transitively pulls in
-// auth.guard.ts -> better-auth/node, which is ESM-only and this repo's
-// Jest config doesn't transform node_modules. Instead this exercises the
-// real RolesGuard logic (the actual security mechanism) against a
-// same-shape stand-in, plus a static check that the real controller file
-// still carries the guard + decorator — catching the regression this was
-// filed for (AuditController had BetterAuthGuard but no RolesGuard, so
-// any authenticated non-admin could read the audit trail).
+// Regression guard for the audit trail: AuditController once had
+// BetterAuthGuard but no role guard, so any authenticated non-admin could read
+// it. These run the real PermissionsGuard against the real controller's own
+// metadata, so removing the feature declaration, or opting the controller out
+// of the global guards, fails here.
 
-@UseGuards(RolesGuard)
-@Roles('admin')
-class AdminOnlyStandIn {
-  handler(): void {}
-}
-
-function buildContext(user?: AuthUser): ExecutionContext {
+function buildContext(handler: (...args: never[]) => unknown, user?: AuthUser): ExecutionContext {
   return {
-    getHandler: () => AdminOnlyStandIn.prototype.handler,
-    getClass: () => AdminOnlyStandIn,
+    getHandler: () => handler,
+    getClass: () => AuditController,
     switchToHttp: () => ({
       getRequest: () => ({ user }),
     }),
   } as unknown as ExecutionContext;
 }
 
-describe('RolesGuard, applied the way AuditController now applies it', () => {
-  const guard = new RolesGuard(new Reflector());
+describe('AuditController access control', () => {
+  const guard = new PermissionsGuard(new Reflector());
+  const routes = [
+    ['getLogs', AuditController.prototype.getLogs],
+    ['getLogById', AuditController.prototype.getLogById],
+  ] as const;
 
-  it('rejects an authenticated non-admin user', () => {
-    const context = buildContext({
-      id: '1',
-      email: 'user@example.com',
-      name: 'User',
-      role: 'user',
+  it('belongs to the audit feature', () => {
+    expect(Reflect.getMetadata(PERMISSION_KEY, AuditController)).toBe('audit');
+  });
+
+  it('stays behind the global guards (neither public nor session-only)', () => {
+    expect(Reflect.getMetadata(PUBLIC_KEY, AuditController)).toBeUndefined();
+    expect(Reflect.getMetadata(AUTHENTICATED_ONLY_KEY, AuditController)).toBeUndefined();
+  });
+
+  describe.each(routes)('%s', (_name, handler) => {
+    it('rejects an authenticated non-admin user', () => {
+      const context = buildContext(handler, {
+        id: '1',
+        email: 'user@example.com',
+        name: 'User',
+        role: 'user',
+      });
+
+      expect(() => guard.canActivate(context)).toThrow('Insufficient permissions');
     });
 
-    expect(() => guard.canActivate(context)).toThrow('Insufficient permissions');
-  });
-
-  it('rejects a request with no user at all', () => {
-    expect(() => guard.canActivate(buildContext(undefined))).toThrow(
-      'Insufficient permissions',
-    );
-  });
-
-  it('allows an admin user through', () => {
-    const context = buildContext({
-      id: '2',
-      email: 'admin@example.com',
-      name: 'Admin',
-      role: 'admin',
+    it('rejects a request with no user at all', () => {
+      expect(() => guard.canActivate(buildContext(handler, undefined))).toThrow(
+        'Insufficient permissions',
+      );
     });
 
-    expect(guard.canActivate(context)).toBe(true);
-  });
-});
+    it('allows an admin user through', () => {
+      const context = buildContext(handler, {
+        id: '2',
+        email: 'admin@example.com',
+        name: 'Admin',
+        role: 'admin',
+      });
 
-describe('AuditController source', () => {
-  const source = readFileSync(
-    join(__dirname, 'audit.controller.ts'),
-    'utf-8',
-  );
-
-  it('still guards with RolesGuard and requires the admin role', () => {
-    expect(source).toMatch(/@UseGuards\(BetterAuthGuard,\s*RolesGuard\)/);
-    expect(source).toMatch(/@Roles\(['"]admin['"]\)/);
+      expect(guard.canActivate(context)).toBe(true);
+    });
   });
 });

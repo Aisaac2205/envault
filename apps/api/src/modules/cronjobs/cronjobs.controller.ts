@@ -8,11 +8,9 @@ import {
   ParseUUIDPipe,
   Body,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { RequirePermission } from '../../common/authorization';
 import { setAuditContext } from '../../common/audit/audit-context';
 import { CronjobsService } from './cronjobs.service';
 import { ConnectionsService } from '../connections/connections.service';
@@ -20,8 +18,7 @@ import { CreateCronjobDto } from './dto/create-cronjob.dto';
 import { UpdateCronjobDto } from './dto/update-cronjob.dto';
 
 @Controller('cronjobs')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('cronjobs')
 export class CronjobsController {
   constructor(
     private readonly service: CronjobsService,

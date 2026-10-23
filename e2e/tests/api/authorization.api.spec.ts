@@ -1,16 +1,20 @@
-import { expectErrorEnvelope } from '../../support/envelope';
+import { expectErrorEnvelope, expectSuccessEnvelope } from '../../support/envelope';
 import { expect, test } from '../../support/fixtures';
 import { uniqueEmail } from '../../support/unique';
 
-// Every Nest controller in the API sits behind BetterAuthGuard + RolesGuard with
-// @Roles('admin'), so each row answers 401 without a session and 403 for a
-// signed-in user whose role is `user`. The guards run before body validation,
-// which is why the write rows can be sent without a body and never change data.
+// BetterAuthGuard and PermissionsGuard are global (default-deny), and every
+// Nest controller that serves a screen declares @RequirePermission('<feature>').
+// The feature maps to
+// roles in apps/api/src/common/authorization/permissions.ts, where today only
+// `admin` is granted any, so each row answers 401 without a session and 403
+// for a signed-in user whose role is `user`. The guards run before body
+// validation, which is why the write rows can be sent without a body and never
+// change data.
 
 const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000';
 
 interface Endpoint {
-  method: 'GET' | 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   path: string;
 }
 
@@ -29,6 +33,8 @@ const ADMIN_ONLY: Endpoint[] = [
   { method: 'GET', path: 'jobs/analytics/daily' },
   { method: 'GET', path: 'audit' },
   { method: 'GET', path: 'cronjobs' },
+  { method: 'PUT', path: `backups/settings/${UNKNOWN_ID}` },
+  { method: 'GET', path: 'maintenance/storage/overview' },
 ];
 
 // The user list belongs to the Better Auth admin plugin, which has its own
@@ -85,6 +91,40 @@ test.describe('signed-in user without the admin role', () => {
       });
     });
   }
+});
+
+// GET /api/me/permissions is how the web app learns what to offer: the same
+// permission map the guards above enforce, reported for the signed-in user.
+// The list is pinned on purpose. Adding a feature (or a role that gets one) is
+// a deliberate change to apps/api/src/common/authorization/permissions.ts and
+// to the sidebar's sections in the web app, and this is where it is noticed.
+const ALL_FEATURES = [
+  'dashboard',
+  'dumps',
+  'restore',
+  'cronjobs',
+  'connections',
+  'cleanup',
+  'audit',
+  'users',
+];
+
+test.describe('permissions of the signed-in user', () => {
+  test('GET /me/permissions answers 401 without a session', async ({ anonymous }) => {
+    await expectErrorEnvelope(await anonymous.get('me/permissions'), 401);
+  });
+
+  test('lists every feature for an admin', async ({ adminApi }) => {
+    const permissions = await expectSuccessEnvelope(await adminApi.get('me/permissions'));
+
+    expect(permissions).toEqual({ role: 'admin', features: ALL_FEATURES });
+  });
+
+  test('lists no feature for a user without the admin role', async ({ nonAdmin }) => {
+    const permissions = await expectSuccessEnvelope(await nonAdmin.get('me/permissions'));
+
+    expect(permissions).toEqual({ role: 'user', features: [] });
+  });
 });
 
 // A well-formed body, so that the refusal can only come from the role check.
