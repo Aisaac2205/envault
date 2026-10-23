@@ -42,7 +42,7 @@ Antes de este trabajo EnVault ya tenía tests unitarios de caja blanca: tests es
 | Control de la red del navegador | `page.route` responde peticiones elegidas con respuestas preparadas, para mostrar estados de error (la API inalcanzable, una lista vacía) que un entorno compartido no puede garantizar. |
 | Defectos conocidos conservados como tests | `test.fail` marca un test que se espera que falle por un defecto conocido: la ejecución sigue en verde mientras el defecto existe y pasa a rojo cuando se corrige, que es la señal para quitar la marca. |
 | Workers en paralelo y repetición | Los workers son procesos separados que ejecutan tests al mismo tiempo; `--workers` fija cuántos y `--repeat-each` ejecuta cada test varias veces. Ambos hicieron posible el estudio de fiabilidad de este informe. |
-| Diagnóstico | Un informe HTML de cada ejecución, y una traza y una captura de pantalla guardadas por cada test fallido. |
+| Diagnóstico | Un informe HTML de cada ejecución, y una traza y una captura de pantalla guardadas por cada test fallido. Un modo de evidencia opcional (`pnpm test:e2e:evidence`) conserva una captura de cada test de la UI y una traza de cada test, con las peticiones y respuestas HTTP de las specs de la API y del pipeline. |
 | TypeScript | El mismo lenguaje que EnVault, de modo que los tests siguen las convenciones del código que prueban. |
 
 Playwright no mide cobertura de código (eso sigue a cargo de Jest y Vitest) y no es una herramienta de pruebas de carga, por lo que este informe no le atribuye ninguna de las dos cosas.

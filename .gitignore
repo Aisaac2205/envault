@@ -54,6 +54,9 @@ coverage/
 e2e/test-results/
 e2e/playwright-report/
 e2e/.auth/
+# Evidence run (e2e/): every test's trace and screenshot, in folders of its own
+e2e/test-results-evidence/
+e2e/playwright-report-evidence/
 # Performance suite (e2e/): its own run output and one results folder per run
 e2e/test-results-perf/
 e2e/perf-results/

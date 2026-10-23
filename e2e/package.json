@@ -5,6 +5,8 @@
   "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "test:e2e": "playwright test",
+    "test:e2e:evidence": "playwright test --config playwright.evidence.config.ts",
+    "test:e2e:evidence:report": "playwright show-report playwright-report-evidence",
     "test:e2e:perf": "playwright test --config playwright.perf.config.ts",
     "test:e2e:perf:unit": "playwright test --config playwright.perf.config.ts --project=perf-unit",
     "test:e2e:report": "playwright show-report",

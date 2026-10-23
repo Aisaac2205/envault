@@ -1,5 +1,6 @@
 import { expect, test, type PlaywrightTestConfig } from '@playwright/test';
 import functionalConfig from '../../playwright.config';
+import evidenceConfig from '../../playwright.evidence.config';
 import perfConfig from '../../playwright.perf.config';
 import {
   caseTimeoutMs,
@@ -45,6 +46,20 @@ test.describe('gating', () => {
 
   test('the performance config keeps its output apart from the functional one', () => {
     expect(perfConfig.outputDir).not.toBe(functionalConfig.outputDir);
+  });
+
+  test('the evidence config is the functional suite with every artifact kept, in folders of its own', () => {
+    expect(projectNames(evidenceConfig)).toEqual(projectNames(functionalConfig));
+    expect(evidenceConfig.use).toMatchObject({ trace: 'on', screenshot: 'on' });
+    // A normal run keeps artifacts of failures only.
+    expect(functionalConfig.use).toMatchObject({ trace: 'retain-on-failure', screenshot: 'only-on-failure' });
+
+    expect(evidenceConfig.outputDir).not.toBe(functionalConfig.outputDir);
+    expect(evidenceConfig.outputDir).not.toBe(perfConfig.outputDir);
+    const htmlFolder = (config: PlaywrightTestConfig): unknown =>
+      [config.reporter ?? []].flat(1).find((entry) => Array.isArray(entry) && entry[0] === 'html')?.[1]?.outputFolder;
+    expect(htmlFolder(evidenceConfig)).toBeDefined();
+    expect(htmlFolder(evidenceConfig)).not.toBe(htmlFolder(functionalConfig));
   });
 });
 
