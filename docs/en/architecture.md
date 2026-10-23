@@ -119,6 +119,17 @@ src/shared/
 
 The API emits events from `src/shared/sse/` that the frontend consumes via the `useSSE` hook (`shared/hooks/`). This lets the UI track backup, restore and job state in real time without polling.
 
+Each job has its own stream, `GET /api/backups/:id/stream` and `GET /api/restores/:id/stream`, backed by Redis rather than process memory:
+
+- **Cross-replica**: the worker that runs a job appends each event to a capped list `sse:job:<id>:events` (the last 500), numbers it with the counter `sse:job:<id>:seq` and publishes it on the channel `sse:job:<id>`. Every API process holds one shared pattern subscription, so a browser connected to any replica receives the events of a job running on another one.
+- **Replay**: a subscriber that connects late, or reconnects, first receives the stored history and then the live events, deduplicated by sequence number. After a Redis reconnect the history is read again so nothing published in between is lost.
+- **Retention**: the history of a running job expires after 6 hours without events; once the job ends it stays replayable for 60 seconds.
+- **Terminal events**: `completed` or `failed` closes the stream. A failed backup attempt that BullMQ will retry only sends a `log` event (`Intento N de M falló: … Reintentando...`); `failed` is sent after the final attempt, so the UI never reports a failure that the retry turns into a success.
+- **Wire format**: the global response interceptor wraps every message, so each frame arrives as `{"data":{"type":…,"payload":…}}`; the web client accepts both the wrapped and the bare event.
+- **Proxy**: the web's nginx serves `/api/(restores|backups)/:id/stream` from a dedicated location with buffering off and a long read timeout; without it, events would queue up until the response ends.
+
+On the Dumps page, starting a backup shows a "queued" toast; the page then follows the job's stream and shows the completion (or failure) toast and refreshes the history when the stream reports the end, without a reload.
+
 The hook handles:
 - Initial connection and automatic reconnection on drops
 - Dispatch of typed events to the matching features

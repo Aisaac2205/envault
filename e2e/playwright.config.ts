@@ -35,6 +35,7 @@ export default defineConfig({
 
   use: {
     // retain-on-failure (not on-first-retry) because retries are off.
+    // playwright.evidence.config.ts keeps both for every test instead.
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     actionTimeout: 10_000,

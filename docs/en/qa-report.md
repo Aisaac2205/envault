@@ -42,7 +42,7 @@ Before this work EnVault already had white-box unit tests: tests written by some
 | Control of the browser's network | `page.route` answers chosen requests with prepared responses, to show error states (the API unreachable, an empty list) that a shared environment cannot guarantee. |
 | Known defects kept as tests | `test.fail` marks a test that is expected to fail because of a known defect: the run stays green while the defect exists and turns red when it is fixed, which is the signal to remove the mark. |
 | Parallel workers and repetition | Workers are separate processes that run tests at the same time; `--workers` sets how many and `--repeat-each` runs every test several times. Both made the reliability study of this report possible. |
-| Diagnostics | An HTML report of every run, and a trace and a screenshot kept for each failed test. |
+| Diagnostics | An HTML report of every run, and a trace and a screenshot kept for each failed test. An opt-in evidence mode (`pnpm test:e2e:evidence`) keeps a screenshot of every UI test and a trace of every test, with the HTTP requests and responses of the API and pipeline specs. |
 | TypeScript | The same language as EnVault, so the tests follow the conventions of the code they test. |
 
 Playwright does not measure code coverage (that stays with Jest and Vitest) and is not a load-testing tool, so neither of those is claimed for it in this report.
@@ -416,6 +416,7 @@ Every result in this QA report on EnVault (a self-hosted application that backs 
 | Run the functional suite | `pnpm test:e2e` (expected at `60fe003`: 276 passed, 1 skipped) |
 | Repeat the reliability study | `pnpm test:e2e` ten times, then `pnpm test:e2e --workers=1`, `pnpm test:e2e --workers=16` and `pnpm test:e2e --repeat-each=3` (the first study; the re-check after the last fixes used 5 normal runs and `--repeat-each=3`) |
 | Open the HTML report of the last run | `pnpm test:e2e:report` |
+| Run the functional suite with evidence (presentations and audits) | `pnpm test:e2e:evidence` (the same 277 tests, with a screenshot per UI test and a trace per test, including the API's HTTP requests and responses; about 56 MB in `e2e/playwright-report-evidence/`), then `pnpm test:e2e:evidence:report` to open the report |
 | Run the performance suite | `pnpm test:e2e:perf` (about 17 minutes; results in `e2e/perf-results/`) |
 | Stop and delete the environment | `pnpm docker:e2e:down` |
 | Unit tests and coverage (no Docker needed) | `pnpm test`, `pnpm test:coverage` |

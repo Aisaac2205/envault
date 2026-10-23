@@ -84,6 +84,7 @@ La suite documenta los errores que encuentra en lugar de ocultarlos. Cada uno ti
 e2e/
 ├── playwright.config.ts   proyectos: setup, api, pipeline, ui-chromium
 ├── playwright.perf.config.ts   proyectos: perf-unit, setup, perf (el benchmark; nunca forma parte de pnpm test:e2e)
+├── playwright.evidence.config.ts   la suite funcional, conservando una traza y una captura de cada test (pnpm test:e2e:evidence)
 ├── support/               carga de .env.e2e, chequeo de que el stack esté listo, ruta de la sesión guardada,
 │                          fixtures (anónimo, cliente de API admin, usuario no admin, fábrica y limpieza
 │                          de conexiones), helpers del formato de respuesta, respuestas de API simuladas (mock-api.ts),
@@ -108,7 +109,7 @@ e2e/
 | `perf-unit` | `tests/perf` (`*.unit.spec.ts`) | Solo en `playwright.perf.config.ts`. Pruebas unitarias de los helpers de estadística; no necesitan el stack. `setup` depende de él ahí, así que un helper roto detiene una ejecución del benchmark antes de que empiece. |
 | `perf` | `tests/perf` (`*.perf.spec.ts`) | Solo en `playwright.perf.config.ts`. El benchmark, un worker y un test a la vez. Ver [Suite de rendimiento](#suite-de-rendimiento). |
 
-Salida generada (toda ignorada por git): `e2e/playwright-report/` (reporte HTML), `e2e/test-results/` (trazas y capturas de los fallos) y `e2e/.auth/` (la sesión guardada); la suite de rendimiento agrega `e2e/perf-results/` (una carpeta por ejecución) y `e2e/test-results-perf/`.
+Salida generada (toda ignorada por git): `e2e/playwright-report/` (reporte HTML), `e2e/test-results/` (trazas y capturas de los fallos) y `e2e/.auth/` (la sesión guardada); la suite de rendimiento agrega `e2e/perf-results/` (una carpeta por ejecución) y `e2e/test-results-perf/`, y la [ejecución con evidencia](#ejecución-con-evidencia) agrega `e2e/playwright-report-evidence/` y `e2e/test-results-evidence/` (una traza de cada test y una captura de cada test del navegador).
 
 Archivos de specs de la API:
 
@@ -131,7 +132,7 @@ Archivos de specs de la UI (los page objects están en `e2e/support/pages/`; los
 | `navigation.ui.spec.ts` | Secciones y enlaces de la barra lateral, abrir cada sección como admin, qué ve un usuario normal, de dónde se le redirige y qué puede abrir, los datos detrás de las pantallas que un usuario normal abre (defecto conocido), direcciones desconocidas |
 | `connections.ui.spec.ts` | Estado vacío, formulario de creación y su validación, crear conexiones PostgreSQL y MySQL, probar desde el formulario y desde una fila, filtrar, editar, eliminar y cancelar la confirmación, redacción del toast de éxito |
 | `dashboard.ui.spec.ts` | Título y tarjetas de KPI, paneles, solo peticiones exitosas, un sistema vacío |
-| `dumps.ui.spec.ts` | Inicia un backup desde la página Dumps y lo ve completado en el historial (detrás de la pantalla corre el pipeline real) |
+| `dumps.ui.spec.ts` | Inicia un backup desde la página Dumps y lo sigue en vivo: el aviso "Backup queued", luego el aviso "Backup completed" y la fila que pasa a Completed en el historial, sin recargar la página (detrás de la pantalla corre el pipeline real y la página sigue el stream SSE del job) |
 
 Las specs de login se ejecutan en una ventana de 1000 px de ancho: desde 1024 px la pantalla de login pinta un panel animado con WebGL que Chromium sin interfaz renderiza por software, lo que hacía cada test varios segundos más lento (1,2 minutos para el archivo a 1280 px frente a 18 segundos), y por debajo de ese ancho la aplicación lo oculta. Las specs que necesitan un estado que el stack compartido no puede garantizar (sin conexiones, sin jobs) responden el `GET` con `mockApiGet` de `e2e/support/mock-api.ts`; el resto del tráfico es real.
 
@@ -182,7 +183,7 @@ Cada test trabaja con datos propios, así que el proyecto corre en paralelo y se
 | `backup-failure.pipeline.spec.ts` | Backups de un origen con contraseña incorrecta, un host que no se resuelve o una base de datos que no existe terminan `failed`, con un mensaje de error y sin ningún objeto en el almacenamiento |
 | `observability.pipeline.spec.ts` | Un backup y un restore completados aparecen en las listas de jobs, el historial, la analítica diaria, el resumen y los totales de almacenamiento |
 
-Un backup que falla se intenta dos veces, con 5 segundos de diferencia. El job ya se reporta `failed` tras el primer intento y el reintento lo reescribe, así que los tests de fallo esperan al segundo intento y tardan unos 6 segundos cada uno.
+Un backup que falla se intenta dos veces, con 5 segundos de diferencia. El job ya se reporta `failed` tras el primer intento y el reintento lo reescribe, así que los tests de fallo esperan al segundo intento y tardan unos 6 segundos cada uno. El stream de progreso, en cambio, solo envía su evento terminal `failed` tras el último intento; un intento fallido que se va a reintentar solo envía un evento `log` ("Intento 1 de 2 falló: … Reintentando...").
 
 ### Bases de datos de origen y limpieza
 
@@ -354,9 +355,26 @@ pnpm test:e2e --project=ui-chromium --workers=1  # un navegador a la vez, más f
 pnpm test:e2e --ui                               # modo UI de Playwright
 pnpm test:e2e --project=ui-chromium --debug      # paso a paso con el Inspector
 pnpm test:e2e:report                             # abrir el reporte HTML
+pnpm test:e2e:evidence                           # toda la suite, conservando cada traza y captura (ver abajo)
+pnpm test:e2e:evidence --project=pipeline        # los mismos flags sirven en la ejecución con evidencia
+pnpm test:e2e:evidence:report                    # abrir el reporte de evidencia
 ```
 
 El proyecto `setup` siempre se ejecuta primero, por lo que su test se cuenta en todas las ejecuciones. El reporte se sirve en `http://localhost:9323` (presiona `Ctrl+C` para detenerlo). Para las specs del navegador, `--headed` y `--ui` muestran lo que hace la página, `--workers=1` ejecuta un navegador a la vez y un test fallido conserva su traza y su captura en el reporte.
+
+### Ejecución con evidencia
+
+Una ejecución normal conserva artefactos solo de los tests fallidos. Cuando la ejecución en sí es el entregable (una presentación, una auditoría, la demostración de una corrección), `pnpm test:e2e:evidence` ejecuta los mismos proyectos y specs con `e2e/playwright.evidence.config.ts`, que los conserva para cada test:
+
+| Specs | Qué conserva cada test |
+|-------|------------------------|
+| Navegador (`ui-chromium`) | Una captura al final del test y una traza con cada acción, una instantánea del DOM antes y después de ella, y las llamadas de red de la página. |
+| HTTP (`setup`, `api`, `pipeline`) | Una traza con cada llamada del fixture `request`: método, URL, cabeceras, cuerpo y estado de la petición y de la respuesta. Las trazas de Playwright registran las llamadas de `APIRequestContext` desde la versión 1.20, así que esta es la evidencia de caja negra de lo que la suite envió y lo que la API respondió. Las capturas no aplican: no hay página. |
+
+- Su salida va a carpetas propias, `e2e/playwright-report-evidence/` y `e2e/test-results-evidence/` (ambas ignoradas por git), así que un `pnpm test:e2e` posterior nunca las vacía. El reporte se abre con `pnpm test:e2e:evidence:report`; cada test muestra su captura y abre su traza en el Trace Viewer.
+- Cuesta más que una ejecución normal: escribir una traza por cada test hace la ejecución algo más lenta y el reporte mucho más grande (cada cuerpo de petición y respuesta de las specs del pipeline, cada instantánea del DOM de las specs del navegador). Se puede acotar con los flags habituales (`--project`, un nombre de archivo, `-g`) cuando solo se necesita una parte de la suite.
+- Es para generar evidencia, no para las ejecuciones de todos los días: la ejecución normal sigue siendo la predeterminada, y sus artefactos de los fallos bastan para depurar.
+- Las trazas contienen lo que envían los tests, incluido el inicio de sesión del admin sembrado y la cookie de sesión del stack de pruebas. Ese stack es local y desechable, pero conviene revisar el reporte antes de compartirlo fuera del equipo.
 
 ---
 

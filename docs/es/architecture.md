@@ -119,6 +119,17 @@ src/shared/
 
 La API emite eventos desde `src/shared/sse/` que el frontend consume con el hook `useSSE` (en `shared/hooks/`). Esto permite actualizar en vivo el estado de backups, restores y jobs sin polling.
 
+Cada job tiene su propio stream, `GET /api/backups/:id/stream` y `GET /api/restores/:id/stream`, respaldado por Redis y no por la memoria del proceso:
+
+- **Entre réplicas**: el worker que ejecuta un job agrega cada evento a una lista acotada `sse:job:<id>:events` (los últimos 500), lo numera con el contador `sse:job:<id>:seq` y lo publica en el canal `sse:job:<id>`. Cada proceso de la API mantiene una única suscripción por patrón compartida, así que un navegador conectado a cualquier réplica recibe los eventos de un job que corre en otra.
+- **Reproducción**: un suscriptor que se conecta tarde, o que se reconecta, recibe primero el historial guardado y luego los eventos en vivo, sin duplicados gracias al número de secuencia. Tras una reconexión a Redis el historial se vuelve a leer, de modo que no se pierde nada publicado en el intervalo.
+- **Retención**: el historial de un job en curso expira tras 6 horas sin eventos; cuando el job termina, sigue disponible para reproducirse durante 60 segundos.
+- **Eventos terminales**: `completed` o `failed` cierran el stream. Un intento de backup fallido que BullMQ va a reintentar solo envía un evento `log` (`Intento N de M falló: … Reintentando...`); `failed` se envía tras el último intento, de modo que la UI nunca informa un fallo que el reintento convierte en éxito.
+- **Formato en el cable**: el interceptor global de respuestas envuelve cada mensaje, así que cada frame llega como `{"data":{"type":…,"payload":…}}`; el cliente web acepta tanto el evento envuelto como el evento sin envolver.
+- **Proxy**: el nginx del web sirve `/api/(restores|backups)/:id/stream` desde una location dedicada con el buffering desactivado y un timeout de lectura largo; sin ella, los eventos se acumularían hasta que termine la respuesta.
+
+En la página Dumps, iniciar un backup muestra un aviso de "en cola"; luego la página sigue el stream del job, muestra el aviso de finalización (o de fallo) y actualiza el historial cuando el stream informa el final, sin recargar.
+
 El hook maneja:
 - Conexión inicial y reconexión automática ante desconexiones
 - Dispatch de eventos tipados a las features correspondientes
