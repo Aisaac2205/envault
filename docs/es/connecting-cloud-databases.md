@@ -196,7 +196,7 @@ Si el test falla, el mensaje viene directo del driver. Comunes:
 - **Usá un usuario dedicado por conexión de EnVault Management.** No el master/admin. Concedé solo los permisos mínimos. Si la credencial se filtra, el blast radius queda acotado.
 - **Rotá passwords periódicamente.** Hoy EnVault Management los guarda en plaintext en la DB de control ([security-model.md, §4](security-model.md)) — la rotación es tu defensa en profundidad.
 - **Nombrá las conexiones descriptivamente.** `prod-billing-postgres` es mejor que `db1`. Los nombres aparecen en audit logs e historial.
-- **Pineá la versión del engine**, cuando puedas. `pg_dump` tiene que ser ≥ la versión del server origen. Si tu managed DB es Postgres 16 y el container de EnVault Management trae `pg_dump` 15, los dumps van a fallar con un error de versión.
+- **Fija la versión del engine**, cuando puedas. La imagen de la API trae clientes de PostgreSQL 14 a 18 y vuelca con el que coincide con la versión major de tu server, así que cualquiera de esas versiones funciona; un server posterior a 18 requiere una imagen nueva (ver [troubleshooting §3.2](troubleshooting.md#32-pg_dump-version-mismatch)). Un dump solo se restaura en la misma versión major de PostgreSQL o en una más nueva.
 - **Monitoreá costos de egress.** El tráfico cross-region o cross-AZ desde tu managed DB al host de EnVault Management se cobra en la mayoría de los proveedores. Co-locá cuando puedas.
 
 ---

@@ -1,4 +1,4 @@
-import { engines, postgresVersionNumber, uniqueDatabaseName, type DbType, type Engine } from './databases';
+import { engines, uniqueDatabaseName, type DbType, type Engine } from './databases';
 import { expect, test as base, type Connection } from './fixtures';
 import { JobRunner, type BackupJob } from './jobs';
 import type { Fingerprint } from './seed-data';
@@ -35,14 +35,9 @@ interface PipelineFixtures {
   jobs: JobRunner;
 }
 
-interface PipelineWorkerFixtures {
-  /** `server_version_num` of the source PostgreSQL, for the restore specs that depend on it. */
-  postgresVersion: number;
-}
-
 const SHORT_NAME: Record<DbType, string> = { postgres: 'pg', mysql: 'my' };
 
-export const test = base.extend<PipelineFixtures, PipelineWorkerFixtures>({
+export const test = base.extend<PipelineFixtures>({
   newDatabase: async ({}, use) => {
     const created: TestDatabase[] = [];
 
@@ -99,12 +94,6 @@ export const test = base.extend<PipelineFixtures, PipelineWorkerFixtures>({
     });
   },
 
-  postgresVersion: [
-    async ({}, use) => {
-      await use(await postgresVersionNumber());
-    },
-    { scope: 'worker' },
-  ],
 });
 
 export { expect };

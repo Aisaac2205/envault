@@ -20,6 +20,7 @@ Common failure modes during install, configuration, and operation, with concrete
 | Connection test fails: `no pg_hba.conf entry` | [§2.4](#24-pg_hbaconf-no-entry) |
 | Backup hangs / never completes | [§3.1](#31-backup-hangs) |
 | Backup fails: `pg_dump: server version mismatch` | [§3.2](#32-pg_dump-version-mismatch) |
+| Restore refused with a PostgreSQL version message (`422`) | [§3.2](#32-pg_dump-version-mismatch) |
 | Restore fails: `403 Forbidden, restore to PROD blocked` | [§3.3](#33-restore-blocked-by-prod-rule) |
 | Cronjob does not fire | [§3.4](#34-cronjob-does-not-fire) |
 | Cronjob fires twice | [§3.5](#35-cronjob-fires-twice) |
@@ -176,9 +177,11 @@ docker stats envault-api          # CPU/memory/network usage
 
 **Symptom**: Backup fails with `pg_dump: error: server version: 16.x; pg_dump version: 15.x; aborting because of server version mismatch`.
 
-**Cause**: The EnVault Management API container ships a specific `pg_dump` version. `pg_dump` must be **≥** the source server version. If your managed DB upgraded to Postgres 17 and EnVault Management's container has `pg_dump` 16, dumps break.
+**Cause**: The EnVault Management API image ships the PostgreSQL clients 14 to 18 side by side and dumps with the `pg_dump` whose major equals the source server's. The mismatch only happens when the source server is newer than the newest installed client (for example, a managed DB upgraded to PostgreSQL 19 while the image tops out at 18): `pg_dump` cannot dump a server newer than itself. The API stops before running `pg_dump` and the job error names both versions. A source older than PostgreSQL 14 is refused the same way, because no supported client could restore its archive.
 
-**Fix**: Update [`apps/api/Dockerfile`](../../apps/api/Dockerfile) to install a newer `postgresql-client` version. Look for the `POSTGRES_CLIENT_VERSION` build arg or the `apt-get install postgresql-client-X` line, bump it, rebuild, redeploy.
+**Fix**: Add the new major to the `POSTGRES_CLIENT_VERSIONS` build arg (space-separated list; default `14 15 16 17 18` in [`apps/api/Dockerfile`](../../apps/api/Dockerfile); for Compose, add it under `build.args` of the `api` service in [`docker-compose.yml`](../../docker-compose.yml)), rebuild and redeploy.
+
+**Related, restore refused for version reasons**: a restore is refused, with a message that names both versions, when the target PostgreSQL is older than the server the dump came from (PostgreSQL only guarantees loading a dump into the same or a newer major), or when a dump made by the old image's `pg_dump` 18 is aimed at a target older than 17. `POST /api/restores` answers `422` with the reason, dry runs included; a dump that passes the request check but not the archive check ends the job `failed` before the target is touched. Pick a target with the dump's PostgreSQL major or newer.
 
 ### 3.3 Restore blocked by PROD rule
 

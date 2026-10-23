@@ -7,12 +7,12 @@ import { EMPTY_DATABASE, SEEDED_ROW_COUNTS, SEED_TABLES } from '../../support/se
 // indexes and rows as the one that was backed up, compared through a row count
 // and a SHA-256 over every row (see support/seed-data.ts).
 
-// The API image ships `pg_restore` 18, which cannot restore into a server older
-// than 17: it aborts on `SET transaction_timeout`. See D1 in docs/en/e2e-testing.md.
-const POSTGRES_17 = 170_000;
-const NEEDS_POSTGRES_17 =
-  'D1: pg_restore 18 cannot restore into a PostgreSQL older than 17. ' +
-  'Use the default E2E_PG_IMAGE (postgres:18-alpine) to run this test.';
+// The API image ships the PostgreSQL clients 14 to 18 side by side and restores
+// with the `pg_restore` of the target's major, so the PostgreSQL restore below
+// must pass on every source image (the default postgres:18-alpine and, with
+// E2E_PG_IMAGE=postgres:16-alpine, a 16 server). The downgrade refusal is not
+// covered here because the source and the target of a test share one server;
+// the unit tests of pg-client-resolver cover it. See docs/en/e2e-testing.md.
 
 const RESTORES = [
   { dbType: 'postgres', environment: 'dev', title: 'PostgreSQL into a dev target' },
@@ -26,9 +26,7 @@ test.describe('restore', () => {
       backedUp,
       restoreTarget,
       jobs,
-      postgresVersion,
     }) => {
-      test.skip(dbType === 'postgres' && postgresVersion < POSTGRES_17, NEEDS_POSTGRES_17);
       const { backup, fingerprint } = await backedUp(dbType);
       const { database, connection } = await restoreTarget(dbType, environment);
 
@@ -147,42 +145,4 @@ test.describe('dry run', () => {
     expect(dryRunResult).toMatchObject({ manifestAvailable: true });
     expect(dryRunResult!.source!.tableCount).toBe(SEED_TABLES.length);
   });
-});
-
-test.describe('restore on a PostgreSQL older than 17', () => {
-  // Known defect D1. The spec states the behavior as it is today and runs only
-  // against an old server; it starts failing, with "restore completed", when the
-  // API can restore into old servers, which is the signal to delete it.
-  test(
-    'D1: fails on transaction_timeout and leaves the target empty',
-    {
-      annotation: {
-        type: 'known-defect',
-        description: 'D1: pg_restore 18 cannot restore into PostgreSQL older than 17',
-      },
-    },
-    async ({ backedUp, restoreTarget, jobs, postgresVersion }) => {
-      test.skip(
-        postgresVersion >= POSTGRES_17,
-        'D1 only shows when the source PostgreSQL is older than 17. ' +
-          'Start the stack with E2E_PG_IMAGE=postgres:16-alpine to run this test.',
-      );
-      const { backup } = await backedUp('postgres');
-      const { database, connection } = await restoreTarget('postgres', 'dev');
-
-      const { jobId } = await jobs.startRestore({
-        sourceBackupId: backup.id,
-        targetConnectionId: connection.id,
-      });
-      const restore = await jobs.waitForRestore(jobId, {
-        failFast: false,
-        until: (job) => job.status === 'failed',
-        description: 'fail',
-      });
-
-      expect(restore.errorMessage).toContain('transaction_timeout');
-      // pg_restore runs in a single transaction, so nothing was half-loaded.
-      expect(await database.engine.inspect(database.name)).toEqual(EMPTY_DATABASE);
-    },
-  );
 });

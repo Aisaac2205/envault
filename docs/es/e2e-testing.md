@@ -178,7 +178,7 @@ Cada test trabaja con datos propios, así que el proyecto corre en paralelo y se
 | Archivo | Cubre |
 |---------|-------|
 | `backup.pipeline.spec.ts` | PostgreSQL y MySQL: campos y tiempos del job, el dump servido con su URL firmada (tamaño y SHA-256), dump y manifiesto en el almacenamiento, los listados del almacenamiento, la versión del servidor en el manifiesto, un backup pendiente devuelto a peticiones repetidas y luego cancelado |
-| `restore.pipeline.spec.ts` | Restore a destinos `dev` y `qa` con conteos de filas y checksum de datos iguales a los del origen, restore por clave de objeto, dry run (el plan, el manifiesto, un destino intacto), restore sobre un PostgreSQL anterior a la versión 17 (D1) |
+| `restore.pipeline.spec.ts` | Restore a destinos `dev` y `qa` con conteos de filas y checksum de datos iguales a los del origen, restore por clave de objeto, dry run (el plan, el manifiesto, un destino intacto), el restore de PostgreSQL sobre cada imagen de origen soportada, 16 y 18 incluidas ([PostgreSQL anterior a la versión 17 (D1)](#postgresql-anterior-a-la-versión-17-d1)) |
 | `rules.pipeline.spec.ts` | Lo que se rechaza: restore a `prod`, un backup del otro motor, peticiones desconocidas y mal formadas, un restore sin origen, el backup de una conexión que no es de producción, listar dumps |
 | `backup-failure.pipeline.spec.ts` | Backups de un origen con contraseña incorrecta, un host que no se resuelve o una base de datos que no existe terminan `failed`, con un mensaje de error y sin ningún objeto en el almacenamiento |
 | `observability.pipeline.spec.ts` | Un backup y un restore completados aparecen en las listas de jobs, el historial, la analítica diaria, el resumen y los totales de almacenamiento |
@@ -193,16 +193,24 @@ Las bases de datos de prueba se llaman `e2e_...` y se descartan cuando el test t
 
 ### PostgreSQL anterior a la versión 17 (D1)
 
-La imagen de la API trae `pg_restore` 18, que no puede restaurar en un PostgreSQL anterior a la versión 17 (defecto D1). La imagen de origen por defecto es `postgres:18-alpine`, así que por defecto se ejecuta el test de restore de PostgreSQL y se omite el de D1. Para ejecutar D1, levanta el stack con un origen más antiguo, corre el proyecto y vuelve a la imagen por defecto:
+La imagen de la API trae los clientes de PostgreSQL 14, 15, 16, 17 y 18 uno junto a otro (`/usr/lib/postgresql/<major>/bin`). Un backup se vuelca con el `pg_dump` de la versión major del servidor de origen y un restore ejecuta el `pg_restore` de la versión major del servidor de destino, así que el proyecto `pipeline` pasa con un origen PostgreSQL 16 igual que con el `postgres:18-alpine` por defecto. El defecto D1, la falla de la imagen anterior (un único `pg_restore` 18 que abortaba en `SET transaction_timeout`, un parámetro que solo conocen PostgreSQL 17 y posteriores, y dejaba el destino vacío), está corregido.
+
+Las reglas viven en `apps/api/src/modules/backup/strategies/pg-client-resolver.ts`:
+
+- Se rechaza un restore a una versión major anterior a la del servidor del que salió el dump (un downgrade), porque PostgreSQL solo garantiza que un dump cargue en la misma versión major o en una más nueva. `POST /api/restores` responde `422` con el motivo antes de que exista un job (un dry run también se rechaza), y el worker lo vuelve a comprobar, sobre el archivo mismo, antes de que `pg_restore` toque el destino.
+- Los dumps hechos por la imagen anterior (siempre con `pg_dump` 18) siguen restaurando en PostgreSQL 17 y 18. En un destino anterior se rechazan con un mensaje que indica restaurar en PostgreSQL 17 o posterior y, cuando el origen aún se puede respaldar, generar un backup nuevo.
+- El SQL de un dump nunca se filtra ni se reescribe.
+
+Para ejecutar el proyecto `pipeline` con un origen PostgreSQL 16, levanta el stack con él, corre el proyecto y vuelve a la imagen por defecto:
 
 ```bash
 pnpm docker:e2e:down                                # empezar desde un stack limpio
 E2E_PG_IMAGE=postgres:16-alpine pnpm docker:e2e     # levantar con un origen PostgreSQL 16
-pnpm test:e2e --project=pipeline                    # corre D1, se omite el test de restore de PostgreSQL
+pnpm test:e2e --project=pipeline                    # el backup y el restore de PostgreSQL corren contra 16
 pnpm docker:e2e:down && pnpm docker:e2e             # volver a la imagen por defecto
 ```
 
-Con PostgreSQL 16 el test de D1 pasa: el job de restore termina `failed` con `transaction_timeout` en su mensaje de error y el destino queda vacío. El test de restore de PostgreSQL se omite con un mensaje que apunta a D1; todo lo demás, restores de MySQL incluidos, se comporta como con la imagen por defecto. Cuando D1 se corrija, el test de D1 empezará a fallar, que es la señal para borrarlo junto con su fila en [Defectos conocidos](#defectos-conocidos).
+El test de restore de PostgreSQL corre con ambas imágenes. El rechazo del downgrade no tiene test en el proyecto `pipeline`, porque el origen y el destino de un test viven en el mismo servidor y un test no puede construir un downgrade; lo cubren los tests unitarios (`pg-client-resolver.spec.ts`, `postgres-restore.strategy.spec.ts` y `restore.service.compatibility.spec.ts`).
 
 ---
 
@@ -326,7 +334,7 @@ Con un solo worker de restore los restores son estrictamente secuenciales: de do
 - La página de login se mide por debajo de 1024 px (1000 x 800) porque desde 1024 px la pantalla de inicio de sesión pinta un panel animado con WebGL que Chromium sin interfaz dibuja por software; ese caso ancho se mide aparte y se etiqueta `Login (WebGL panel)`. En la ejecución de referencia no difirió del caso angosto (LCP mediano de 386 ms frente a 416 ms).
 - Las filas de jobs se acumulan mientras viva el stack y los endpoints de la API responden más lento con más filas detrás (`summary.md` indica las filas que tenía cada respuesta). Para números comparables parte de un stack limpio: `pnpm docker:e2e:down` y luego `pnpm docker:e2e`.
 - El conjunto `xlarge` necesita unos GB libres en la VM de Docker para el origen, el dump y el destino del restore, y tarda unos 4 minutos para una repetición de ambos motores.
-- Con un PostgreSQL anterior a la versión 17 se omiten los casos de PostgreSQL, porque el restore falla ahí (D1).
+- Los casos de PostgreSQL corren contra la imagen que aporte `E2E_PG_IMAGE` (por defecto `postgres:18-alpine`). El origen y el destino comparten un servidor, así que ningún caso implica un downgrade.
 - El MySQL de origen corre con su log binario desactivado (`--skip-log-bin`). Antes de ese ajuste una ejecución de rendimiento por defecto dejaba unos 7,5 GB de logs binarios en su volumen (MySQL 8 registra cada siembra y cada restore y conserva los logs 30 días); después, una ejecución rápida solo de MySQL dejó un directorio de datos de unos 200 MB, sin archivos de log binario. `pnpm docker:e2e:down` sigue borrando todos los datos.
 - Una ejecución terminada a la fuerza deja sus bases de datos `e2e_...`, conexiones y dumps hasta `pnpm docker:e2e:down`.
 
@@ -424,7 +432,7 @@ Las pruebas cargan el `.env.e2e` de la raíz del repositorio, el mismo archivo q
 | `Expected to fail, but passed` en una spec marcada con `test.fail` | Se corrigió un defecto conocido. | Borra el `test.fail` y la fila en [Defectos conocidos](#defectos-conocidos). |
 | Quedan cuentas `e2e-user-...@envault.local` tras una ejecución abortada | El usuario no admin de prueba se elimina cuando su worker termina; una ejecución cancelada se salta ese paso. | `pnpm docker:e2e:down` las borra junto con el resto de los datos. |
 | Necesitas empezar de cero | Los datos de una ejecución anterior siguen en los volúmenes. | `pnpm docker:e2e:down` borra los volúmenes; el siguiente `pnpm docker:e2e` arranca vacío. |
-| Los restores fallan con `unrecognized configuration parameter "transaction_timeout"` | El PostgreSQL de origen es anterior a la versión 17 y el `pg_restore` de la imagen de la API es la versión 18. | Mantén `E2E_PG_IMAGE` en la versión 17 o superior (por defecto `postgres:18-alpine`). Con un servidor más antiguo el proyecto `pipeline` omite su test de restore de PostgreSQL y ejecuta el de D1 (ver [PostgreSQL anterior a la versión 17 (D1)](#postgresql-anterior-a-la-versión-17-d1)). |
+| Los restores fallan con `unrecognized configuration parameter "transaction_timeout"` | La imagen de la API es anterior al cambio multi-cliente: trae solo `pg_restore` 18 y el PostgreSQL de destino es anterior a la versión 17. | Reconstruye la imagen de la API (`pnpm docker:e2e` la construye); la actual restaura con el `pg_restore` de la versión major del destino (ver [PostgreSQL anterior a la versión 17 (D1)](#postgresql-anterior-a-la-versión-17-d1)). |
 | `Cannot reach the source PostgreSQL (localhost:5435) from the host` (o el de MySQL) | El stack está apagado, o se cambió un puerto en Compose pero no en `.env.e2e`, así que las pruebas siguen mirando el valor por defecto. | Ejecuta `pnpm docker:e2e` y define `E2E_PG_PORT` / `E2E_MYSQL_PORT` en `.env.e2e`, donde los leen tanto Compose como las pruebas. |
 | `Backup job ... did not complete within 60 s` (o `Restore job ...`) | El worker no terminó el job a tiempo: está atascado, o la cola está ocupada con otros jobs. El mensaje trae el último estado y error del job. | Ejecuta el test solo para ver si el stack está sano; `pnpm docker:e2e:down` y `pnpm docker:e2e` dan uno limpio. |
 | Bases de datos llamadas `e2e_...` siguen en los servidores de origen tras una ejecución abortada | La limpieza corre cuando el test termina; una ejecución terminada a la fuerza se la salta. | `pnpm docker:e2e:down` las elimina junto con el resto de los datos. |

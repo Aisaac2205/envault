@@ -300,17 +300,6 @@ const mysql: Engine = {
 export const engines: Record<DbType, Engine> = { postgres, mysql };
 
 /**
- * The source PostgreSQL's `server_version_num` (180000 for 18.0). The API image
- * bundles `pg_restore` 18, which cannot restore into a server older than 17.
- */
-export function postgresVersionNumber(): Promise<number> {
-  return withPostgres('postgres', async (client) => {
-    const { rows } = await client.query<{ server_version_num: string }>('SHOW server_version_num');
-    return Number(rows[0].server_version_num);
-  });
-}
-
-/**
  * Keeps a dump of a seeded PostgreSQL database waiting: an open transaction
  * holds an exclusive lock on a table, and `pg_dump` needs a share lock on it.
  * A backup started meanwhile stays `running` (and keeps the connection's

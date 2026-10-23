@@ -14,6 +14,7 @@ import {
   probePathClient,
 } from './pg-toolchain';
 import { PostgresBackupStrategy } from './postgres-backup.strategy';
+import { PostgresRestoreStrategy } from './postgres-restore.strategy';
 
 jest.mock('child_process');
 jest.mock('pg', () => ({ Client: jest.fn() }));
@@ -91,11 +92,12 @@ describe('probePathClient', () => {
 });
 
 describe('PgToolchain wiring', () => {
-  it('is injected into the PostgreSQL backup strategy, as the backup module provides it', async () => {
+  it('is injected into both PostgreSQL strategies, as the backup module provides it', async () => {
     const module = await Test.createTestingModule({
       providers: [
         PgToolchain,
         PostgresBackupStrategy,
+        PostgresRestoreStrategy,
         { provide: R2Service, useValue: {} },
         { provide: ConfigService, useValue: { get: () => undefined } },
       ],
@@ -103,6 +105,7 @@ describe('PgToolchain wiring', () => {
 
     const toolchain = module.get(PgToolchain);
     expect((module.get(PostgresBackupStrategy) as unknown as { toolchain: PgToolchain }).toolchain).toBe(toolchain);
+    expect((module.get(PostgresRestoreStrategy) as unknown as { toolchain: PgToolchain }).toolchain).toBe(toolchain);
   });
 });
 
