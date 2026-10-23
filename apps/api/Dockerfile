@@ -6,18 +6,6 @@ RUN corepack enable
 # source server major and restores with the one of the target major, so this list
 # must cover every server major the connections use. Space separated.
 ARG POSTGRES_CLIENT_VERSIONS="14 15 16 17 18"
-# Fail fast and clearly on an empty or malformed list, before any apt work.
-RUN set -- ${POSTGRES_CLIENT_VERSIONS} \
-     && if [ "$#" -eq 0 ]; then \
-          echo "POSTGRES_CLIENT_VERSIONS is empty: list at least one PostgreSQL major, for example \"14 15 16 17 18\"" >&2; \
-          exit 1; \
-        fi \
-     && for v in "$@"; do \
-          case "$v" in ''|*[!0-9]*) \
-            echo "POSTGRES_CLIENT_VERSIONS must be a space-separated list of PostgreSQL majors (got \"$v\")" >&2; \
-            exit 1;; \
-          esac; \
-        done
 RUN apt-get update \
      && apt-get install -y --no-install-recommends \
      ca-certificates \
