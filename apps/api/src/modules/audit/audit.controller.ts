@@ -1,12 +1,10 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { RequirePermission } from '../../common/authorization';
 import { AuditService } from './audit.service';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 
 @Controller('audit')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('audit')
 export class AuditController {
   constructor(private readonly service: AuditService) {}
 

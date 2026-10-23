@@ -6,13 +6,11 @@ import {
   ParseUUIDPipe,
   Body,
   Req,
-  UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { RequirePermission } from '../../common/authorization';
 import { CurrentUser, AuthUser } from '../../auth/decorators/current-user.decorator';
 import { setAuditContext } from '../../common/audit/audit-context';
 import { ConnectionsService } from '../connections/connections.service';
@@ -21,8 +19,7 @@ import { CreateRestoreDto } from './dto/create-restore.dto';
 import { DryRunResult } from './interfaces/dry-run-result.interface';
 
 @Controller('restores')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('restore')
 export class RestoreController {
   constructor(
     private readonly service: RestoreService,

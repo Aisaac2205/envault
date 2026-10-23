@@ -7,18 +7,12 @@ import { AddressInfo } from 'net';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { Environment } from '../../database/enums/environment.enum';
-import { RolesGuard } from '../../auth/roles.guard';
 import { HttpExceptionFilter } from '../../common/filters/http-exception.filter';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 import { validationPipeOptions } from '../../common/pipes/validation-pipe.options';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsRepository } from './connections.repository';
 import { ConnectionsService } from './connections.service';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-
-jest.mock('../../auth/auth.guard', () => ({
-  BetterAuthGuard: class {},
-}));
 
 // The probes below never reach a database server.
 const mockPgClient = {
@@ -111,10 +105,6 @@ describe('ConnectionsController responses', () => {
         { provide: APP_FILTER, useClass: HttpExceptionFilter },
       ],
     })
-      .overrideGuard(BetterAuthGuard)
-      .useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard)
-      .useValue({ canActivate: () => true })
       .compile();
 
     app = moduleRef.createNestApplication();

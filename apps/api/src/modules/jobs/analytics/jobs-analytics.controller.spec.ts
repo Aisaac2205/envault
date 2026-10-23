@@ -1,14 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { JobsAnalyticsController } from './jobs-analytics.controller';
 import { JobsAnalyticsService } from './jobs-analytics.service';
-import { RolesGuard, ROLES_KEY } from '../../../auth/roles.guard';
-import { BetterAuthGuard } from '../../../auth/auth.guard';
-
-jest.mock('../../../auth/auth.guard', () => ({
-  BetterAuthGuard: class {},
-}));
+import { PERMISSION_KEY, PUBLIC_KEY } from '../../../common/authorization';
 
 describe('JobsAnalyticsController', () => {
   let controller: JobsAnalyticsController;
@@ -55,14 +49,13 @@ describe('JobsAnalyticsController', () => {
     expect(service.getDailySeries).toHaveBeenCalledWith(undefined);
   });
 
-  it('requires the admin role via class-level @Roles metadata', () => {
-    const roles = reflector.get<string[]>(ROLES_KEY, JobsAnalyticsController);
-    expect(roles).toEqual(['admin']);
+  it('belongs to the dashboard feature via class-level @RequirePermission metadata', () => {
+    const feature = reflector.get<string>(PERMISSION_KEY, JobsAnalyticsController);
+    expect(feature).toBe('dashboard');
   });
 
-  it('applies BetterAuthGuard and RolesGuard at the class level', () => {
-    const guards = Reflect.getMetadata(GUARDS_METADATA, JobsAnalyticsController);
-    expect(guards).toEqual([BetterAuthGuard, RolesGuard]);
+  it('stays behind the global guards (it is not opted out as public)', () => {
+    expect(reflector.get<boolean>(PUBLIC_KEY, JobsAnalyticsController)).toBeUndefined();
   });
 
   it('delegates the storage-by-connection route directly to the service', async () => {

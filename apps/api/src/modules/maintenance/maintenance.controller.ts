@@ -7,11 +7,9 @@ import {
   Put,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { RequirePermission } from '../../common/authorization';
 import { setAuditContext } from '../../common/audit/audit-context';
 import { Environment } from '../../database/enums/environment.enum';
 import { MaintenanceService } from './maintenance.service';
@@ -21,8 +19,7 @@ import { UpdateConnectionRetentionDto } from './dto/update-connection-retention.
 import { DbHygieneQueryDto } from './dto/db-hygiene.query.dto';
 
 @Controller('maintenance')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('cleanup')
 export class MaintenanceController {
   constructor(private readonly service: MaintenanceService) {}
 

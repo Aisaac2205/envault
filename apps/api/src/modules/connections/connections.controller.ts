@@ -9,11 +9,9 @@ import {
   Body,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { RequirePermission } from '../../common/authorization';
 import { setAuditContext } from '../../common/audit/audit-context';
 import { ConnectionsService } from './connections.service';
 import { CreateConnectionDto } from './dto/create-connection.dto';
@@ -22,8 +20,7 @@ import { TestConnectionDto } from './dto/test-connection.dto';
 import { TestRawConnectionDto } from './dto/test-raw-connection.dto';
 
 @Controller('connections')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('connections')
 export class ConnectionsController {
   constructor(private readonly service: ConnectionsService) {}
 

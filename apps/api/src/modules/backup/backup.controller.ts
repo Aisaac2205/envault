@@ -7,7 +7,6 @@ import {
   Body,
   Query,
   Req,
-  UseGuards,
   HttpCode,
   HttpStatus,
   Sse,
@@ -16,8 +15,7 @@ import {
 import { Request } from 'express';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { RequirePermission } from '../../common/authorization';
 import { CurrentUser, AuthUser } from '../../auth/decorators/current-user.decorator';
 import { setAuditContext } from '../../common/audit/audit-context';
 import { BackupService } from './backup.service';
@@ -35,8 +33,7 @@ interface MessageEvent {
 }
 
 @Controller('backups')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('dumps')
 export class BackupController {
   constructor(
     private readonly service: BackupService,

@@ -68,13 +68,56 @@ Esta es **la regla más crítica**. Restaurar sobre PROD destruiría datos en vi
 | `session.user.id` | ID del usuario, va a `audit_logs.userId` y `backup_jobs.triggeredBy` |
 | `session.user.name` | Identificador legible, usado en logs |
 | `session.user.email` | Usado en `audit_logs.userEmail` |
-| `session.user.role` | Control de roles (`admin` vs usuario regular) |
+| `session.user.role` | Se busca en el mapa de permisos (ver [Autorización](#autorización-el-mapa-de-permisos)) |
 
 ### Guard
 
-`BetterAuthGuard` (en `apps/api/src/auth/auth.guard.ts`) se aplica **explícitamente** en cada controller. No hay guard global. Si agregás un controller nuevo, **acordate de proteger sus endpoints**.
+`BetterAuthGuard` (en `apps/api/src/auth/auth.guard.ts`) y `PermissionsGuard` (ver Autorización más abajo) se registran **globalmente** (`APP_GUARD`, en ese orden, después del throttler). Toda ruta necesita una sesión y una función que el mapa de permisos conceda a quien llama, salvo que se excluya explícitamente; por eso un controller escrito sin ningún decorator responde 401 sin sesión y 403 con ella.
 
-Excepción consciente: `/health` no requiere auth (lo consume el K8s probe).
+Excepciones conscientes, todas listadas en `permission-coverage.spec.ts`: `@Public()` en `/health` (lo consume el K8s probe) y en el catch-all de Better Auth `/api/auth/*` (el inicio de sesión debe funcionar sin sesión, y sus rutas de admin verifican sesión y rol dentro de Better Auth), y `@AuthenticatedOnly()` en `GET /api/me/permissions`.
+
+### Autorización: el mapa de permisos
+
+Quién puede usar qué se decide en **un solo lugar**: `apps/api/src/common/authorization/permissions.ts`. Todo lo demás se deriva de él: el guard de cada controller, el endpoint que lee la web y, a través de ese endpoint, la barra lateral y los guards de ruta. Antes de que existiera el mapa, el API (`@Roles('admin')` en cada controller) y la web (una lista `adminOnly` mantenida a mano) llevaban cada uno su propia copia y se fueron desalineando, de modo que a un usuario normal se le ofrecían pantallas cuyas peticiones respondían todas 403 (defecto D8).
+
+```typescript
+export const PERMISSIONS = {
+  dashboard: ['admin'],
+  dumps: ['admin'],
+  restore: ['admin'],
+  cronjobs: ['admin'],
+  connections: ['admin'],
+  cleanup: ['admin'],
+  audit: ['admin'],
+  users: ['admin'],
+} as const satisfies Record<string, readonly Role[]>;
+```
+
+| Función | Respalda (API) | Sección de la web |
+|---------|----------------|-------------------|
+| `dashboard` | `/jobs`, `/jobs/analytics` | `/` |
+| `dumps` | `/backups` | `/dumps` |
+| `restore` | `/restores`, incluido su stream de progreso | `/restore` |
+| `cronjobs` | `/cronjobs`, `/backups/settings` | `/cronjobs` |
+| `connections` | `/connections` | `/connections` |
+| `cleanup` | `/maintenance` | `/cleanup` |
+| `audit` | `/audit` | `/audit`, `/audit/:id` |
+| `users` | Plugin admin de Better Auth (`/api/auth/admin/*`) | `/users` |
+
+Cómo funciona:
+
+- **El servidor es la autoridad.** El API consulta el mapa en cada request. La web solo lo usa para decidir qué mostrar, algo de usabilidad y nunca un control de seguridad (OWASP Authorization Cheat Sheet: aplicar en el servidor, denegar por defecto, mínimo privilegio).
+- **Denegar por defecto, en tiempo de ejecución.** Los guards son globales, así que nada queda abierto por accidente: una ruta que no declara nada, una función que no está en el mapa y un rol que no figura bajo una función terminan en 403 (401 sin sesión). Las salidas son explícitas: `@Public()` (no requiere sesión), `@AuthenticatedOnly()` (una sesión, sin función) y, para todo lo demás, `@RequirePermission('<función>')`. Un decorator olvidado cierra la ruta en lugar de abrirla.
+- **Aplicación.** `BetterAuthGuard` y `PermissionsGuard` se registran globalmente (`common/authorization/global-guards.ts`, incluido en `AppModule` después del throttler). Cada controller solo declara `@RequirePermission('<función>')`. `BetterAuthGuard` responde 401 sin sesión; `PermissionsGuard` responde 403 cuando el mapa no concede la función a los roles de quien llama. Un `@RequirePermission` en un handler individual reemplaza al de la clase.
+- **Varios roles.** Better Auth guarda el rol de un usuario como una sola cadena separada por comas (`"admin,user"`). El API la divide por comas, exactamente como Better Auth (sin recortar espacios: los nombres son exactos, con mayúsculas y espacios, así que `"user, admin"` no concede `admin`), y concede una función cuando cualquiera de los roles la tiene; `/me/permissions` devuelve la unión.
+- **Endpoint.** `GET /api/me/permissions` devuelve lo que el usuario con sesión puede usar, envuelto como toda respuesta: `{ "data": { "role": "admin", "features": ["dashboard", "dumps", ...] }, "timestamp": "..." }`. Cualquier usuario autenticado puede llamarlo; sin sesión responde 401.
+- **Web.** El hook `usePermissions` (`apps/web/src/shared/hooks/usePermissions.ts`) carga esa respuesta después de la sesión. La barra lateral ofrece las secciones cuya función fue concedida, y `ProtectedRoute feature="..."` protege cada ruta con esa misma respuesta. Mientras carga se muestra el loader de la aplicación, así que una sección prohibida nunca parpadea. Un usuario al que no se le concede nada llega a `/no-access` ("No tienes acceso a ninguna sección"), donde cerrar sesión sigue disponible; una visita directa a una dirección prohibida redirige a la primera sección que el usuario puede abrir, o a esa página. La respuesta se guarda en caché por usuario y por sesión, y se descarta al cerrar sesión. Un 401 del endpoint, incluso en una recarga en segundo plano, termina la sesión obsoleta y lleva a la pantalla de inicio de sesión (si la petición de cierre de sesión también falla, esa pantalla sabe que no debe devolver al visitante a la aplicación); cualquier otro fallo, o estar sin conexión, muestra una pantalla con reintentar y cerrar sesión en lugar de un spinner. La web no compara roles: una prueba unitaria falla si vuelve `adminOnly`, `requiredRole` o una comparación `role === '...'`.
+- **Pruebas de deriva.** `permission-coverage.spec.ts` (API) carga todos los controllers del árbol de código y falla cuando una ruta no es pública, ni solo de sesión, ni está ligada a una función del mapa, nombra una función ausente de él, o cuando una función no tiene ningún controller detrás. Los controllers públicos (`HealthController`, `AuthController`) y el de solo sesión (`PermissionsController`) son una lista explícita en esa prueba, así que excluir una ruta de los guards exige un cambio revisado ahí. `default-deny.spec.ts` levanta una pequeña app de Nest con los guards globales reales y demuestra que un controller sin decorators responde 401 o 403. En la web, una prueba de la tabla de rutas verifica que la barra lateral y las rutas coinciden para cada sección.
+- **La función `users`** no tiene controller de Nest: sus endpoints pertenecen al plugin admin de Better Auth, que aplica sus propios `adminRoles` (por defecto `['admin']`). La entrada del mapa solo gobierna lo que ofrece la web. Un rol que deba gestionar usuarios debe agregarse en ambos lugares.
+
+Para agregar una función: agregue su clave a `PERMISSIONS`, ponga `@RequirePermission('<clave>')` en su controller y agregue la sección (`shared/lib/sections.ts`) y el `ProtectedRoute` en la web; la prueba de cobertura y la lista fija de funciones de `e2e/tests/api/authorization.api.spec.ts` fallan hasta que ambos lados coinciden.
+
+Para agregar un rol (por ejemplo un `viewer` de solo lectura): agréguelo a `ROLES` y enumérelo bajo las funciones que puede usar; el guard, el endpoint y la web no requieren cambios, y la web muestra por su nombre un rol que no tiene traducción. Como hoy una función concede un controller completo, un rol de solo lectura necesita además la división a nivel de endpoint (lecturas y escrituras bajo funciones distintas, o un `@RequirePermission` por handler). Eso es un trabajo posterior en los controllers, no en el guard. El rol `viewer` todavía no existe.
 
 ---
 
@@ -194,6 +237,7 @@ Combinado con `class-validator` en cada DTO (`@IsString`, `@IsUUID`, `@IsEnum`, 
 | DB de control comprometida → leak de credenciales de PROD | Mitigado: passwords cifrados con AES-256-GCM. Requiere `ENCRYPTION_KEY` para descifrar. Ver §4 |
 | Audit log adulterado por DBA con acceso | Mitigado: trigger append-only previene UPDATE/DELETE en `audit_logs`. Ver §3 |
 | Cronjob apunta a host atacante | Mitigado: cronjob requiere `connectionId` que solo puede crearse via `POST /connections` (auditado) |
+| Usuario normal accede a una función de admin porque el API y la UI no coinciden | Mitigado: un único mapa de permisos, aplicado por el API con denegación por defecto y leído por la web desde `GET /api/me/permissions`; una prueba de cobertura falla si un controller se escapa de él. Ver §2 |
 | Cuenta de admin comprometida | Rotar `BETTER_AUTH_SECRET` para invalidar todas las sesiones; resetear password del admin vía la API admin de Better Auth |
 
 Las amenazas no mitigadas restantes (SSRF en hosts de conexiones, falta de rotación de credenciales) son **decisiones conscientes** para el alcance actual del sistema (tool interno, equipo pequeño, cloud privado).

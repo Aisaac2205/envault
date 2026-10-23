@@ -1,12 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { BetterAuthGuard } from '../../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../../auth/roles.guard';
+import { Controller, Get, Query } from '@nestjs/common';
+import { RequirePermission } from '../../../common/authorization';
 import { JobsAnalyticsService } from './jobs-analytics.service';
 import { AnalyticsWindowQueryDto } from './dto/analytics-window-query.dto';
 
 @Controller('jobs/analytics')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('dashboard')
 export class JobsAnalyticsController {
   constructor(private readonly service: JobsAnalyticsService) {}
 

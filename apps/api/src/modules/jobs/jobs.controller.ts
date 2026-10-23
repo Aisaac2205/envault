@@ -1,12 +1,10 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
-import { BetterAuthGuard } from '../../auth/auth.guard';
-import { RolesGuard, Roles } from '../../auth/roles.guard';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { RequirePermission } from '../../common/authorization';
 import { JobsService } from './jobs.service';
 import { ListJobsQueryDto } from './dto/list-jobs-query.dto';
 
 @Controller('jobs')
-@UseGuards(BetterAuthGuard, RolesGuard)
-@Roles('admin')
+@RequirePermission('dashboard')
 export class JobsController {
   constructor(private readonly service: JobsService) {}
 
