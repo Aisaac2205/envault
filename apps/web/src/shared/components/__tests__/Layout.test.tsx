@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Layout } from "../Layout";
 import type { AuthUser } from "@/shared/hooks/useAuth";
+import { APP_SECTIONS } from "@/shared/lib/sections";
 
 const mockUser: AuthUser = {
   id: "1",
@@ -16,7 +17,7 @@ const mockLogout = vi.fn().mockResolvedValue(undefined);
 function renderLayout(route = "/") {
   return render(
     <MemoryRouter initialEntries={[route]}>
-      <Layout user={mockUser} onLogout={mockLogout}>
+      <Layout user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout}>
         <div data-testid="page-content">Page Content</div>
       </Layout>
     </MemoryRouter>,

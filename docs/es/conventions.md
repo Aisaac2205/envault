@@ -22,6 +22,15 @@
 
 ---
 
+## Control de acceso
+
+- **Un único mapa de permisos, propiedad del API**: `apps/api/src/common/authorization/permissions.ts` (función -> roles). Ningún otro lugar enumera roles.
+- Todo controller del API declara `@RequirePermission('<función>')`. Los guards (`BetterAuthGuard` y luego `PermissionsGuard`) son globales, así que una ruta sin él responde 403 (denegar por defecto) y `permission-coverage.spec.ts` hace fallar el build. `@Public()` y `@AuthenticatedOnly()` son las únicas otras opciones, y los controllers autorizados a usarlas figuran en esa prueba.
+- La web nunca compara roles. Una sección se muestra, y una ruta se abre, solo si `GET /api/me/permissions` lista su función. La web repite los nombres de las funciones, igual que repite los valores de los enums (ver Imports), en `apps/web/src/shared/lib/sections.ts`: agregue una función en ambos lados en el mismo PR.
+- Cómo agregar una función o un rol: [security-model.md](security-model.md#autorización-el-mapa-de-permisos).
+
+---
+
 ## Variables de entorno
 
 - Nunca commitear `.env` con valores reales — están en `.gitignore`.

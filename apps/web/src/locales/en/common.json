@@ -69,5 +69,8 @@
   "env.dev": "Development",
   "env.qa": "QA",
   "env.staging": "Staging",
-  "env.test": "Test"
+  "env.test": "Test",
+  "nav.no-access": "No access",
+  "permissions.error.title": "We couldn't load your permissions",
+  "permissions.error.description": "Try again. If the problem persists, log out and sign in again."
 }

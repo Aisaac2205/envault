@@ -2,19 +2,9 @@ import { createContext, useContext, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { AuthUser } from "../hooks/useAuth";
-import {
-  LayoutDashboard,
-  Database,
-  Trash2,
-  RotateCcw,
-  Clock,
-  Link2,
-  FileText,
-  Users,
-  LogOut,
-  ChevronsUpDown,
-} from "lucide-react";
+import { LogOut, ChevronsUpDown } from "lucide-react";
 import { lazyRoutes, type RouteKey } from "@/shared/lib/lazy-routes";
+import type { AppSection } from "@/shared/lib/sections";
 import { cn } from "@/shared/lib/cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { useSidebar } from "./SidebarProvider";
@@ -36,21 +26,8 @@ interface NavItemConfig {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   routeKey: RouteKey;
-  adminOnly?: boolean;
   end?: boolean;
 }
-
-const NAV_ITEM_DEFS: Omit<NavItemConfig, 'label'>[] = [
-  { path: "/", icon: LayoutDashboard, routeKey: "dashboard", end: true },
-  { path: "/dumps", icon: Database, routeKey: "dumps", adminOnly: true },
-  { path: "/cleanup", icon: Trash2, routeKey: "cleanup", adminOnly: true },
-  { path: "/restore", icon: RotateCcw, routeKey: "restore" },
-  { path: "/cronjobs", icon: Clock, routeKey: "cronjobs" },
-  { path: "/connections", icon: Link2, routeKey: "connections", adminOnly: true },
-  { path: "/users", icon: Users, routeKey: "users", adminOnly: true },
-  { path: "/audit", icon: FileText, routeKey: "audit" },
-];
-
 
 interface SidebarRootProps {
   children: ReactNode;
@@ -133,10 +110,10 @@ function SidebarUser({
 
   if (!user) return null;
 
-  const roleLabel =
-    user.role === "admin"
-      ? t('role.admin', { defaultValue: 'Administrador' })
-      : t('role.user', { defaultValue: 'Usuario' });
+  // Display only. Nothing here decides what the user may see: that comes from
+  // the sections the container passes down. A role without a translation
+  // (one added to the API later) is shown as it is named.
+  const roleLabel = t(`role.${user.role}`, { defaultValue: user.role });
 
   return (
     <div className="border-t border-sidebar-border/70 p-2">
@@ -194,32 +171,26 @@ function SidebarUser({
   );
 }
 
-const NAV_LABEL_KEYS: Record<string, string> = {
-  "/": "nav.dashboard",
-  "/dumps": "nav.dumps",
-  "/cleanup": "nav.cleanup",
-  "/restore": "nav.restore",
-  "/cronjobs": "nav.cronjobs",
-  "/connections": "nav.connections",
-  "/users": "nav.users",
-  "/audit": "nav.audit",
-};
-
 export function SidebarContent({
   user,
+  sections,
   onLogout,
 }: {
   user: AuthUser | null;
+  /** The sections to offer, already filtered by the server's permissions. */
+  sections: readonly AppSection[];
   onLogout: () => Promise<void>;
 }) {
   const { t } = useTranslation('common')
-  const visibleDefs = NAV_ITEM_DEFS.filter(
-    (item) => !item.adminOnly || user?.role === "admin",
+  const visibleItems: NavItemConfig[] = sections.map(
+    ({ path, icon, routeKey, end, labelKey }) => ({
+      path,
+      icon,
+      routeKey,
+      end,
+      label: t(labelKey),
+    }),
   );
-  const visibleItems: NavItemConfig[] = visibleDefs.map((def) => ({
-    ...def,
-    label: t(NAV_LABEL_KEYS[def.path] ?? def.path),
-  }));
 
   return (
     <>
@@ -245,11 +216,12 @@ export function SidebarContent({
 
 interface SidebarProps {
   user: AuthUser | null;
+  sections: readonly AppSection[];
   onLogout: () => Promise<void>;
   collapsible?: "icon" | "offcanvas" | "none";
 }
 
-export function Sidebar({ user, onLogout, collapsible = "none" }: SidebarProps) {
+export function Sidebar({ user, sections, onLogout, collapsible = "none" }: SidebarProps) {
   const { state } = useSidebar();
   const isCollapsed = collapsible === "icon" && state === "collapsed";
 
@@ -261,7 +233,7 @@ export function Sidebar({ user, onLogout, collapsible = "none" }: SidebarProps) 
       )}
     >
       <SidebarRoot collapsible={collapsible}>
-        <SidebarContent user={user} onLogout={onLogout} />
+        <SidebarContent user={user} sections={sections} onLogout={onLogout} />
       </SidebarRoot>
     </aside>
   );

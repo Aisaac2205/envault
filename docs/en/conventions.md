@@ -22,6 +22,15 @@
 
 ---
 
+## Access control
+
+- **One permission map, owned by the API**: `apps/api/src/common/authorization/permissions.ts` (feature -> roles). Nothing else lists roles.
+- Every API controller declares `@RequirePermission('<feature>')`. The guards (`BetterAuthGuard`, then `PermissionsGuard`) are global, so a route without it answers 403 (default-deny) and `permission-coverage.spec.ts` fails the build. `@Public()` and `@AuthenticatedOnly()` are the only other options, and the controllers allowed to use them are listed in that test.
+- The web app never compares roles. A section is shown, and a route opens, only if `GET /api/me/permissions` lists its feature. The web repeats the feature names, the same way it repeats enum values (see Imports), in `apps/web/src/shared/lib/sections.ts`: add a feature on both sides in the same PR.
+- How to add a feature or a role: [security-model.md](security-model.md#authorization-the-permission-map).
+
+---
+
 ## Environment variables
 
 - Never commit `.env` files with real values — they are in `.gitignore`.

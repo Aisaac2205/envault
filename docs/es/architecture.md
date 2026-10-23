@@ -33,10 +33,11 @@ apps/api/src/
 │   └── seeds/                   # Seed del admin por defecto al primer boot
 │
 ├── common/
+│   ├── authorization/           # Mapa de permisos, PermissionsGuard, @RequirePermission, GET /api/me/permissions
 │   ├── guards/                  # Guards de autenticación
 │   ├── interceptors/            # Logging, transformación de respuesta
 │   ├── filters/                 # Exception filters centralizados
-│   └── decorators/              # @CurrentUser, @Roles, etc.
+│   └── decorators/              # Decorators de request
 │
 ├── config/
 │   ├── database.config.ts       # TypeORM + PostgreSQL
@@ -112,6 +113,10 @@ src/shared/
 ├── styles/         # Estilos globales, tokens de diseño, reset CSS
 └── ui/             # Primitivos de UI base (botones, inputs, badges…)
 ```
+
+### Control de acceso
+
+La web no mantiene ninguna lista de quién puede ver qué. Las secciones de la barra lateral (`shared/lib/sections.ts`), los guards de ruta (`ProtectedRoute feature="..."`) y la pantalla sin acceso (`features/auth/NoAccessPage.tsx`, ruta `/no-access`) dependen de `usePermissions` (`shared/hooks/`), que lee `GET /api/me/permissions`. El API es dueño del mapa de permisos y lo aplica; ver [security-model.md](security-model.md#autorización-el-mapa-de-permisos).
 
 ---
 

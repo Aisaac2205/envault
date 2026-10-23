@@ -4,6 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import i18n from "@/i18n";
 import { authClient } from "@/shared/lib/auth-client";
+import {
+  clearSessionRejected,
+  isSessionRejected,
+  markSessionRejected,
+} from "@/shared/lib/session-rejected";
 import LoginPage from "../LoginPage";
 
 vi.mock("@/shared/lib/auth-client", () => ({
@@ -150,6 +155,47 @@ describe("LoginPage", () => {
         email: "admin@envault.local",
         password: "s3cret-pass",
       });
+    });
+
+    it("forgets a rejected-session note once the user signs in again", async () => {
+      const user = userEvent.setup();
+      markSessionRejected();
+      signInEmail.mockResolvedValue({ data: {}, error: null } as never);
+      renderLoginPage();
+
+      await submitCredentials(user);
+
+      await screen.findByText("Dashboard screen");
+      expect(isSessionRejected()).toBe(false);
+    });
+  });
+
+  describe("when the browser still holds a session", () => {
+    beforeEach(() => {
+      clearSessionRejected();
+      vi.mocked(authClient.useSession).mockReturnValue({
+        data: { user: { id: "u1", email: "ana@envault.local", name: "Ana", role: "admin" } },
+        isPending: false,
+      } as unknown as ReturnType<typeof authClient.useSession>);
+    });
+
+    afterEach(() => {
+      clearSessionRejected();
+    });
+
+    it("sends the visitor on to the app", async () => {
+      renderLoginPage();
+
+      expect(await screen.findByText("Dashboard screen")).toBeInTheDocument();
+    });
+
+    it("shows the form instead when the API rejected that session and it could not be ended", async () => {
+      markSessionRejected();
+
+      renderLoginPage();
+
+      expect(await screen.findByLabelText("Correo electrónico")).toBeInTheDocument();
+      expect(screen.queryByText("Dashboard screen")).not.toBeInTheDocument();
     });
   });
 });

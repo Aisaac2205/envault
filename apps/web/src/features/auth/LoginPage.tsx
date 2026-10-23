@@ -4,6 +4,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { GrainGradient } from "@paper-design/shaders-react";
 import { authClient } from "@/shared/lib/auth-client";
+import { clearSessionRejected, isSessionRejected } from "@/shared/lib/session-rejected";
 import { Button } from "@/shared/ui/button";
 import { FadeIn } from "@/shared/ui/motion/FadeIn";
 
@@ -43,7 +44,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (!isPending && session?.user) {
+  // A session this browser still holds is normally a reason to skip the form.
+  // Not when the API rejected it and it could not be ended: the app would
+  // refuse it again and send the visitor back here, forever (see session-rejected.ts).
+  if (!isPending && session?.user && !isSessionRejected()) {
     return <Navigate to="/" replace />;
   }
 
@@ -63,6 +67,7 @@ export default function LoginPage() {
         return;
       }
 
+      clearSessionRejected();
       navigate("/");
     } catch {
       // The request never got an answer (API down, connection reset): the

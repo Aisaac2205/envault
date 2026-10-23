@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { Sidebar, SidebarContent, SidebarRoot, SidebarItem, SidebarUser } from "../Sidebar";
 import { SidebarProvider, useSidebar } from "../SidebarProvider";
 import type { AuthUser } from "@/shared/hooks/useAuth";
+import { APP_SECTIONS } from "@/shared/lib/sections";
 
 const mockUser: AuthUser = {
   id: "1",
@@ -35,14 +36,14 @@ function renderWithProvider(
 
 describe("Sidebar", () => {
   it("uses bg-sidebar token instead of bg-black", () => {
-    renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
+    renderWithRouter(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} />);
     const aside = document.querySelector("aside");
     expect(aside).toHaveClass("bg-sidebar");
     expect(aside).not.toHaveClass("bg-black");
   });
 
-  it("renders all navigation items for admin user", () => {
-    renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
+  it("renders every section it is given", () => {
+    renderWithRouter(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Respaldos")).toBeInTheDocument();
     expect(screen.getByText("Limpieza")).toBeInTheDocument();
@@ -53,29 +54,45 @@ describe("Sidebar", () => {
     expect(screen.getByText("Auditoría")).toBeInTheDocument();
   });
 
-  it("hides admin-only items for non-admin users", () => {
-    const nonAdmin: AuthUser = { ...mockUser, role: "user" };
-    renderWithRouter(<Sidebar user={nonAdmin} onLogout={mockLogout} />);
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.queryByText("Respaldos")).not.toBeInTheDocument();
+  it("renders only the sections it is given, whatever the role", () => {
+    const granted = APP_SECTIONS.filter(({ feature }) => feature === "restore" || feature === "audit");
+    renderWithRouter(<Sidebar user={mockUser} sections={granted} onLogout={mockLogout} />);
+    expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      "Restaurar",
+      "Auditoría",
+    ]);
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
     expect(screen.queryByText("Usuarios")).not.toBeInTheDocument();
-    expect(screen.getByText("Auditoría")).toBeInTheDocument();
+  });
+
+  it("renders no navigation links when no section was granted, but keeps the account menu", () => {
+    const nonAdmin: AuthUser = { ...mockUser, role: "user" };
+    renderWithRouter(<Sidebar user={nonAdmin} sections={[]} onLogout={mockLogout} />);
+    expect(screen.queryAllByRole("link")).toEqual([]);
+    expect(screen.getByRole("button", { name: /Admin/i })).toBeInTheDocument();
+    expect(screen.getByText("Usuario")).toBeInTheDocument();
+  });
+
+  it("shows a role it has no translation for as it is named", () => {
+    const viewer: AuthUser = { ...mockUser, role: "viewer" };
+    renderWithRouter(<Sidebar user={viewer} sections={[]} onLogout={mockLogout} />);
+    expect(screen.getByText("viewer")).toBeInTheDocument();
   });
 
   it("shows user role in footer", () => {
-    renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
+    renderWithRouter(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} />);
     expect(screen.getByText("Administrador")).toBeInTheDocument();
   });
 
   it("renders logout option when user trigger is clicked", () => {
-    renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
+    renderWithRouter(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} />);
     const userButton = screen.getByRole("button", { name: /Admin/i });
     fireEvent.click(userButton);
     expect(screen.getByText("Cerrar sesión")).toBeInTheDocument();
   });
 
   it("renders EnVault Management branding", () => {
-    renderWithRouter(<Sidebar user={mockUser} onLogout={mockLogout} />);
+    renderWithRouter(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} />);
     expect(screen.getByAltText("EnVault Management")).toBeInTheDocument();
   });
 });
@@ -153,7 +170,7 @@ describe("SidebarContent", () => {
   it("renders inside a SidebarRoot context", () => {
     renderWithRouter(
       <SidebarRoot onNavigate={() => {}}>
-        <SidebarContent user={mockUser} onLogout={mockLogout} />
+        <SidebarContent user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} />
       </SidebarRoot>,
     );
     expect(screen.getByAltText("EnVault Management")).toBeInTheDocument();
@@ -292,7 +309,7 @@ describe("Sidebar — collapsible icon mode", () => {
   });
 
   it("renders labels when expanded", () => {
-    renderWithProvider(<Sidebar user={mockUser} onLogout={mockLogout} collapsible="icon" />, {
+    renderWithProvider(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} collapsible="icon" />, {
       storedState: "expanded",
     });
     // All labels should be visible
@@ -303,7 +320,7 @@ describe("Sidebar — collapsible icon mode", () => {
   });
 
   it("hides labels and shows only icons when collapsed", () => {
-    renderWithProvider(<Sidebar user={mockUser} onLogout={mockLogout} collapsible="icon" />, {
+    renderWithProvider(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} collapsible="icon" />, {
       storedState: "collapsed",
     });
     // Labels are hidden
@@ -318,7 +335,7 @@ describe("Sidebar — collapsible icon mode", () => {
 
   it("uses 56px width when collapsed, 216px when expanded", () => {
     const { unmount } = renderWithProvider(
-      <Sidebar user={mockUser} onLogout={mockLogout} collapsible="icon" />,
+      <Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} collapsible="icon" />,
       { storedState: "collapsed" },
     );
     const aside = document.querySelector("aside");
@@ -328,13 +345,13 @@ describe("Sidebar — collapsible icon mode", () => {
     unmount();
     localStorage.clear();
     renderWithProvider(
-      <Sidebar user={mockUser} onLogout={mockLogout} collapsible="icon" />,
+      <Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} collapsible="icon" />,
     );
     expect(document.querySelector("aside")?.className).toContain("w-[216px]");
   });
 
   it("collapsed items have aria-label for accessibility", () => {
-    renderWithProvider(<Sidebar user={mockUser} onLogout={mockLogout} collapsible="icon" />, {
+    renderWithProvider(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} collapsible="icon" />, {
       storedState: "collapsed",
     });
 
@@ -345,7 +362,7 @@ describe("Sidebar — collapsible icon mode", () => {
   });
 
   it("collapsed items have title tooltip for hover", () => {
-    renderWithProvider(<Sidebar user={mockUser} onLogout={mockLogout} collapsible="icon" />, {
+    renderWithProvider(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} collapsible="icon" />, {
       storedState: "collapsed",
     });
 
@@ -354,7 +371,7 @@ describe("Sidebar — collapsible icon mode", () => {
   });
 
   it("shows user avatar centered when collapsed with tooltip title", () => {
-    renderWithProvider(<Sidebar user={mockUser} onLogout={mockLogout} collapsible="icon" />, {
+    renderWithProvider(<Sidebar user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} collapsible="icon" />, {
       storedState: "collapsed",
     });
 
@@ -375,7 +392,7 @@ describe("Sidebar — collapsible offcanvas (mobile sheet)", () => {
     // (or no collapsible prop). It should ignore collapse state.
     renderWithProvider(
       <SidebarRoot onNavigate={() => {}} collapsible="offcanvas">
-        <SidebarContent user={mockUser} onLogout={mockLogout} />
+        <SidebarContent user={mockUser} sections={APP_SECTIONS} onLogout={mockLogout} />
       </SidebarRoot>,
       { storedState: "collapsed" },
     );

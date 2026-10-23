@@ -3,6 +3,7 @@ import { Sidebar, SidebarContent, SidebarRoot } from "./Sidebar";
 import { SidebarProvider, useSidebar } from "./SidebarProvider";
 import { Topbar } from "./Topbar";
 import type { AuthUser } from "../hooks/useAuth";
+import type { AppSection } from "../lib/sections";
 import { Sheet, SheetContent } from "../ui/sheet";
 import { Menu } from "lucide-react";
 import { Toaster } from "sonner";
@@ -11,6 +12,8 @@ import { cn } from "@/shared/lib/cn";
 interface LayoutProps {
   children: ReactNode;
   user: AuthUser | null;
+  /** The sidebar sections to offer, already filtered by the server's permissions. */
+  sections: readonly AppSection[];
   onLogout: () => Promise<void>;
 }
 
@@ -21,15 +24,15 @@ interface LayoutProps {
  * Actual hook consumption happens in `<LayoutInner>` — a child component
  * rendered inside the provider boundary.
  */
-export function Layout({ children, user, onLogout }: LayoutProps) {
+export function Layout({ children, user, sections, onLogout }: LayoutProps) {
   return (
     <SidebarProvider>
-      <LayoutInner user={user} onLogout={onLogout}>{children}</LayoutInner>
+      <LayoutInner user={user} sections={sections} onLogout={onLogout}>{children}</LayoutInner>
     </SidebarProvider>
   );
 }
 
-function LayoutInner({ children, user, onLogout }: LayoutProps) {
+function LayoutInner({ children, user, sections, onLogout }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeMobileSidebar = () => setSidebarOpen(false);
   const { state } = useSidebar();
@@ -38,7 +41,7 @@ function LayoutInner({ children, user, onLogout }: LayoutProps) {
   return (
     <div className="flex min-h-screen w-full overflow-x-hidden bg-sidebar">
       {/* Desktop sidebar — icon-rail collapsible */}
-      <Sidebar user={user} onLogout={onLogout} collapsible="icon" />
+      <Sidebar user={user} sections={sections} onLogout={onLogout} collapsible="icon" />
 
       {/* Mobile sidebar (Sheet drawer) — NOT affected by collapse state */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -48,7 +51,7 @@ function LayoutInner({ children, user, onLogout }: LayoutProps) {
           className="w-[216px] bg-sidebar p-0 border-r-0"
         >
           <SidebarRoot onNavigate={closeMobileSidebar}>
-            <SidebarContent user={user} onLogout={onLogout} />
+            <SidebarContent user={user} sections={sections} onLogout={onLogout} />
           </SidebarRoot>
         </SheetContent>
       </Sheet>

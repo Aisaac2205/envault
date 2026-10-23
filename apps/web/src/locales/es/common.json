@@ -69,5 +69,8 @@
   "env.dev": "Desarrollo",
   "env.qa": "QA",
   "env.staging": "Staging",
-  "env.test": "Test"
+  "env.test": "Test",
+  "nav.no-access": "Sin acceso",
+  "permissions.error.title": "No se pudieron cargar tus permisos",
+  "permissions.error.description": "Intenta de nuevo. Si el problema continúa, cierra sesión e ingresa otra vez."
 }
