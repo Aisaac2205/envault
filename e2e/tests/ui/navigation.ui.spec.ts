@@ -3,30 +3,29 @@ import { adminCredentials } from '../../support/env';
 import { expect, test } from '../../support/fixtures';
 import { AppShell } from '../../support/pages/app-shell';
 import { DashboardPage } from '../../support/pages/dashboard-page';
+import { NoAccessPage } from '../../support/pages/no-access-page';
 
-// The sections come from apps/web/src/shared/components/Sidebar.tsx (links and
-// order) and apps/web/src/router.tsx (which routes demand the admin role).
+// The sections come from apps/web/src/shared/lib/sections.ts (links and order).
+// Which of them a user sees is not decided by the web app: it shows the ones
+// that GET /api/me/permissions lists, and the API builds that list from its
+// permission map (apps/api/src/common/authorization/permissions.ts).
 // `link` is the sidebar text, `heading` the title of the page it opens.
 interface Section {
   link: string;
   path: string;
   heading: string;
-  adminOnly: boolean;
 }
 
 const SECTIONS: Section[] = [
-  { link: 'Dashboard', path: '/', heading: 'Dashboard', adminOnly: false },
-  { link: 'Backups', path: '/dumps', heading: 'Dumps', adminOnly: true },
-  { link: 'Cleanup', path: '/cleanup', heading: 'Cleanup', adminOnly: true },
-  { link: 'Restore', path: '/restore', heading: 'Restore', adminOnly: false },
-  { link: 'Cronjobs', path: '/cronjobs', heading: 'Cronjobs', adminOnly: false },
-  { link: 'Connections', path: '/connections', heading: 'Connections', adminOnly: true },
-  { link: 'Users', path: '/users', heading: 'Users', adminOnly: true },
-  { link: 'Audit', path: '/audit', heading: 'Audit', adminOnly: false },
+  { link: 'Dashboard', path: '/', heading: 'Dashboard' },
+  { link: 'Backups', path: '/dumps', heading: 'Dumps' },
+  { link: 'Cleanup', path: '/cleanup', heading: 'Cleanup' },
+  { link: 'Restore', path: '/restore', heading: 'Restore' },
+  { link: 'Cronjobs', path: '/cronjobs', heading: 'Cronjobs' },
+  { link: 'Connections', path: '/connections', heading: 'Connections' },
+  { link: 'Users', path: '/users', heading: 'Users' },
+  { link: 'Audit', path: '/audit', heading: 'Audit' },
 ];
-
-const ADMIN_ONLY = SECTIONS.filter(({ adminOnly }) => adminOnly);
-const OPEN_TO_ANY_USER = SECTIONS.filter(({ adminOnly, path }) => !adminOnly && path !== '/');
 
 // The id never reaches the API: the route guard redirects before the page loads.
 const AUDIT_DETAIL = '/audit/00000000-0000-4000-8000-000000000000';
@@ -76,79 +75,66 @@ const nonAdminTest = test.extend({
   },
 });
 
+// Defect D8 (fixed): the sidebar and the router used to offer a regular user
+// the dashboard, restore, cronjobs and audit, although every API endpoint
+// behind them is admin-only, so each opened to 403s and an empty screen. The
+// API's permission map is now the single source of truth: this user is granted
+// no feature, so the web app offers no section and says so.
 nonAdminTest.describe('regular user navigation', () => {
-  nonAdminTest('sees only the sections that are not for admins', async ({ page }) => {
+  nonAdminTest('sees no section in the sidebar and lands on the no-access page', async ({ page }) => {
     const shell = new AppShell(page);
+    const noAccess = new NoAccessPage(page);
     await page.goto('/');
 
-    await expect(shell.sidebarLinks).toHaveText(
-      SECTIONS.filter(({ adminOnly }) => !adminOnly).map(({ link }) => link),
-    );
+    await expect(noAccess.heading).toBeVisible();
+    await expect(noAccess.explanation).toBeVisible();
+    await expect(noAccess.askAnAdministrator).toBeVisible();
+    await expect(page).toHaveURL('/no-access');
+    // The shell is there, with the account menu, but no navigation entry.
+    await expect(shell.sidebar).toBeVisible();
+    await expect(shell.sidebarLinks).toHaveCount(0);
     await expect(shell.account).toContainText('User');
     await expect(shell.account).not.toContainText('Administrator');
   });
 
-  for (const { link, path } of ADMIN_ONLY) {
-    nonAdminTest(`is sent from ${link} (${path}) to the dashboard`, async ({ page }) => {
-      await page.goto(path);
+  nonAdminTest('can still log out from the no-access page', async ({ page }) => {
+    await page.goto('/');
 
-      await expect(new DashboardPage(page).heading).toBeVisible();
-      await expect(page).toHaveURL('/');
-    });
-  }
-
-  nonAdminTest('is sent from an audit entry to the dashboard', async ({ page }) => {
-    await page.goto(AUDIT_DETAIL);
-
-    await expect(new DashboardPage(page).heading).toBeVisible();
-    await expect(page).toHaveURL('/');
+    // Only checked, not clicked: signing out revokes the session that the
+    // other tests of this worker share.
+    await expect(new NoAccessPage(page).logOut).toBeVisible();
   });
 
-  for (const { link, path, heading } of OPEN_TO_ANY_USER) {
-    nonAdminTest(`can open ${link} (${path})`, async ({ page }) => {
+  nonAdminTest('asks the API for nothing it refuses', async ({ page }) => {
+    const refused: string[] = [];
+    page.on('response', (response) => {
+      const { pathname } = new URL(response.url());
+      if (pathname.startsWith('/api/') && [401, 403].includes(response.status())) {
+        refused.push(`${response.status()} ${pathname}`);
+      }
+    });
+
+    await page.goto('/');
+    await expect(new NoAccessPage(page).heading).toBeVisible();
+
+    expect(refused).toEqual([]);
+  });
+
+  for (const { link, path } of SECTIONS) {
+    nonAdminTest(`is sent from ${link} (${path}) to the no-access page`, async ({ page }) => {
       await page.goto(path);
 
-      await expect(new AppShell(page).pageHeading).toHaveText(heading);
-      await expect(page).toHaveURL(path);
+      await expect(new NoAccessPage(page).heading).toBeVisible();
+      await expect(page).toHaveURL('/no-access');
     });
   }
 
-  // Known defect D8: the router and the sidebar offer these four screens to
-  // every signed-in user, but each one is filled from endpoints that only an
-  // admin may call (every Nest controller is @Roles('admin'); see
-  // authorization.api.spec.ts). A regular user opens them, gets 403 on all the
-  // data requests and sees an empty or endlessly loading screen with no
-  // explanation. The fix is either to open those endpoints to the `user` role
-  // or to stop offering the screens. These assert that a screen a user can
-  // open can read its data. When one is fixed it passes, Playwright reports an
-  // unexpected pass and fails the run: delete `fail` then.
-  const DATA_BEHIND_USER_SCREENS = [
-    { path: '/', api: '/api/jobs/stats' },
-    { path: '/restore', api: '/api/restores' },
-    { path: '/cronjobs', api: '/api/cronjobs' },
-    { path: '/audit', api: '/api/audit' },
-  ];
+  nonAdminTest('is sent from an audit entry to the no-access page', async ({ page }) => {
+    await page.goto(AUDIT_DETAIL);
 
-  for (const { path, api } of DATA_BEHIND_USER_SCREENS) {
-    nonAdminTest.fail(
-      `${path} can load its data (${api})`,
-      {
-        annotation: {
-          type: 'known-defect',
-          description: `D8: ${api} answers 403 to the screens a regular user can open`,
-        },
-      },
-      async ({ page }) => {
-        const answered = page.waitForResponse((response) => new URL(response.url()).pathname === api);
-        await page.goto(path);
-        // The screen itself opens (this part holds today) ...
-        await expect(new AppShell(page).pageHeading).toBeVisible();
-
-        // ... but the data behind it is refused.
-        expect((await answered).status()).toBeLessThan(400);
-      },
-    );
-  }
+    await expect(new NoAccessPage(page).heading).toBeVisible();
+    await expect(page).toHaveURL('/no-access');
+  });
 });
 
 test.describe('unknown address', () => {

@@ -18,7 +18,7 @@ EnVault is a self-hosted application that backs up PostgreSQL and MySQL database
 | Reliability | 19 runs of the whole functional suite over two commits, with different parallelism and repetition: 13 runs at `9902fee` (3838 test executions) and 6 at `60fe003`, after the last two fixes (2214); 0 failures and 0 flaky tests in both |
 | Reproducibility | A fresh clone of the repository at `9902fee`, set up by following the written instructions literally, gave the same results; no instruction was wrong |
 | Defects found | 18 (D1 to D18), among them a security defect (D6), a safety defect (D12), a data-integrity defect (D15) and a schedule-integrity defect (D17) |
-| Defects fixed | 13, each one with a failing test written before the fix; 4 left open for a product or design decision, 1 not confirmed |
+| Defects fixed | 15, each one with a failing test written before the fix; 2 left open for a product or design decision, 1 not confirmed |
 | Code coverage of the API (lines) | 52.93% before the fixes, 61.18% after the first eleven, 62.43% after all thirteen |
 | Backup time of a 500 MiB database (median, reference run) | PostgreSQL 8.73 s, MySQL 3.70 s |
 | Restore time of the same database (median, reference run) | PostgreSQL 4.74 s, MySQL 19.86 s |
@@ -179,7 +179,7 @@ The black-box tests of EnVault (a self-hosted application that backs up and rest
 | Test isolation | Tests never depend on each other or on leftover data | Unique names in every test, cleanup that always runs, one database per pipeline test; this is what allows parallel runs |
 | Test doubles in the browser | A prepared answer replaces a real one, only where the real state cannot be guaranteed | `page.route` returns an empty list, a rate-limit error or a network failure; all other traffic is real |
 | One sign-in per run | The session is created once and shared | The `setup` project saves it with `storageState`, because EnVault accepts only 3 sign-ins per 10 seconds from one address |
-| Known defects as executable tests | A test asserts the correct behavior and is marked as expected to fail | `test.fail` on the 4 D8 tests; until the defect is fixed Playwright counts them as passed |
+| Known defects as executable tests | A test asserts the correct behavior and is marked as expected to fail | `test.fail` was used on the 4 D8 tests while the defect was open; when it was fixed they became normal tests and no `test.fail` remains in the suite |
 | Checking that the tests can fail | The code or the expectation is broken on purpose, to prove the test notices | While the API, interface, pipeline and performance suites were written, expectations were broken on purpose (for example a wrong checksum or a wrong status); every defect fix was checked by restoring the old code and seeing the new tests fail; for D17 and D18 the new API tests were also run against a test environment built from the code before the fix, where they failed, and passed once the fix was in |
 
 ---
@@ -190,14 +190,14 @@ Writing and running the tests of EnVault (a self-hosted application that backs u
 
 | Id | Defect | Severity (as recorded) | How it was found | Status |
 |----|--------|------------------------|------------------|--------|
-| D1 | Restores into a PostgreSQL older than 17 fail: the API image ships `pg_restore` 18, which aborts on `SET transaction_timeout` | Not rated | Building the test environment | Open: needs a product decision |
+| D1 | Restores into a PostgreSQL older than 17 fail: the API image ships `pg_restore` 18, which aborts on `SET transaction_timeout` | Not rated | Building the test environment | Fixed: the API image ships PostgreSQL clients 14 to 18, the restore picks one the target accepts, and restoring a newer server's backup into an older one is refused with a clear message |
 | D2 | The web container's health check probes `localhost`, which resolves to IPv6, while nginx listens on IPv4 only, so the container is reported unhealthy | Not rated | Building the test environment | Fixed in `7dadbc2` |
 | D3 | The sign-in limit (3 per 10 seconds per address) is hard-coded and cannot be configured | Not rated | Building the test environment | Open: needs a design decision |
 | D4 | The dashboard code called `/api/health`, an address the API does not serve | Not rated | Code reading, confirmed by the API tests | Fixed in `83627f6` (the unused code was removed; health stays internal) |
 | D5 | Debug log lines still appear in production | Not rated | Building the test environment (container logs) | Fixed in `ab7152c` |
 | D6 | Updating a connection returned its database password, decrypted, in the response | Security (rated critical by an automated review) | API tests | Fixed in `7cb0f2c` |
 | D7 | An id that is not a UUID reached the database and caused a 500 error instead of a 400 | Not rated | API tests | Fixed in `de1557a` |
-| D8 | A regular user is offered four screens whose data the API refuses (403), and sees zeros or an endless loading state with no message | Not rated (candidate: product intent to confirm) | Interface tests | Open: needs a product decision; 4 tests marked `test.fail` |
+| D8 | A regular user is offered four screens whose data the API refuses (403), and sees zeros or an endless loading state with no message | Not rated (candidate: product intent to confirm) | Interface tests | Fixed: a single permission map owned by the API drives both enforcement and the screens the web shows; a user without sections lands on a no-access page |
 | D9 | An unknown address showed the router's developer error page | Not rated | Interface tests | Fixed in `4741c9d` |
 | D10 | The latency message after a connection test was in Spanish in the English interface | Not rated | Interface tests | Fixed in `999b710` |
 | D11 | When the API cannot be reached at sign-in, the button stays on "Signing in..." forever, with no message | Not rated | Interface tests | Fixed in `00b4e11` |
@@ -209,7 +209,9 @@ Writing and running the tests of EnVault (a self-hosted application that backs u
 | D17 | Renaming an active scheduled backup cleared its next run time and dropped its schedule | Data and schedule integrity | Code reading during the fix of D15, then confirmed at runtime | Fixed in `7d4d4e4` (an update now saves and returns the whole scheduled backup, not only the fields sent) |
 | D18 | A partial update with `null` for a required field of a connection or a scheduled backup answered with an internal error (500) instead of a validation error (400); nothing was saved | Not rated | Code reading during the fixes, then confirmed at runtime | Fixed in `60fe003` (`null` now fails validation, except for the retention limits, where it removes the limit) |
 
-Summary: 13 fixed (D2, D4, D5, D6, D7, D9, D10, D11, D12, D13, D15, D17, D18), 4 open for a product or design decision (D1, D3, D8, D14) and 1 not confirmed (D16). The number of tests marked as expected failures went from 17 to 4 (only D8 remains).
+Summary: 15 fixed (D1, D2, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13, D15, D17, D18), 2 open for a product or design decision (D3, D14) and 1 not confirmed (D16). The number of tests marked as expected failures went from 17 to 0 (none remain).
+
+D1 and D8 were surfaced by the black-box tests (the pipeline run against PostgreSQL 16 and the browser tests with the `user` role) and were fixed after the study; their tests went from documenting the defect to verifying the correct behavior.
 
 How every fix was made (test-driven development, TDD: the test is written before the fix):
 
@@ -237,7 +239,7 @@ How every fix was made (test-driven development, TDD: the test is written before
 
 The last two fixes in detail. D17: when a scheduled backup (cron job) was updated, the data layer handed back only the fields that had been sent, so after a rename the service found no "active" value, treated the cron job as paused, removed it from the scheduler and cleared its next run time; it came back only when the API restarted. The fix loads the stored cron job, saves the merged version and returns all of it, and an unknown id now answers 404 (not found). D18: the rules that validate an update (the update DTOs, data transfer objects) marked every field as optional, and in the validation library EnVault uses an optional field skips validation for `null` as well as for a missing value, so `null` reached the database and the API answered 500 (an internal error); for the expression of a cron job it answered 400 only by accident, with an internal JavaScript error message in the body. The fix skips validation only for a missing field, so `null` now answers 400 with the standard error body. The retention limits of a cron job still accept `null` on purpose, because that is how a limit is removed. Unit tests went from red to green for both (D17: 6 failed and 7 passed before the fix, 13 of 13 after; D18: 15 failed before the fix, 75 of 75 after for the connections and cron jobs modules), and the new Playwright tests, in `cronjobs.api.spec.ts` (a new file with 13 tests) and `connections.api.spec.ts` (8 more `null` cases), were run against a test environment built from the code before each fix, where the tests aimed at the defect failed (4 for D17, the `null` cases for D18), and passed after it.
 
-Why some defects stay open: D1 depends on which PostgreSQL versions EnVault decides to support (the test environment uses PostgreSQL 18 and a dedicated test runs D1 against PostgreSQL 16); D3 is the hard-coded default of the sign-in library, and making it configurable is a security design choice; D8 depends on whether those screens are meant for regular users at all (if they are admin-only, the fix is to hide them); D14 depends on how a job that is about to be retried should be reported. D16 is a suspicion from reading the code that has not been proven. The tests of D1 and D8 are kept in the suite so that the run changes state when they are fixed. Details are in [e2e-testing.md](e2e-testing.md#known-defects).
+Why some defects stay open: D3 is the hard-coded default of the sign-in library, and making it configurable is a security design choice; D14 depends on how a job that is about to be retried should be reported. D16 is a suspicion from reading the code that has not been proven. Details are in [e2e-testing.md](e2e-testing.md#known-defects).
 
 ---
 
@@ -395,7 +397,6 @@ The results of this QA work on EnVault (a self-hosted application that backs up 
 | Performance measured before the fixes | The reference run predates all thirteen defect fixes and the change that turned off the MySQL binary log. It was not repeated afterwards. |
 | Shorter re-check after the last fixes | At `60fe003` the suite ran 6 times (5 normal runs and one with `--repeat-each=3`); the runs with 1 and 16 workers and the clean clone were done only at `9902fee`. |
 | One performance reference run | The figures come from one full run (with a second one used only to check repeatability) on one machine; they are reference values, not guarantees. |
-| D8 still expected to fail | Four tests document an open defect instead of checking working behavior. |
 | Clean clone on a warm machine | The clean-clone check reused caches already on the machine, so it does not measure a first installation; it ran at `9902fee`, before the last two fixes. |
 | No load or stress testing | The behavior with many simultaneous users was not tested; the queue test used at most 6 simultaneous backups. |
 | No accessibility or visual tests | Screen-reader support, contrast and visual regressions were not checked. |
@@ -430,7 +431,7 @@ Full instructions, the variants of each command and the troubleshooting table ar
 Conclusions of the QA work on EnVault (a self-hosted application that backs up and restores PostgreSQL and MySQL databases), tested with a Playwright black-box suite and the existing Jest and Vitest unit tests:
 
 - Playwright was enough to cover the API, the browser interface and the whole backup and restore path with one tool, and to measure performance with the same tool.
-- The black-box suite found 18 defects; 13 were fixed with a test written first, among them one security defect (D6), one safety defect (D12), one data-integrity defect (D15) and one that dropped scheduled backups from the scheduler (D17); D6 and D12 were in code that the unit tests did not reach or did not run with the input that breaks it.
+- The black-box suite found 18 defects; 15 were fixed with a test written first, among them one security defect (D6), one safety defect (D12), one data-integrity defect (D15) and one that dropped scheduled backups from the scheduler (D17); D6 and D12 were in code that the unit tests did not reach or did not run with the input that breaks it.
 - The suite proved stable: 3838 test executions in 13 runs with different parallelism and repetition at `9902fee`, and 2214 more in 6 runs at `60fe003` after the last two fixes, with 0 failures and 0 flaky tests; a clean clone at `9902fee` gave the same result.
 - The fixes raised unit-test coverage of the API from 52.93% to 62.43% of lines (61.18% after the first eleven) and of the web app from 27.91% to 34.91%.
 - The performance reference shows backups of a 500 MiB database in under 9 s and makes visible the slowest step, the MySQL restore (about 23 MiB/s).
@@ -438,7 +439,7 @@ Conclusions of the QA work on EnVault (a self-hosted application that backs up a
 Next steps:
 
 1. Run the suite in CI on every change, ideally on Linux, to remove the single-machine limitation.
-2. Decide on the open defects D1, D3, D8 and D14, confirm or discard D16, and check the possible issues noted in the limitations that may still be present (`null` on creation, the 201 answer of pause and resume).
+2. Decide on the open defects D3 and D14, confirm or discard D16, and check the possible issues noted in the limitations that may still be present (`null` on creation, the 201 answer of pause and resume).
 3. Repeat the performance run on the current code, and once against a real Cloudflare R2 bucket.
 4. Extend the browser tests to Firefox and WebKit, and add accessibility checks.
 5. Add unit tests where the baseline coverage was weakest: the MySQL restore strategy, the connections module and the web screens for cleanup, users and cron jobs.

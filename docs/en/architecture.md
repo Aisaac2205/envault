@@ -33,10 +33,11 @@ apps/api/src/
 │   └── seeds/                   # Default admin seed on first boot
 │
 ├── common/
+│   ├── authorization/           # Permission map, PermissionsGuard, @RequirePermission, GET /api/me/permissions
 │   ├── guards/                  # Auth guards
 │   ├── interceptors/            # Logging, response transformation
 │   ├── filters/                 # Centralized exception filters
-│   └── decorators/              # @CurrentUser, @Roles, etc.
+│   └── decorators/              # Request decorators
 │
 ├── config/
 │   ├── database.config.ts       # TypeORM + PostgreSQL
@@ -112,6 +113,10 @@ src/shared/
 ├── styles/         # Global styles, design tokens, CSS reset
 └── ui/             # Base UI primitives (buttons, inputs, badges…)
 ```
+
+### Access control
+
+The web app keeps no list of who may see what. The sidebar sections (`shared/lib/sections.ts`), the route guards (`ProtectedRoute feature="..."`) and the no-access screen (`features/auth/NoAccessPage.tsx`, route `/no-access`) are all driven by `usePermissions` (`shared/hooks/`), which reads `GET /api/me/permissions`. The API owns the permission map and enforces it; see [security-model.md](security-model.md#authorization-the-permission-map).
 
 ---
 
