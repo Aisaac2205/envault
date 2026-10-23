@@ -4,6 +4,9 @@ import { DelayedError, Job, UnrecoverableError } from 'bullmq';
 import { BackupService } from './backup.service';
 import { BackupRepository } from './backup.repository';
 import { BACKUP_QUEUE_NAME } from './backup.constants';
+import { SseService } from '../../shared/sse/sse.service';
+import { JobStatus } from '../../database/enums/job-status.enum';
+import { isJobStreamClosed } from './backup-stream';
 
 export interface ProcessBackupJobData {
   jobId: string;
@@ -18,6 +21,7 @@ export class BackupProcessor extends WorkerHost {
   constructor(
     private readonly backupService: BackupService,
     private readonly backupRepository: BackupRepository,
+    private readonly sseService: SseService,
   ) {
     super();
   }
@@ -25,9 +29,13 @@ export class BackupProcessor extends WorkerHost {
   async process(job: Job<ProcessBackupJobData>, token?: string): Promise<void> {
     this.logger.log(`Processing backup job ${job.data.jobId} from queue`);
 
+    // `attemptsMade` counts finished (failed) attempts only; a busy-connection
+    // deferral grows `attemptsStarted` but not `attemptsMade`.
     const isRetry = job.attemptsMade > 0;
     const outcome = await this.backupService.executeQueuedBackup(job.data.jobId, {
       isRetry,
+      attempt: job.attemptsMade + 1,
+      maxAttempts: job.opts?.attempts ?? 1,
     });
 
     if (outcome.kind !== 'deferred') {
@@ -75,15 +83,23 @@ export class BackupProcessor extends WorkerHost {
     if (!exhausted) return;
 
     try {
+      const reason = `Backup worker reportó una falla final tras ${job.attemptsMade} intento(s): ${error.message}`;
       const markedFailed = await this.backupRepository.markFailedIfUnfinished(
         job.data.jobId,
-        `Backup worker reportó una falla final tras ${job.attemptsMade} intento(s): ${error.message}`,
+        reason,
         new Date(),
       );
       if (markedFailed) {
         this.logger.warn(
           `Backup job ${job.data.jobId} quedó PENDING/RUNNING y fue marcado FAILED por el handler 'failed' del worker.`,
         );
+      }
+      if (await this.needsTerminalEvent(job.data.jobId, error, markedFailed)) {
+        this.sseService.emit(job.data.jobId, {
+          type: 'failed',
+          payload: { jobId: job.data.jobId, error: reason },
+        });
+        this.sseService.complete(job.data.jobId);
       }
     } catch (repositoryError) {
       // This handler has no caller to propagate to — BullMQ just emits the
@@ -96,6 +112,25 @@ export class BackupProcessor extends WorkerHost {
         `Failed to mark backup job ${job.data.jobId} as FAILED after its worker gave up: ${message}`,
       );
     }
+  }
+
+  /**
+   * The final failure must close the job's stream exactly when nobody else
+   * did: the service tags the errors it rejects with after its own terminal
+   * emit. Otherwise close it if this handler just marked the row FAILED, or
+   * if the row was already FAILED by an earlier retried attempt (which only
+   * streamed a "Reintentando" log) and this attempt died outside the
+   * service's try block. A COMPLETED row is left alone.
+   */
+  private async needsTerminalEvent(
+    jobId: string,
+    error: Error,
+    markedFailed: boolean,
+  ): Promise<boolean> {
+    if (isJobStreamClosed(error)) return false;
+    if (markedFailed) return true;
+    const current = await this.backupRepository.findById(jobId);
+    return current?.status === JobStatus.FAILED;
   }
 
   @OnWorkerEvent('stalled')

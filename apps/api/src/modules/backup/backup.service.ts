@@ -15,7 +15,11 @@ import { Queue, UnrecoverableError } from 'bullmq';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { Client } from 'pg';
-import { createConnection as createMysqlConnection, RowDataPacket } from 'mysql2/promise';
+import {
+  Connection as MysqlConnection,
+  createConnection as createMysqlConnection,
+  RowDataPacket,
+} from 'mysql2/promise';
 import { sanitizeMessage } from '../../common/sanitization/sanitize-message';
 import { CreateBackupDto } from './dto/create-backup.dto';
 import { ListHistoryQueryDto } from './dto/list-history-query.dto';
@@ -30,6 +34,7 @@ import {
   BACKUP_QUEUE_NAME,
 } from './backup.constants';
 import { SseService } from '../../shared/sse/sse.service';
+import { markJobStreamClosed } from './backup-stream';
 import { BackupResult } from './interfaces/backup-result.interface';
 import { BackupHistoryItem } from './interfaces/backup-history-item.interface';
 import { R2Object } from './interfaces/r2-object.interface';
@@ -52,6 +57,36 @@ import {
   STORAGE_KEY_VERSION,
 } from '../../database/entities/backup-job.entity';
 import { PaginatedResponseDto } from '../../common/dto/paginated-response.dto';
+
+/**
+ * Prefixes `error` with the backup stage that produced it so the persisted
+ * `errorMessage`, the log line and the SSE `failed` payload say where the run
+ * broke. The original error stays reachable through `cause`. Callers must not
+ * put credentials in `stage`; the result still goes through `sanitizeMessage`.
+ */
+function withStageContext(stage: string, error: unknown): Error {
+  const original = error instanceof Error ? error.message : String(error);
+  return new Error(`${stage}: ${original}`, { cause: error });
+}
+
+// The connection name identifies the source without leaking network details:
+// `sanitizeMessage` redacts `host:port` and IPv4 literals anyway.
+function sourceConnectStage(connection: ConnectionEntity): string {
+  return `No se pudo conectar a la base de origen "${connection.name}"`;
+}
+
+function sourceSnapshotStage(connection: ConnectionEntity): string {
+  return `No se pudo capturar el snapshot de la base de origen "${connection.name}"`;
+}
+
+/** Which BullMQ attempt `executeQueuedBackup` is running, as seen by the processor. */
+export interface QueuedBackupAttempt {
+  isRetry: boolean;
+  /** 1-based number of the current attempt. */
+  attempt?: number;
+  /** BullMQ `opts.attempts`. Without it every failure is treated as final. */
+  maxAttempts?: number;
+}
 
 @Injectable()
 export class BackupService implements OnApplicationBootstrap {
@@ -287,7 +322,7 @@ export class BackupService implements OnApplicationBootstrap {
 
   async executeQueuedBackup(
     jobId: string,
-    options: { isRetry: boolean } = { isRetry: false },
+    options: QueuedBackupAttempt = { isRetry: false },
   ): Promise<QueuedBackupOutcome> {
     const job = await this.backupRepository.findById(jobId);
     if (!job) {
@@ -472,7 +507,15 @@ export class BackupService implements OnApplicationBootstrap {
         );
       } catch (manifestError) {
         await this.r2Service.delete(job.fileKey!).catch(() => {});
-        throw manifestError;
+        // An aborted upload keeps its original error: the abort reason, not
+        // the storage stage, is what the user needs to see.
+        if (abortController.signal.aborted) {
+          throw manifestError;
+        }
+        throw withStageContext(
+          'No se pudo subir el manifiesto al almacenamiento',
+          manifestError,
+        );
       }
 
       const completedAt = new Date();
@@ -554,11 +597,29 @@ export class BackupService implements OnApplicationBootstrap {
 
       await this.r2Service.delete(job.fileKey!).catch(() => {});
 
-      this.sseService.emit(job.id, {
-        type: 'failed',
-        payload: { jobId: job.id, error: errorMessage },
-      });
-      this.sseService.complete(job.id);
+      // While BullMQ still has an attempt left the stream stays open: a
+      // terminal `failed` here would make the UI report a failure that the
+      // retry (5s later) may well turn into a success.
+      const willRetry = this.willBeRetried(options, error, abortState.reason);
+      // Tags the rejection so the worker's `failed` handler knows this
+      // stream already got its terminal event.
+      const rejectWith = <E extends Error>(err: E): E =>
+        willRetry ? err : markJobStreamClosed(err);
+      if (willRetry) {
+        this.sseService.emit(job.id, {
+          type: 'log',
+          payload: {
+            message: `Intento ${options.attempt} de ${options.maxAttempts} falló: ${errorMessage}. Reintentando...`,
+            timestamp: completedAt,
+          },
+        });
+      } else {
+        this.sseService.emit(job.id, {
+          type: 'failed',
+          payload: { jobId: job.id, error: errorMessage },
+        });
+        this.sseService.complete(job.id);
+      }
 
       // Classify strictly by the closure-held `abortState.reason`, never by
       // `rawMessage`: every strategy rejects an aborted signal with the same
@@ -578,13 +639,19 @@ export class BackupService implements OnApplicationBootstrap {
       }
 
       if (abortState.reason?.kind === 'timeout') {
-        throw new UnrecoverableError(
-          `Backup job ${job.id} excedió el tiempo límite de ejecución (${abortState.reason.timeoutMs}ms)`,
+        throw rejectWith(
+          new UnrecoverableError(
+            `Backup job ${job.id} excedió el tiempo límite de ejecución (${abortState.reason.timeoutMs}ms)`,
+          ),
         );
       }
 
-      throw new InternalServerErrorException(
-        `Backup failed for job ${job.id}: ${errorMessage}`,
+      if (error instanceof UnrecoverableError) {
+        throw rejectWith(new UnrecoverableError(`Backup failed for job ${job.id}: ${errorMessage}`));
+      }
+
+      throw rejectWith(
+        new InternalServerErrorException(`Backup failed for job ${job.id}: ${errorMessage}`),
       );
     } finally {
       if (heartbeatTimer) {
@@ -602,6 +669,29 @@ export class BackupService implements OnApplicationBootstrap {
           );
         });
     }
+  }
+
+  /**
+   * Mirrors how the catch block above hands the failure to BullMQ: a user
+   * cancel resolves (no retry), a timeout or an `UnrecoverableError` is
+   * rethrown as unrecoverable, and anything else is retried while attempts
+   * remain.
+   */
+  private willBeRetried(
+    options: QueuedBackupAttempt,
+    error: unknown,
+    abortReason: BackupAbortReason | null,
+  ): boolean {
+    if (abortReason?.kind === 'cancelled' || abortReason?.kind === 'timeout') {
+      return false;
+    }
+    if (error instanceof UnrecoverableError) {
+      return false;
+    }
+    if (options.attempt === undefined || options.maxAttempts === undefined) {
+      return false;
+    }
+    return options.attempt < options.maxAttempts;
   }
 
   async listBackups(): Promise<BackupJobEntity[]> {
@@ -748,80 +838,105 @@ export class BackupService implements OnApplicationBootstrap {
     });
 
     try {
-      await client.connect();
+      try {
+        await client.connect();
+      } catch (connectError) {
+        throw withStageContext(sourceConnectStage(connection), connectError);
+      }
 
-      const versionResult = await client.query<{ server_version: string }>(
-        'SHOW server_version',
-      );
-      const serverVersion = versionResult.rows[0]?.server_version ?? 'unknown';
-
-      const tablesResult = await client.query<{
-        name: string;
-        estimated_rows: string;
-      }>(`
-        SELECT schemaname || '.' || relname AS name,
-               COALESCE(n_live_tup, 0) AS estimated_rows
-        FROM pg_stat_user_tables
-        ORDER BY n_live_tup DESC
-      `);
-
-      const tables = tablesResult.rows.map((r) => ({
-        name: r.name,
-        estimatedRows: Number(r.estimated_rows),
-      }));
-
-      return {
-        serverVersion,
-        tableCount: tables.length,
-        estimatedRows: tables.reduce((sum, t) => sum + t.estimatedRows, 0),
-        tables,
-      };
+      try {
+        return await this.readPostgresSnapshot(client);
+      } catch (queryError) {
+        throw withStageContext(sourceSnapshotStage(connection), queryError);
+      }
     } finally {
       await client.end().catch(() => undefined);
     }
   }
 
+  private async readPostgresSnapshot(client: Client): Promise<DumpManifestSource> {
+    const versionResult = await client.query<{ server_version: string }>(
+      'SHOW server_version',
+    );
+    const serverVersion = versionResult.rows[0]?.server_version ?? 'unknown';
+
+    const tablesResult = await client.query<{
+      name: string;
+      estimated_rows: string;
+    }>(`
+      SELECT schemaname || '.' || relname AS name,
+             COALESCE(n_live_tup, 0) AS estimated_rows
+      FROM pg_stat_user_tables
+      ORDER BY n_live_tup DESC
+    `);
+
+    const tables = tablesResult.rows.map((r) => ({
+      name: r.name,
+      estimatedRows: Number(r.estimated_rows),
+    }));
+
+    return {
+      serverVersion,
+      tableCount: tables.length,
+      estimatedRows: tables.reduce((sum, t) => sum + t.estimatedRows, 0),
+      tables,
+    };
+  }
+
   private async captureMySQLSnapshot(
     connection: ConnectionEntity,
   ): Promise<DumpManifestSource> {
-    const conn = await createMysqlConnection({
-      host: connection.host,
-      port: connection.port,
-      database: connection.database,
-      user: connection.username,
-      password: connection.password,
-      connectTimeout: 10_000,
-    });
+    let conn: MysqlConnection;
+    try {
+      conn = await createMysqlConnection({
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        user: connection.username,
+        password: connection.password,
+        connectTimeout: 10_000,
+      });
+    } catch (connectError) {
+      throw withStageContext(sourceConnectStage(connection), connectError);
+    }
 
     try {
-      const [versionRows] = await conn.query<(RowDataPacket & { v: string })[]>(
-        'SELECT VERSION() AS v',
-      );
-      const serverVersion = versionRows[0]?.v ?? 'unknown';
-
-      const [tableRows] = await conn.query<
-        (RowDataPacket & { name: string; estimated_rows: string })[]
-      >(`
-        SELECT TABLE_NAME AS name, COALESCE(TABLE_ROWS, 0) AS estimated_rows
-        FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = DATABASE()
-        ORDER BY TABLE_ROWS DESC
-      `);
-
-      const tables = tableRows.map((r) => ({
-        name: r.name,
-        estimatedRows: Number(r.estimated_rows),
-      }));
-
-      return {
-        serverVersion,
-        tableCount: tables.length,
-        estimatedRows: tables.reduce((sum, t) => sum + t.estimatedRows, 0),
-        tables,
-      };
+      return await this.readMySQLSnapshot(conn);
+    } catch (queryError) {
+      throw withStageContext(sourceSnapshotStage(connection), queryError);
     } finally {
-      await conn.end();
+      await conn.end().catch(() => undefined);
     }
+  }
+
+  private async readMySQLSnapshot(
+    conn: MysqlConnection,
+  ): Promise<DumpManifestSource> {
+    const [versionRows] = await conn.query<(RowDataPacket & { v: string })[]>(
+      'SELECT VERSION() AS v',
+    );
+    const serverVersion = versionRows[0]?.v ?? 'unknown';
+
+    const [tableRows] = await conn.query<
+      (RowDataPacket & { name: string; estimated_rows: string })[]
+    >(`
+      SELECT TABLE_NAME AS name, COALESCE(TABLE_ROWS, 0) AS estimated_rows
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+      ORDER BY TABLE_ROWS DESC
+    `);
+
+    const tables = tableRows.map((r) => ({
+      name: r.name,
+      estimatedRows: Number(r.estimated_rows),
+    }));
+
+    return {
+      serverVersion,
+      tableCount: tables.length,
+      estimatedRows: tables.reduce((sum, t) => sum + t.estimatedRows, 0),
+      tables,
+    };
   }
 
   async cancelBackup(
