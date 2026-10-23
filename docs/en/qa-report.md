@@ -416,6 +416,7 @@ Every result in this QA report on EnVault (a self-hosted application that backs 
 | Run the functional suite | `pnpm test:e2e` (expected at `60fe003`: 276 passed, 1 skipped) |
 | Repeat the reliability study | `pnpm test:e2e` ten times, then `pnpm test:e2e --workers=1`, `pnpm test:e2e --workers=16` and `pnpm test:e2e --repeat-each=3` (the first study; the re-check after the last fixes used 5 normal runs and `--repeat-each=3`) |
 | Open the HTML report of the last run | `pnpm test:e2e:report` |
+| Run the functional suite with evidence (presentations and audits) | `pnpm test:e2e:evidence` (the same 277 tests, with a screenshot per UI test and a trace per test, including the API's HTTP requests and responses; about 56 MB in `e2e/playwright-report-evidence/`), then `pnpm test:e2e:evidence:report` to open the report |
 | Run the performance suite | `pnpm test:e2e:perf` (about 17 minutes; results in `e2e/perf-results/`) |
 | Stop and delete the environment | `pnpm docker:e2e:down` |
 | Unit tests and coverage (no Docker needed) | `pnpm test`, `pnpm test:coverage` |

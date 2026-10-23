@@ -416,6 +416,7 @@ Todos los resultados de este informe de QA sobre EnVault (una aplicación autoal
 | Ejecutar la suite funcional | `pnpm test:e2e` (esperado en `60fe003`: 276 passed, 1 skipped) |
 | Repetir el estudio de fiabilidad | `pnpm test:e2e` diez veces, luego `pnpm test:e2e --workers=1`, `pnpm test:e2e --workers=16` y `pnpm test:e2e --repeat-each=3` (el primer estudio; la repetición después de las últimas correcciones usó 5 ejecuciones normales y `--repeat-each=3`) |
 | Abrir el informe HTML de la última ejecución | `pnpm test:e2e:report` |
+| Ejecutar la suite funcional con evidencia (presentaciones y auditorías) | `pnpm test:e2e:evidence` (los mismos 277 tests, con una captura por cada test de la UI y una traza por cada test, incluidas las peticiones y respuestas HTTP de la API; unos 56 MB en `e2e/playwright-report-evidence/`), luego `pnpm test:e2e:evidence:report` para abrir el informe |
 | Ejecutar la suite de rendimiento | `pnpm test:e2e:perf` (unos 17 minutos; resultados en `e2e/perf-results/`) |
 | Detener y borrar el entorno | `pnpm docker:e2e:down` |
 | Tests unitarios y cobertura (no hace falta Docker) | `pnpm test`, `pnpm test:coverage` |
