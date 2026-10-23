@@ -50,6 +50,8 @@ BACKUP_TIMEOUT_MS=1800000
 
 # ── Redis and BullMQ Queues ────────────────────────────────────
 # In Docker Compose use REDIS_HOST=redis. In Railway REDIS_URL is auto-injected.
+# REDIS_HOST is required in production unless REDIS_URL is set; it defaults to
+# localhost elsewhere.
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
@@ -70,6 +72,8 @@ DB_PASSWORD=changeme
 > In Docker Compose, `DATABASE_URL` uses the service name as the host (`db` instead of `localhost`).
 >
 > `R2_ENDPOINT` (optional) points the backup storage at an S3-compatible server such as MinIO instead of Cloudflare R2. It must be an `http://` or `https://` URL. When it is set, the endpoint is no longer derived from `R2_ACCOUNT_ID` (which can then stay empty), requests use path-style addressing (`<endpoint>/<bucket>/<key>`), and the access key, secret key and bucket are still required. Presigned download URLs embed this endpoint, so it must be reachable by whoever follows them. Leave it unset (or blank) for Cloudflare R2: behavior is then unchanged.
+>
+> `REDIS_HOST` is required when `NODE_ENV=production` unless `REDIS_URL` is set; outside production it defaults to `localhost`. Without either, the API refuses to boot instead of silently connecting to `localhost`. Keep Redis on a private network (the Docker Compose network or Railway private networking); if it must cross a public network, use a `rediss://` `REDIS_URL` or `REDIS_TLS=true`.
 >
 > `CORS_ORIGIN` is still required by env validation even in the same-origin Docker Compose / Railway topologies below, where the browser never actually reaches the API cross-origin — see the note next to it there.
 

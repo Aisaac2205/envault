@@ -27,6 +27,7 @@ Common failure modes during install, configuration, and operation, with concrete
 | Railway: web loads with empty config strings | [§4.2](#42-vite-vars-not-baked) |
 | Railway: `EPROTO SSL alert 40` from API | [§4.3](#43-r2-ssl-alert-40) |
 | Docker: web container restart loop, `99-config.sh: not found` | [§4.4](#44-script-shebang-crlf) |
+| Production: API refuses to boot with `REDIS_HOST is required in production` | [§4.5](#45-redis-target-missing-in-production) |
 | Audit logs all show `environment: dev` even for PROD operations | [§5.1](#51-audit-environment-defaults-to-dev) |
 
 ---
@@ -261,6 +262,14 @@ sed -i 's/\r$//' apps/web/entrypoint.sh
 ```
 
 **Preventive**: the repo's `.gitattributes` already forces LF for `*.sh`, `*.envsh`, `Dockerfile`, `nginx.conf`, `*.conf.template`, `docker-compose*.yml`. Make sure new contributors clone with that file present.
+
+### 4.5 Redis target missing in production
+
+**Symptom**: the API exits on startup with `Config validation error: REDIS_HOST is required in production unless REDIS_URL is set`.
+
+**Cause**: `NODE_ENV=production` and neither `REDIS_URL` nor `REDIS_HOST` is set. Production has no `localhost` fallback, so the API refuses to boot instead of queueing jobs against a Redis that is not there.
+
+**Fix**: set `REDIS_URL` (for example a Railway reference variable) or `REDIS_HOST` (`redis` in Docker Compose), plus `REDIS_PORT` and `REDIS_PASSWORD` as needed. Keep Redis on a private network; if it is reachable over a public network, use a `rediss://` `REDIS_URL` or `REDIS_TLS=true`.
 
 ---
 

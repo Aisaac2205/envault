@@ -83,7 +83,7 @@ Referencia completa en [environment-variables.md](environment-variables.md). La 
 | `BETTER_AUTH_URL` | sí | URL pública base de la API |
 | `BETTER_AUTH_ADMIN_EMAIL` | sí | Correo electrónico del usuario administrador inicial |
 | `BETTER_AUTH_ADMIN_PASSWORD` | sí | Contraseña inicial del usuario administrador |
-| `REDIS_HOST` | condicional | Host de Redis (ejemplo: `redis` en Docker Compose o `localhost`). Alternativamente use `REDIS_URL` |
+| `REDIS_HOST` | sí en producción, salvo que se defina `REDIS_URL` | Host de Redis (ejemplo: `redis` en Docker Compose). Valor por defecto `localhost` fuera de producción; en producción la API no arranca sin este valor o sin `REDIS_URL` |
 | `REDIS_PORT` | no (default `6379`) | Puerto TCP de conexión a Redis |
 | `REDIS_PASSWORD` | sí en producción | Contraseña para autenticar con Redis mediante comando requirepass |
 | `REDIS_URL` | opcional | URL completa de Redis (`redis://...` o `rediss://...`). Prioritaria si está definida |
@@ -94,6 +94,10 @@ Referencia completa en [environment-variables.md](environment-variables.md). La 
 | `R2_BUCKET_NAME` | sí en producción | Nombre del bucket R2 destinado a los respaldos |
 | `BACKUP_TIMEOUT_MS` | no (default `1800000`) | Límite máximo en milisegundos para operaciones de dump (30 minutos) |
 | `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Límite máximo en milisegundos para operaciones de restauración |
+
+> **Red de Redis**: mantenga Redis en una red privada (la red de Docker o la red privada de Railway). Si debe atravesar una red pública, conéctese con una `REDIS_URL` con `rediss://` o defina `REDIS_TLS=true`.
+
+> **Red de Redis**: mantenga Redis en una red privada (la red de Docker o la red privada de Railway). Si debe atravesar una red pública, conéctese con una `REDIS_URL` con `rediss://` o defina `REDIS_TLS=true`.
 
 ### Web (build-time Y runtime)
 

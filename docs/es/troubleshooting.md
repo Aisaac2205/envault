@@ -27,6 +27,7 @@ Modos de falla comunes en instalación, configuración y operación, con diagnó
 | Railway: web carga con strings de config vacíos | [§4.2](#42-vite-vars-no-quedaron-en-el-build) |
 | Railway: `EPROTO SSL alert 40` desde la API | [§4.3](#43-r2-ssl-alert-40) |
 | Docker: container del web en restart loop, `99-config.sh: not found` | [§4.4](#44-shebang-de-script-con-crlf) |
+| Producción: la API no arranca con `REDIS_HOST is required in production` | [§4.5](#45-falta-el-destino-de-redis-en-producción) |
 | Audit logs muestran todos `environment: dev` aunque sean operaciones PROD | [§5.1](#51-audit-environment-defaultea-a-dev) |
 
 ---
@@ -261,6 +262,14 @@ sed -i 's/\r$//' apps/web/entrypoint.sh
 ```
 
 **Preventivo**: el `.gitattributes` del repo ya fuerza LF para `*.sh`, `*.envsh`, `Dockerfile`, `nginx.conf`, `*.conf.template`, `docker-compose*.yml`. Asegurate que los nuevos contributors clonen con ese archivo presente.
+
+### 4.5 Falta el destino de Redis en producción
+
+**Síntoma**: la API termina al arrancar con `Config validation error: REDIS_HOST is required in production unless REDIS_URL is set`.
+
+**Causa**: `NODE_ENV=production` y no se definió ni `REDIS_URL` ni `REDIS_HOST`. En producción no hay valor por defecto `localhost`, así que la API se niega a arrancar en lugar de encolar trabajos contra un Redis que no existe.
+
+**Fix**: definir `REDIS_URL` (por ejemplo, una variable de referencia de Railway) o `REDIS_HOST` (`redis` en Docker Compose), además de `REDIS_PORT` y `REDIS_PASSWORD` según corresponda. Mantener Redis en una red privada; si es accesible desde una red pública, usar una `REDIS_URL` con `rediss://` o `REDIS_TLS=true`.
 
 ---
 

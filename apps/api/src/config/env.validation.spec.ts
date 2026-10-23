@@ -80,6 +80,63 @@ describe('envValidationSchema Redis configuration', () => {
   });
 });
 
+describe('envValidationSchema Redis target in production', () => {
+  const productionEnvironment = { ...validEnvironment, NODE_ENV: 'production' };
+
+  it('fails to boot when neither REDIS_URL nor REDIS_HOST is set', () => {
+    const { error, value } = envValidationSchema.validate(productionEnvironment);
+
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('REDIS_HOST');
+    expect(value.REDIS_HOST).toBeUndefined();
+  });
+
+  it('accepts REDIS_URL on its own and does not invent a REDIS_HOST', () => {
+    const { error, value } = envValidationSchema.validate({
+      ...productionEnvironment,
+      REDIS_URL: 'redis://default:secret@redis.railway.internal:6379',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.REDIS_HOST).toBeUndefined();
+  });
+
+  it('accepts an explicit REDIS_HOST', () => {
+    const { error, value } = envValidationSchema.validate({
+      ...productionEnvironment,
+      REDIS_HOST: 'redis',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.REDIS_HOST).toBe('redis');
+    expect(value.REDIS_TLS).toBe(false);
+  });
+
+  it.each([
+    ['REDISURL', 'redis://default:secret@redis.railway.internal:6379'],
+    ['REDISHOST', 'redis.railway.internal'],
+  ])('accepts the Railway alias %s that redis.config reads', (name, aliasValue) => {
+    // ConfigModule validates with allowUnknown, so the undeclared alias
+    // reaches the schema exactly as it does at boot.
+    const { error } = envValidationSchema.validate(
+      { ...productionEnvironment, [name]: aliasValue },
+      { allowUnknown: true },
+    );
+
+    expect(error).toBeUndefined();
+  });
+
+  it('keeps the localhost default outside production', () => {
+    const { error, value } = envValidationSchema.validate({
+      ...validEnvironment,
+      NODE_ENV: 'development',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.REDIS_HOST).toBe('localhost');
+  });
+});
+
 describe('envValidationSchema R2_ENDPOINT', () => {
   it('is optional and has no default, so absence keeps the derived R2 endpoint', () => {
     const { error, value } = envValidationSchema.validate(validEnvironment);
