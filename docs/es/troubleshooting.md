@@ -20,6 +20,7 @@ Modos de falla comunes en instalación, configuración y operación, con diagnó
 | Test de conexión falla: `no pg_hba.conf entry` | [§2.4](#24-pg_hbaconf-no-entry) |
 | Backup se cuelga / nunca termina | [§3.1](#31-backup-se-cuelga) |
 | Backup falla: `pg_dump: server version mismatch` | [§3.2](#32-pg_dump-version-mismatch) |
+| Restore rechazado con un mensaje de versión de PostgreSQL (`422`) | [§3.2](#32-pg_dump-version-mismatch) |
 | Restore falla: `403 Forbidden, restore to PROD blocked` | [§3.3](#33-restore-bloqueado-por-regla-prod) |
 | Cronjob no se dispara | [§3.4](#34-cronjob-no-se-dispara) |
 | Cronjob se dispara dos veces | [§3.5](#35-cronjob-se-dispara-dos-veces) |
@@ -176,9 +177,11 @@ docker stats envault-api          # uso de CPU/memoria/red
 
 **Síntoma**: El backup falla con `pg_dump: error: server version: 16.x; pg_dump version: 15.x; aborting because of server version mismatch`.
 
-**Causa**: El container de la API de EnVault Management trae una versión específica de `pg_dump`. `pg_dump` tiene que ser **≥** la versión del server origen. Si tu DB gestionada se actualizó a Postgres 17 y el container de EnVault Management trae `pg_dump` 16, los dumps se rompen.
+**Causa**: La imagen de la API de EnVault Management trae los clientes de PostgreSQL 14 a 18 uno junto a otro y vuelca con el `pg_dump` cuya versión major coincide con la del server origen. El mismatch solo ocurre cuando el server origen es más nuevo que el cliente más nuevo instalado (por ejemplo, una DB gestionada que pasó a PostgreSQL 19 mientras la imagen llega hasta 18): `pg_dump` no puede volcar un server más nuevo que él mismo. La API se detiene antes de ejecutar `pg_dump` y el error del job nombra ambas versiones. Un origen anterior a PostgreSQL 14 se rechaza igual, porque ningún cliente soportado podría restaurar su archivo.
 
-**Fix**: Actualizar [`apps/api/Dockerfile`](../../apps/api/Dockerfile) para instalar una versión más nueva de `postgresql-client`. Buscar el build arg `POSTGRES_CLIENT_VERSION` o la línea `apt-get install postgresql-client-X`, subirla, rebuild, redeploy.
+**Fix**: Agregar la nueva versión major al build arg `POSTGRES_CLIENT_VERSIONS` (lista separada por espacios; por defecto `14 15 16 17 18` en [`apps/api/Dockerfile`](../../apps/api/Dockerfile); para Compose, agregarla en `build.args` del service `api` en [`docker-compose.yml`](../../docker-compose.yml)), rebuild y redeploy.
+
+**Relacionado, restore rechazado por versión**: un restore se rechaza, con un mensaje que nombra ambas versiones, cuando el PostgreSQL de destino es anterior al server del que salió el dump (PostgreSQL solo garantiza cargar un dump en la misma versión major o en una más nueva), o cuando un dump hecho con el `pg_dump` 18 de la imagen anterior apunta a un destino anterior a la versión 17. `POST /api/restores` responde `422` con el motivo, dry runs incluidos; un dump que pasa la comprobación de la solicitud pero no la del archivo termina el job en `failed` antes de tocar el destino. Elegir un destino con la versión major del dump o una posterior.
 
 ### 3.3 Restore bloqueado por regla PROD
 

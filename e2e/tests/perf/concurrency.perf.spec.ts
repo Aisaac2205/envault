@@ -28,7 +28,6 @@ const perf = readPerfConfig();
 const { size, backupConcurrencies, restoreConcurrencies, runs } = perf.queue;
 
 const ENGINE_TITLE = { postgres: 'PostgreSQL', mysql: 'MySQL' } as const;
-const POSTGRES_17 = 170_000;
 
 for (const dbType of perf.engines) {
   test(`${ENGINE_TITLE[dbType]}: simultaneous backups and restores (${size} dataset, about ${TARGET_MIB[size]} MiB)`, async ({
@@ -37,12 +36,7 @@ for (const dbType of perf.engines) {
     restoreTarget,
     jobs,
     adminApi,
-    postgresVersion,
   }) => {
-    test.skip(
-      dbType === 'postgres' && postgresVersion < POSTGRES_17,
-      'D1: pg_restore 18 cannot restore into a PostgreSQL older than 17, so there is no restore to time.',
-    );
     test.setTimeout(caseTimeoutMs(size, runs * (backupConcurrencies.length + restoreConcurrencies.length)));
     // Jobs run in waves (2 backups at a time, 1 restore), and each wave may take one job's deadline.
     const backupWaitMs = (jobCount: number): number => jobTimeoutMs(size) * Math.ceil(jobCount / 2);

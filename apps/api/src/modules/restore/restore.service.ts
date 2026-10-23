@@ -9,6 +9,7 @@ import {
   NotFoundException,
   OnApplicationBootstrap,
   Optional,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -37,7 +38,10 @@ import { DryRunResult, DryRunSnapshot, DryRunDiff, DryRunConnectionInfo } from '
 import { DumpManifest } from '../backup/interfaces/dump-manifest.interface';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
 import { SseService } from '../../shared/sse/sse.service';
-import { RestoreStrategy } from '../backup/interfaces/restore-strategy.interface';
+import {
+  RestoreIncompatibleError,
+  RestoreStrategy,
+} from '../backup/interfaces/restore-strategy.interface';
 import { Client } from 'pg';
 import { createConnection as createMysqlConnection, RowDataPacket } from 'mysql2/promise';
 
@@ -130,6 +134,8 @@ export class RestoreService implements OnApplicationBootstrap {
 
     const isR2Restore = !!dto.r2Key;
     const fileKey = await this.resolveSourceFileKey(dto, targetConnection);
+
+    await this.assertRestoreCompatible(fileKey, targetConnection);
 
     if (dto.isDryRun) {
       const result = await this.dryRun(fileKey, targetConnection);
@@ -472,13 +478,12 @@ export class RestoreService implements OnApplicationBootstrap {
     targetConnection: ConnectionEntity,
   ): Promise<DryRunResult> {
     // 1. Try to load manifest from R2
-    const manifestKey = fileKey.replace(/\.dump$/, '.manifest.json');
-    let source: DryRunSnapshot | null = null;
-    try {
-      const manifest = await this.r2Service.downloadJson<DumpManifest>(manifestKey);
-      source = manifest.source;
-    } catch {
-      this.logger.warn(`No manifest found for ${manifestKey} — dry run will be target-only`);
+    const source: DryRunSnapshot | null =
+      (await this.loadManifest(fileKey))?.source ?? null;
+    if (!source) {
+      this.logger.warn(
+        `No manifest found for ${fileKey.replace(/\.dump$/, '.manifest.json')} — dry run will be target-only`,
+      );
     }
 
     // 2. Capture target snapshot
@@ -523,6 +528,47 @@ export class RestoreService implements OnApplicationBootstrap {
     };
   }
 
+  private async loadManifest(fileKey: string): Promise<DumpManifest | null> {
+    try {
+      return await this.r2Service.downloadJson<DumpManifest>(
+        fileKey.replace(/\.dump$/, '.manifest.json'),
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Refuses a restore that can never work (for example loading a PostgreSQL 17
+   * backup into a PostgreSQL 16 server) with a 422 and the reason, before a job,
+   * a lease or a queue entry exists. The check is best effort: anything it
+   * cannot establish here is verified again by the strategy when the job runs,
+   * and always before the target is touched.
+   */
+  private async assertRestoreCompatible(
+    fileKey: string,
+    targetConnection: ConnectionEntity,
+  ): Promise<void> {
+    const strategy = this.restoreStrategies.get(targetConnection.dbType);
+    if (!strategy?.assertCompatible) {
+      return;
+    }
+
+    const manifest = await this.loadManifest(fileKey);
+    try {
+      await strategy.assertCompatible(targetConnection, {
+        serverVersion: manifest?.source?.serverVersion,
+      });
+    } catch (error) {
+      if (error instanceof RestoreIncompatibleError) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      this.logger.warn(
+        `Request-time compatibility check skipped: ${sanitizeMessage(error instanceof Error ? error.message : String(error))}`,
+      );
+    }
+  }
+
   private async resolveSourceFileKey(
     dto: CreateRestoreDto,
     targetConnection: ConnectionEntity,
@@ -565,6 +611,14 @@ export class RestoreService implements OnApplicationBootstrap {
       password: connection.password,
       connectionTimeoutMillis: SNAPSHOT_TIMEOUT_MS,
     });
+    // A socket reset after the connection is up is emitted as 'error'; without a
+    // listener it is an uncaughtException that the fatal runtime policy turns
+    // into a process exit. The query reports its own failures.
+    client.on('error', (error: Error) => {
+      this.logger.warn(
+        `Dry-run target connection error: ${sanitizeMessage(error.message)}`,
+      );
+    });
 
     try {
       await client.connect();
@@ -590,6 +644,13 @@ export class RestoreService implements OnApplicationBootstrap {
       user: connection.username,
       password: connection.password,
       connectTimeout: SNAPSHOT_TIMEOUT_MS,
+    });
+    // Same as the PostgreSQL probe: an error on the idle connection must not
+    // reach the process as an uncaughtException.
+    conn.on('error', (error: Error) => {
+      this.logger.warn(
+        `Dry-run target connection error: ${sanitizeMessage(error.message)}`,
+      );
     });
 
     try {
