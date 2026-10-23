@@ -14,6 +14,7 @@ import { BackupLeaseRepository } from './backup-lease.repository';
 import { BackupProcessor } from './backup.processor';
 import { BACKUP_QUEUE_NAME } from './backup.constants';
 import { R2Service } from './r2.service';
+import { PgToolchain } from './strategies/pg-toolchain';
 import { PostgresBackupStrategy } from './strategies/postgres-backup.strategy';
 import { MySQLBackupStrategy } from './strategies/mysql-backup.strategy';
 import { PostgresRestoreStrategy } from './strategies/postgres-restore.strategy';
@@ -39,6 +40,7 @@ import { RestoreStrategy } from './interfaces/restore-strategy.interface';
     BackupLeaseRepository,
     BackupProcessor,
     R2Service,
+    PgToolchain,
     PostgresBackupStrategy,
     MySQLBackupStrategy,
     PostgresRestoreStrategy,

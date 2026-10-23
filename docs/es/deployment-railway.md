@@ -32,6 +32,8 @@ En **Settings → Build**:
 
 > **Por qué Root Directory `/`**: los Dockerfiles esperan el contexto desde la raíz del monorepo para acceder a `pnpm-workspace.yaml` y `pnpm-lock.yaml`. Si Railway te ubica en `apps/api`, el build falla.
 
+El Dockerfile de la API instala por defecto los clientes de PostgreSQL 14 a 18 (build arg `POSTGRES_CLIENT_VERSIONS`), así que Railway no necesita configuración extra para respaldar y restaurar esas versiones major. Para cambiar la lista, agregar una variable `POSTGRES_CLIENT_VERSIONS` (separada por espacios) al service `envault-api`; Railway pasa las variables del service a los `ARG` que coincidan durante el build.
+
 En **Settings → Networking**:
 
 - `envault-web`: Generate Domain → asigna `https://<service>-production.up.railway.app`, Target Port `80`.

@@ -55,6 +55,10 @@ export const envValidationSchema = Joi.object({
   RESTORE_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
   // Command timeout for pg_dump / mysqldump CLI in ms (dimensioned for massive dumps).
   BACKUP_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
+  // Directory with one subdirectory per installed PostgreSQL client major
+  // (<root>/<major>/bin/pg_dump). Blank or unset uses the Debian/PGDG layout of
+  // the API image (/usr/lib/postgresql); only set it for another layout.
+  PG_CLIENT_BIN_ROOT: Joi.string().allow('').optional(),
   // Redis configuration for asynchronous BullMQ processing queues.
   // The localhost default only applies outside production; in production the
   // Redis target must be explicit (see the object-level rule below).

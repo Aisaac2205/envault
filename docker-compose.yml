@@ -5,10 +5,13 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
       target: production
-      args:
-        # Versión major del cliente postgresql instalado en la imagen.
-        # Debe ser >= al server PostgreSQL más nuevo que vayas a dumpear.
-        POSTGRES_CLIENT_VERSION: "18"
+      # La imagen instala los clientes de PostgreSQL 14 a 18, uno junto a otro:
+      # el valor por defecto vive en el ARG POSTGRES_CLIENT_VERSIONS de
+      # apps/api/Dockerfile. La API respalda con el cliente de la versión del
+      # servidor origen y restaura con el de la versión del destino. Para otra
+      # lista, descomenta y ajusta (versiones separadas por espacios):
+      # args:
+      #   POSTGRES_CLIENT_VERSIONS: "16 17 18"
     env_file: .env
     depends_on:
       db:

@@ -43,6 +43,25 @@ describe('envValidationSchema auth rate limiting', () => {
   });
 });
 
+describe('envValidationSchema PostgreSQL clients', () => {
+  it('leaves PG_CLIENT_BIN_ROOT unset by default so the image layout applies', () => {
+    const { error, value } = envValidationSchema.validate(validEnvironment);
+
+    expect(error).toBeUndefined();
+    expect(value.PG_CLIENT_BIN_ROOT).toBeUndefined();
+  });
+
+  it.each(['/opt/postgresql', ''])('accepts PG_CLIENT_BIN_ROOT=%p', (root) => {
+    const { error, value } = envValidationSchema.validate({
+      ...validEnvironment,
+      PG_CLIENT_BIN_ROOT: root,
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.PG_CLIENT_BIN_ROOT).toBe(root);
+  });
+});
+
 describe('envValidationSchema Redis configuration', () => {
   it('accepts custom Redis host, port, password, and TLS', () => {
     const { error, value } = envValidationSchema.validate({

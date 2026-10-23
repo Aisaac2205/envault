@@ -32,6 +32,8 @@ docker build -t envault-web:local -f apps/web/Dockerfile .
 
 Ambos Dockerfiles esperan la raíz del monorepo como contexto de build porque leen `pnpm-workspace.yaml` y `pnpm-lock.yaml`.
 
+La imagen de la API instala los clientes de PostgreSQL 14 a 18 uno junto a otro para poder respaldar y restaurar cualquiera de esas versiones major. La lista se cambia con el build arg `POSTGRES_CLIENT_VERSIONS` (separada por espacios), por ejemplo `docker build --build-arg POSTGRES_CLIENT_VERSIONS="16 17 18" -f apps/api/Dockerfile .`; para el build de Compose, agrégala en `build.args` del service `api` en `docker-compose.yml`.
+
 ### Despliegue Individual de Contenedores
 
 Si prefiere desplegar la API, el Web y los servicios base en servidores o procesos separados sin orquestador:
