@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { UnrecoverableError } from 'bullmq';
 import { BackupService } from './backup.service';
+import { isJobStreamClosed } from './backup-stream';
 import { BackupRepository } from './backup.repository';
 import { BackupLeaseRepository } from './backup-lease.repository';
 import { R2Service } from './r2.service';
@@ -520,6 +521,79 @@ describe('BackupService', () => {
       const manifest = await uploadedManifest();
       expect(manifest.source.serverVersion).toBe('unknown');
     });
+
+    describe('when the source database cannot be reached', () => {
+      const reachableConnection = {
+        ...mockConnection,
+        host: 'db.internal',
+        port: 5432,
+        username: 'backup_user',
+        password: 'hunter2-secret',
+      };
+
+      beforeEach(() => {
+        mockConnectionsService.findById.mockResolvedValue(reachableConnection);
+        mockPgClient.connect.mockRejectedValue(new Error('read ECONNRESET'));
+      });
+
+      it('records a failure that names the source stage and the connection, keeping the original cause', async () => {
+        await expect(service.executeQueuedBackup('job-snapshot')).rejects.toThrow();
+
+        const persisted = mockBackupRepository.failIfLeaseHeld.mock.calls[0][3] as string;
+        expect(persisted).toBe(
+          'No se pudo conectar a la base de origen "Prod DB": read ECONNRESET',
+        );
+        expect(persisted).not.toContain('hunter2-secret');
+        expect(mockStrategy.execute).not.toHaveBeenCalled();
+      });
+
+      it('sends the same stage-prefixed reason in the failed SSE event', async () => {
+        await expect(service.executeQueuedBackup('job-snapshot')).rejects.toThrow();
+
+        expect(mockSseService.emit).toHaveBeenCalledWith('job-snapshot', {
+          type: 'failed',
+          payload: {
+            jobId: 'job-snapshot',
+            error: 'No se pudo conectar a la base de origen "Prod DB": read ECONNRESET',
+          },
+        });
+      });
+
+      it('names the snapshot stage when the connection opens but a statistics query fails', async () => {
+        mockPgClient.connect.mockResolvedValue(undefined);
+        mockPgClient.query.mockRejectedValue(new Error('permission denied for view pg_stat_user_tables'));
+
+        await expect(service.executeQueuedBackup('job-snapshot')).rejects.toThrow();
+
+        const persisted = mockBackupRepository.failIfLeaseHeld.mock.calls[0][3] as string;
+        expect(persisted).toBe(
+          'No se pudo capturar el snapshot de la base de origen "Prod DB": permission denied for view pg_stat_user_tables',
+        );
+      });
+    });
+  });
+
+  it('executeQueuedBackup prefixes a manifest upload failure with the storage stage', async () => {
+    mockBackupRepository.findById.mockResolvedValue({
+      id: 'job-manifest',
+      connectionId: 'conn-1',
+      status: JobStatus.PENDING,
+      fileKey: 'prod-db/manual/manifest.dump',
+      category: BackupCategory.MANUAL,
+      triggeredBy: mockUser.id,
+    });
+    mockR2Service.upload.mockRejectedValue(new Error('socket hang up'));
+
+    await expect(service.executeQueuedBackup('job-manifest')).rejects.toThrow();
+
+    expect(mockBackupRepository.failIfLeaseHeld).toHaveBeenCalledWith(
+      'job-manifest',
+      'conn-1',
+      expect.any(String),
+      'No se pudo subir el manifiesto al almacenamiento: socket hang up',
+      expect.any(Date),
+    );
+    expect(mockR2Service.delete).toHaveBeenCalledWith('prod-db/manual/manifest.dump');
   });
 
   it('executeQueuedBackup updates DB to FAILED and completes SSE when strategy fails', async () => {
@@ -549,6 +623,77 @@ describe('BackupService', () => {
       }),
     );
     expect(mockSseService.complete).toHaveBeenCalledWith('job-123');
+  });
+
+  describe('executeQueuedBackup failure while BullMQ still has attempts left', () => {
+    beforeEach(() => {
+      mockBackupRepository.findById.mockResolvedValue({
+        id: 'job-attempts',
+        connectionId: 'conn-1',
+        status: JobStatus.PENDING,
+        fileKey: 'prod-db/manual/attempts.dump',
+        category: BackupCategory.MANUAL,
+        triggeredBy: mockUser.id,
+      });
+      mockStrategy.execute.mockRejectedValue(new Error('pg_dump failed: connection reset'));
+    });
+
+    it('reports the failed attempt as a log line and keeps the stream open for the retry', async () => {
+      await expect(
+        service.executeQueuedBackup('job-attempts', { isRetry: false, attempt: 1, maxAttempts: 2 }),
+      ).rejects.toThrow();
+
+      expect(mockSseService.emit).toHaveBeenCalledWith('job-attempts', {
+        type: 'log',
+        payload: {
+          message: 'Intento 1 de 2 falló: pg_dump failed: connection reset. Reintentando...',
+          timestamp: expect.any(Date),
+        },
+      });
+      expect(mockSseService.emit).not.toHaveBeenCalledWith(
+        'job-attempts',
+        expect.objectContaining({ type: 'failed' }),
+      );
+      expect(mockSseService.complete).not.toHaveBeenCalled();
+    });
+
+    it('tells the worker whether the rejection already closed the stream', async () => {
+      const retried = await service
+        .executeQueuedBackup('job-attempts', { isRetry: false, attempt: 1, maxAttempts: 2 })
+        .catch((err: unknown) => err);
+      const final = await service
+        .executeQueuedBackup('job-attempts', { isRetry: true, attempt: 2, maxAttempts: 2 })
+        .catch((err: unknown) => err);
+
+      expect(isJobStreamClosed(retried)).toBe(false);
+      expect(isJobStreamClosed(final)).toBe(true);
+    });
+
+    it('emits the terminal failed event and closes the stream on the last attempt', async () => {
+      await expect(
+        service.executeQueuedBackup('job-attempts', { isRetry: true, attempt: 2, maxAttempts: 2 }),
+      ).rejects.toThrow();
+
+      expect(mockSseService.emit).toHaveBeenCalledWith('job-attempts', {
+        type: 'failed',
+        payload: { jobId: 'job-attempts', error: 'pg_dump failed: connection reset' },
+      });
+      expect(mockSseService.complete).toHaveBeenCalledWith('job-attempts');
+    });
+
+    it('treats an UnrecoverableError raised mid-run as final even with attempts left', async () => {
+      mockStrategy.execute.mockRejectedValue(new UnrecoverableError('dump file is corrupt'));
+
+      await expect(
+        service.executeQueuedBackup('job-attempts', { isRetry: false, attempt: 1, maxAttempts: 2 }),
+      ).rejects.toThrow();
+
+      expect(mockSseService.emit).toHaveBeenCalledWith(
+        'job-attempts',
+        expect.objectContaining({ type: 'failed' }),
+      );
+      expect(mockSseService.complete).toHaveBeenCalledWith('job-attempts');
+    });
   });
 
   describe('cancelBackup', () => {
