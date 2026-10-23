@@ -1,4 +1,5 @@
 /// <reference types="jest" />
+import { EventEmitter } from 'events';
 import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -21,10 +22,11 @@ jest.mock('../../auth/auth.guard', () => ({
 }));
 
 // The probes below never reach a database server.
-const mockPgClient = {
+// A real EventEmitter, like the pg Client: emitting 'error' with no listener throws.
+const mockPgClient = Object.assign(new EventEmitter(), {
   connect: jest.fn(),
   end: jest.fn(),
-};
+});
 jest.mock('pg', () => ({
   Client: jest.fn().mockImplementation(() => mockPgClient),
 }));
@@ -127,6 +129,7 @@ describe('ConnectionsController responses', () => {
   });
 
   beforeEach(() => {
+    mockPgClient.removeAllListeners();
     mockPgClient.connect.mockResolvedValue(undefined);
     mockPgClient.end.mockResolvedValue(undefined);
   });
@@ -217,6 +220,37 @@ describe('ConnectionsController responses', () => {
     expect(response.status).toBe(201);
     expect(response.json.data).toMatchObject({ success: false });
     expectNoSecret(response.text, response.json);
+  });
+
+  it('test-raw survives a socket error emitted by a PostgreSQL connection that is already up', async () => {
+    mockPgClient.end.mockImplementation(async () => {
+      // The server drops the idle socket right after the handshake.
+      expect(() => mockPgClient.emit('error', new Error('read ECONNRESET'))).not.toThrow();
+    });
+
+    const response = await call('POST', '/connections/test-raw', rawPayload);
+
+    expect(response.status).toBe(201);
+    expect(response.json.data).toMatchObject({ success: true });
+    expect(mockPgClient.listenerCount('error')).toBeGreaterThan(0);
+  });
+
+  it('test-raw survives a socket error emitted by a MySQL connection that is already up', async () => {
+    const mysqlConnection = Object.assign(new EventEmitter(), {
+      end: jest.fn().mockImplementation(async () => {
+        expect(() => mysqlConnection.emit('error', new Error('read ECONNRESET'))).not.toThrow();
+      }),
+    });
+    jest.requireMock('mysql2/promise').createConnection.mockResolvedValueOnce(mysqlConnection);
+
+    const response = await call('POST', '/connections/test-raw', {
+      ...rawPayload,
+      dbType: DbTypeEnum.MYSQL,
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.json.data).toMatchObject({ success: true });
+    expect(mysqlConnection.listenerCount('error')).toBeGreaterThan(0);
   });
 
   it('update returns the saved fields without the password', async () => {

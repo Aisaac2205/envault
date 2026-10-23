@@ -836,6 +836,14 @@ export class BackupService implements OnApplicationBootstrap {
       password: connection.password,
       connectionTimeoutMillis: 10_000,
     });
+    // A socket reset after the connection is up is emitted as 'error'; without a
+    // listener it is an uncaughtException that the fatal runtime policy turns
+    // into a process exit. The queries report their own failures.
+    client.on('error', (error: Error) => {
+      this.logger.warn(
+        `Source snapshot connection error: ${sanitizeMessage(error.message)}`,
+      );
+    });
 
     try {
       try {
@@ -899,6 +907,13 @@ export class BackupService implements OnApplicationBootstrap {
     } catch (connectError) {
       throw withStageContext(sourceConnectStage(connection), connectError);
     }
+    // Same as the PostgreSQL probe: an error on the idle connection must not
+    // reach the process as an uncaughtException.
+    conn.on('error', (error: Error) => {
+      this.logger.warn(
+        `Source snapshot connection error: ${sanitizeMessage(error.message)}`,
+      );
+    });
 
     try {
       return await this.readMySQLSnapshot(conn);

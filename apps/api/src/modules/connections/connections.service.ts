@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Client } from 'pg';
 import { createConnection as createMysqlConnection } from 'mysql2/promise';
 import { CreateConnectionDto } from './dto/create-connection.dto';
@@ -9,6 +9,7 @@ import { ConnectionTestResult } from './interfaces/connection-test-result.interf
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { Environment } from '../../database/enums/environment.enum';
 import { resolveUniqueSlug, slugify } from '../../common/utils/slugify';
+import { sanitizeMessage } from '../../common/sanitization/sanitize-message';
 
 const CONNECTION_TEST_TIMEOUT_MS = 5_000;
 
@@ -28,6 +29,8 @@ export interface ConnectionDetail {
 
 @Injectable()
 export class ConnectionsService {
+  private readonly logger = new Logger(ConnectionsService.name);
+
   constructor(
     private readonly repository: ConnectionsRepository,
   ) {}
@@ -154,6 +157,12 @@ export class ConnectionsService {
       password: params.password,
       connectionTimeoutMillis: CONNECTION_TEST_TIMEOUT_MS,
     });
+    // A socket reset after the connection is up is emitted as 'error'; without a
+    // listener it is an uncaughtException that the fatal runtime policy turns
+    // into a process exit. The test reports its own failures.
+    client.on('error', (error: Error) => {
+      this.logger.warn(`Connection test error: ${sanitizeMessage(error.message)}`);
+    });
 
     const start = Date.now();
 
@@ -182,6 +191,11 @@ export class ConnectionsService {
         user: params.username,
         password: params.password,
         connectTimeout: CONNECTION_TEST_TIMEOUT_MS,
+      });
+      // Same as the PostgreSQL test: an error on the idle connection must not
+      // reach the process as an uncaughtException.
+      conn.on('error', (error: Error) => {
+        this.logger.warn(`Connection test error: ${sanitizeMessage(error.message)}`);
       });
       const latencyMs = Date.now() - start;
       await conn.end();

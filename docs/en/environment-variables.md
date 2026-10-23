@@ -47,6 +47,10 @@ R2_PUBLIC_BASE_URL=
 RESTORE_TIMEOUT_MS=1800000
 # Timeout in milliseconds for database dump operations (default: 1800000 = 30 min).
 BACKUP_TIMEOUT_MS=1800000
+# Directory with one subdirectory per installed PostgreSQL client major
+# (<root>/<major>/bin/pg_dump). Leave it unset in the API image: the default is
+# /usr/lib/postgresql, where the image installs the clients 14 to 18.
+# PG_CLIENT_BIN_ROOT=/usr/lib/postgresql
 
 # ── Redis and BullMQ Queues ────────────────────────────────────
 # In Docker Compose use REDIS_HOST=redis. In Railway REDIS_URL is auto-injected.

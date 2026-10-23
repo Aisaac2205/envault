@@ -1,4 +1,5 @@
 /// <reference types="jest" />
+import { EventEmitter } from 'events';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { UnrecoverableError } from 'bullmq';
@@ -19,11 +20,12 @@ import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 
 // The PostgreSQL source snapshot opens its own connection to the database being
 // backed up; the specs below that exercise it answer from this fake client.
-const mockPgClient = {
+// A real EventEmitter, like the pg Client: emitting 'error' with no listener throws.
+const mockPgClient = Object.assign(new EventEmitter(), {
   connect: jest.fn(),
   query: jest.fn(),
   end: jest.fn(),
-};
+});
 jest.mock('pg', () => ({
   Client: jest.fn().mockImplementation(() => mockPgClient),
 }));
@@ -485,6 +487,7 @@ describe('BackupService', () => {
     beforeEach(() => {
       // Run the real snapshot capture against the fake pg client.
       captureSourceSnapshotSpy.mockRestore();
+      mockPgClient.removeAllListeners();
       mockPgClient.connect.mockResolvedValue(undefined);
       mockPgClient.end.mockResolvedValue(undefined);
       mockBackupRepository.findById.mockResolvedValue({
@@ -510,6 +513,23 @@ describe('BackupService', () => {
         tableCount: 1,
         estimatedRows: 10,
       });
+    });
+
+    it('survives a socket error emitted by the source connection after it is up', async () => {
+      mockPgClient.query.mockImplementation((sql: string) => {
+        // The server drops the idle socket between two queries.
+        expect(() => mockPgClient.emit('error', new Error('read ECONNRESET'))).not.toThrow();
+        return Promise.resolve({
+          rows: sql.includes('SHOW server_version')
+            ? [{ server_version: '17.11' }]
+            : tableRows,
+        });
+      });
+
+      const outcome = await service.executeQueuedBackup('job-snapshot');
+
+      expect(outcome.kind).toBe('finished');
+      expect(mockPgClient.listenerCount('error')).toBeGreaterThan(0);
     });
 
     it('falls back to "unknown" when the server returns no version row', async () => {

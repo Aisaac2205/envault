@@ -1,5 +1,6 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { UnrecoverableError } from 'bullmq';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { Transform } from 'stream';
@@ -9,29 +10,77 @@ import {
 } from '../interfaces/backup-strategy.interface';
 import { R2Service } from '../r2.service';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
+import { sanitizeMessage } from '../../../common/sanitization/sanitize-message';
+import { PgToolchain } from './pg-toolchain';
 
 const DEFAULT_BACKUP_TIMEOUT_MS = 1_800_000;
 
 @Injectable()
 export class PostgresBackupStrategy implements BackupStrategy {
+  private readonly logger = new Logger(PostgresBackupStrategy.name);
   private readonly timeoutMs: number;
+  private readonly toolchain: PgToolchain;
 
   constructor(
     private readonly r2Service: R2Service,
     @Optional() configService?: ConfigService,
+    @Optional() toolchain?: PgToolchain,
   ) {
     this.timeoutMs =
       configService?.get<number>('BACKUP_TIMEOUT_MS') ??
       DEFAULT_BACKUP_TIMEOUT_MS;
+    this.toolchain = toolchain ?? new PgToolchain(configService);
   }
 
-  execute(
+  async execute(
     connection: ConnectionEntity,
     fileKey: string,
     metadata?: Record<string, string>,
     options?: { abortSignal?: AbortSignal },
   ): Promise<BackupExecutionResult> {
+    if (options?.abortSignal?.aborted) {
+      throw new Error('Operación cancelada por el usuario');
+    }
 
+    const pgDumpBinary = await this.selectPgDump(connection);
+    return this.runPgDump(pgDumpBinary, connection, fileKey, metadata, options);
+  }
+
+  /**
+   * Dumps with the pg_dump whose major equals the source server's: the archive
+   * then loads into that same major or any newer one, which a newer pg_dump
+   * cannot promise (it writes SETs and archive formats older servers reject).
+   */
+  private async selectPgDump(connection: ConnectionEntity): Promise<string> {
+    let sourceMajor: number;
+    try {
+      sourceMajor = await this.toolchain.readServerMajor(connection);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `No se pudo determinar la versión de PostgreSQL del servidor de origen: ${sanitizeMessage(detail)}`,
+      );
+    }
+
+    const plan = this.toolchain.resolver().planBackup(sourceMajor);
+    if (!plan.ok) {
+      // Deterministic: retrying the job cannot change the installed clients.
+      throw new UnrecoverableError(plan.message);
+    }
+
+    this.logger.log(
+      `Using pg_dump ${plan.clientMajor} for the PostgreSQL ${sourceMajor} source of connection ${connection.id}`,
+    );
+    return plan.binary;
+  }
+
+  private runPgDump(
+    pgDumpBinary: string,
+    connection: ConnectionEntity,
+    fileKey: string,
+    metadata?: Record<string, string>,
+    options?: { abortSignal?: AbortSignal },
+  ): Promise<BackupExecutionResult> {
     return new Promise((resolve, reject) => {
       let stderrBuffer = '';
       let settled = false;
@@ -54,7 +103,7 @@ export class PostgresBackupStrategy implements BackupStrategy {
         '--no-password',
       ];
 
-      const pgDump = spawn('pg_dump', args, {
+      const pgDump = spawn(pgDumpBinary, args, {
         env: { ...process.env, PGPASSWORD: connection.password },
       });
 

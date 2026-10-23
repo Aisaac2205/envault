@@ -15,6 +15,8 @@ Ambos Dockerfiles son multi-stage y viven junto a su app:
 | `apps/api/Dockerfile` | `build` (compilación TS) → `production` (Node mínimo) |
 | `apps/web/Dockerfile` | `build` (Vite build) → `production` (nginx, puerto 80) |
 
+La imagen de la API instala los clientes de PostgreSQL 14 a 18 uno junto a otro (`/usr/lib/postgresql/<major>/bin`, build arg `POSTGRES_CLIENT_VERSIONS`). Un backup usa el cliente de la versión major del server origen y un restore usa el de la versión major del destino; se rechaza un restore a un PostgreSQL anterior al server del que salió el dump.
+
 ### Docker Compose
 
 | Archivo | Propósito |
