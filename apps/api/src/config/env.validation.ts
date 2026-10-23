@@ -56,10 +56,26 @@ export const envValidationSchema = Joi.object({
   // Command timeout for pg_dump / mysqldump CLI in ms (dimensioned for massive dumps).
   BACKUP_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
   // Redis configuration for asynchronous BullMQ processing queues.
-  REDIS_HOST: Joi.string().default('localhost'),
+  // The localhost default only applies outside production; in production the
+  // Redis target must be explicit (see the object-level rule below).
+  REDIS_HOST: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    otherwise: Joi.string().default('localhost'),
+  }),
   REDIS_PORT: Joi.number().integer().min(1).max(65535).default(6379),
   REDIS_PASSWORD: Joi.string().allow('').optional(),
   REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).optional(),
   REDIS_TLS: Joi.boolean().default(false),
-});
+})
+  // Production must name its Redis target instead of silently falling back to
+  // localhost. REDISURL and REDISHOST are the Railway aliases redis.config.ts
+  // also reads; ConfigModule validates with allowUnknown, so they reach here.
+  .when(Joi.object({ NODE_ENV: Joi.valid('production').required() }).unknown(), {
+    then: Joi.object()
+      .or('REDIS_URL', 'REDIS_HOST', 'REDISURL', 'REDISHOST')
+      .messages({
+        'object.missing':
+          'REDIS_HOST is required in production unless REDIS_URL is set',
+      }),
+  });
 

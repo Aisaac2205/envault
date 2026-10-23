@@ -83,7 +83,7 @@ Full reference in [environment-variables.md](environment-variables.md). The tabl
 | `BETTER_AUTH_URL` | yes | Public base URL of the API |
 | `BETTER_AUTH_ADMIN_EMAIL` | yes | Seed administrator email (used on initial boot) |
 | `BETTER_AUTH_ADMIN_PASSWORD` | yes | Seed administrator password |
-| `REDIS_HOST` | conditional | Redis host (for example `redis` in Docker Compose or `localhost`). Alternatively provide `REDIS_URL` |
+| `REDIS_HOST` | yes in production unless `REDIS_URL` is set | Redis host (for example `redis` in Docker Compose). Defaults to `localhost` outside production; in production the API refuses to boot without it or `REDIS_URL` |
 | `REDIS_PORT` | no (default `6379`) | Redis TCP port |
 | `REDIS_PASSWORD` | yes in production | Password to authenticate with Redis via requirepass |
 | `REDIS_URL` | optional | Full Redis URL (`redis://...` or `rediss://...`). Takes precedence when provided |
@@ -94,6 +94,10 @@ Full reference in [environment-variables.md](environment-variables.md). The tabl
 | `R2_BUCKET_NAME` | yes in production | Cloudflare R2 bucket designated for backups |
 | `BACKUP_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for database dump execution (30 minutes) |
 | `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for restore executions |
+
+> **Redis network**: keep Redis on a private network (the Docker network, or Railway private networking). If it must cross a public network, connect with a `rediss://` `REDIS_URL` or set `REDIS_TLS=true`.
+
+> **Redis network**: keep Redis on a private network (the Docker network, or Railway private networking). If it must cross a public network, connect with a `rediss://` `REDIS_URL` or set `REDIS_TLS=true`.
 
 ### Web (build-time AND runtime)
 
