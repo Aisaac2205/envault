@@ -90,7 +90,31 @@ export class ConnectionsService {
     return resolveUniqueSlug(base, reserved);
   }
 
+  /**
+   * Security model invariant 1.1 (docs/en/security-model.md): a PROD
+   * connection is never updated or deleted through the API, and no connection
+   * can be reclassified as PROD by an update (it must be created as PROD).
+   * Without it, an admin could flip PROD to QA and restore over production.
+   */
+  private async assertNotProd(id: string, dto?: UpdateConnectionDto): Promise<void> {
+    const existing = await this.repository.findById(id);
+    if (!existing) {
+      throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);
+    }
+    if (existing.environment === Environment.PROD) {
+      throw new ForbiddenException(
+        `Las conexiones de producción son inmutables. Conexión "${existing.name}" es "prod".`,
+      );
+    }
+    if (dto?.environment === Environment.PROD) {
+      throw new ForbiddenException(
+        'No se puede reclasificar una conexión como producción. Cree una conexión nueva.',
+      );
+    }
+  }
+
   async update(id: string, dto: UpdateConnectionDto) {
+    await this.assertNotProd(id, dto);
     const result = await this.repository.update(id, dto);
     if (result === 'missing') {
       throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);
@@ -104,6 +128,7 @@ export class ConnectionsService {
   }
 
   async delete(id: string) {
+    await this.assertNotProd(id);
     const result = await this.repository.softDelete(id);
     if (result === 'missing') {
       throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);

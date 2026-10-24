@@ -39,7 +39,7 @@ describe('ConnectionsController responses', () => {
 
   const newPayload = {
     name: 'Billing',
-    environment: Environment.PROD,
+    environment: Environment.QA,
     dbType: DbTypeEnum.POSTGRES,
     host: 'db.internal',
     port: 5432,
@@ -55,7 +55,7 @@ describe('ConnectionsController responses', () => {
       id: CONNECTION_ID,
       name: 'Billing',
       slug: 'billing',
-      environment: Environment.PROD,
+      environment: Environment.QA,
       dbType: DbTypeEnum.POSTGRES,
       host: 'db.internal',
       port: 5432,
@@ -70,6 +70,7 @@ describe('ConnectionsController responses', () => {
 
   let app: INestApplication;
   let manager: { findOne: jest.Mock; query: jest.Mock; save: jest.Mock };
+  let connectionFindOne: jest.Mock;
   let baseUrl: string;
 
   beforeAll(async () => {
@@ -85,6 +86,7 @@ describe('ConnectionsController responses', () => {
         Object.assign(entity, { id: CONNECTION_ID, isActive: true }),
       ),
     };
+    connectionFindOne = connectionRepo.findOne;
     manager = {
       findOne: jest.fn(async () => loadedEntity()),
       query: jest.fn(async () => []),
@@ -258,6 +260,33 @@ describe('ConnectionsController responses', () => {
   // PATCH is a partial update: whatever the request does not name must stay as
   // stored. Every update used to reset the engine to PostgreSQL because the
   // update DTO inherited the create DTO's default.
+  describe('PROD connections are immutable (security-model 1.1)', () => {
+    const connectionPath = `/connections/${CONNECTION_ID}`;
+
+    it.each([
+      ['PATCH', { host: '10.66.66.66' }],
+      ['PATCH', { environment: Environment.QA }],
+      ['DELETE', undefined],
+    ])('%s on a PROD connection is rejected with 403', async (method, body) => {
+      // The controller may load the row for the audit context before the
+      // service runs, so every lookup in this request must see PROD.
+      connectionFindOne.mockResolvedValue(loadedEntity({ environment: Environment.PROD }));
+      manager.save.mockClear();
+      try {
+        const response = await call(method as string, connectionPath, body as object | undefined);
+        expect(response.status).toBe(403);
+        expect(manager.save).not.toHaveBeenCalled();
+      } finally {
+        connectionFindOne.mockImplementation(async () => loadedEntity());
+      }
+    });
+
+    it('reclassifying a QA connection as PROD is rejected with 403', async () => {
+      const response = await call('PATCH', connectionPath, { environment: Environment.PROD });
+      expect(response.status).toBe(403);
+    });
+  });
+
   describe('update keeps the stored engine unless the request names one', () => {
     const lastSaved = (): ConnectionEntity => manager.save.mock.calls.at(-1)?.at(-1);
 
