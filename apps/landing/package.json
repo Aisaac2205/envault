@@ -17,25 +17,25 @@
     "test:ci": "vitest run --maxWorkers=2 --no-file-parallelism"
   },
   "dependencies": {
-    "@astrojs/react": "^6.0.5",
+    "@astrojs/react": "^6.0.6",
     "@phosphor-icons/react": "^2.1.10",
-    "astro": "^7.2.10",
+    "astro": "^7.4.0",
     "clsx": "^2.1.1",
-    "motion": "^13.2.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "motion": "^13.5.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "tailwind-merge": "^2.6.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^22.14.1",
+    "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.9"
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
   }
 }
