@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -25,7 +26,7 @@ describe('production deployment security contract', () => {
         .filter((line) => line.length > 0 && !line.startsWith('#')),
     ).toEqual([
       'API_UPSTREAM: api:${PORT:-3000}',
-      'CSP_HEADER_NAME: ${CSP_HEADER_NAME:-Content-Security-Policy-Report-Only}',
+      'CSP_HEADER_NAME: ${CSP_HEADER_NAME:-Content-Security-Policy}',
     ]);
   });
 
@@ -39,9 +40,7 @@ describe('production deployment security contract', () => {
     expect(example).toContain('ENCRYPTION_KEY=');
     expect(example).toMatch(/openssl rand -hex 32/);
     expect(example).toMatch(/64 hex/i);
-    expect(example).toContain(
-      'CSP_HEADER_NAME=Content-Security-Policy-Report-Only',
-    );
+    expect(example).toContain('CSP_HEADER_NAME=Content-Security-Policy\n');
   });
 
   it('sources the client IP selector before nginx expands its templates', () => {
@@ -73,9 +72,7 @@ describe('production deployment security contract', () => {
     expect(headers).toContain('X-Content-Type-Options "nosniff" always');
     expect(headers).toContain('add_header ${CSP_HEADER_NAME}');
     expect(headers).toContain("connect-src 'self'");
-    expect(dockerfile).toContain(
-      'ENV CSP_HEADER_NAME=Content-Security-Policy-Report-Only',
-    );
+    expect(dockerfile).toContain('ENV CSP_HEADER_NAME=Content-Security-Policy\n');
     expect(dockerfile).toContain(
       'NGINX_LOCAL_RESOLVERS|API_UPSTREAM|CSP_HEADER_NAME',
     );
@@ -86,7 +83,9 @@ describe('production deployment security contract', () => {
     expect(entrypoint).toContain('RAILWAY_ENVIRONMENT_ID');
     expect(entrypoint).toContain('CLIENT_IP_SOURCE="\\$http_x_real_ip"');
     expect(entrypoint).toContain('CLIENT_IP_SOURCE="\\$remote_addr"');
-    expect(entrypoint).toContain('Content-Security-Policy-Report-Only');
+    expect(entrypoint).toContain(
+      'CSP_HEADER_NAME="${CSP_HEADER_NAME:-Content-Security-Policy}"',
+    );
     expect(entrypoint).toContain(
       'Content-Security-Policy|Content-Security-Policy-Report-Only)',
     );
@@ -100,6 +99,22 @@ describe('production deployment security contract', () => {
       expect(location).toContain(
         'include /etc/nginx/conf.d/security-headers.inc;',
       );
+    }
+  });
+
+  it('allows only the inline theme script, by its hash, and no unsafe-inline script', () => {
+    const headers = readRepositoryFile('apps/web/nginx/security-headers.conf');
+    const indexHtml = readRepositoryFile('apps/web/index.html');
+    const inlineScripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(
+      (match) => match[1],
+    );
+    const scriptSrc = headers.match(/script-src ([^;]*);/)?.[1] ?? '';
+
+    expect(inlineScripts.length).toBeGreaterThan(0);
+    expect(scriptSrc).not.toContain("'unsafe-inline'");
+    for (const script of inlineScripts) {
+      const hash = createHash('sha256').update(script, 'utf8').digest('base64');
+      expect(scriptSrc).toContain(`'sha256-${hash}'`);
     }
   });
 
