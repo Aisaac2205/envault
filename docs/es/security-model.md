@@ -165,7 +165,7 @@ El hook escribe a través del pool de `pg` (`authPool`) que Better Auth ya posee
 
 2. **Los cronjobs no se auditan en `audit_logs`.** Corren in-process, no por HTTP, así que el interceptor no los ve. Su trazabilidad vive en `backup_jobs.triggeredBy = 'system-cronjob'`. Si se requiere auditoría unificada, debe invocarse el log manualmente desde `CronjobsService.executeCronjob`.
 
-3. **Los logs son append-only a nivel DB.** Un trigger (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE` en la tabla `audit_logs`. Esto previene adulteración incluso por usuarios con acceso directo a la DB. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
+3. **Los logs son append-only a nivel DB.** Un trigger de fila (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE`, y un trigger de sentencia (`audit_logs_no_truncate`) hace lo mismo con `TRUNCATE`, que nunca dispara triggers de fila. El dueño de la tabla todavía puede desactivar o borrar un trigger, así que en producción conviene que `audit_logs` pertenezca a un rol sin inicio de sesión y que el rol de la API solo tenga `SELECT` e `INSERT` sobre ella. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
 
 ---
 

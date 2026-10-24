@@ -165,7 +165,7 @@ The auth hook writes through the `pg` pool Better Auth already owns (`authPool`)
 
 2. **Cronjobs are not audited in `audit_logs`.** They run in-process, not over HTTP, so the interceptor doesn't see them. Their traceability lives in `backup_jobs.triggeredBy = 'system-cronjob'`. If you need unified auditing, you must invoke the log manually from `CronjobsService.executeCronjob`.
 
-3. **Logs are append-only at the DB level.** A trigger (`audit_logs_immutable`) raises an exception on any `UPDATE` or `DELETE` attempt on the `audit_logs` table. This prevents tampering even by users with direct DB access. For cryptographic non-repudiation, records should additionally be signed or shipped to a WORM system.
+3. **Logs are append-only at the DB level.** A row-level trigger (`audit_logs_immutable`) raises an exception on any `UPDATE` or `DELETE`, and a statement-level trigger (`audit_logs_no_truncate`) does the same for `TRUNCATE`, which never fires row-level triggers. The table owner can still disable or drop a trigger, so in production `audit_logs` should belong to a role that cannot log in, with the API's role granted only `SELECT` and `INSERT` on it. For cryptographic non-repudiation, records should additionally be signed or shipped to a WORM system.
 
 ---
 
