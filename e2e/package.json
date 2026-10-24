@@ -16,7 +16,7 @@
     "@playwright/test": "1.63.0",
     "@types/node": "^22.14.1",
     "@types/pg": "8.20.0",
-    "mysql2": "3.22.3",
+    "mysql2": "3.23.4",
     "pg": "8.20.0",
     "typescript": "^5.8.3"
   }
