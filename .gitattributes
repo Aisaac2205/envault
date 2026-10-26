@@ -10,3 +10,8 @@ Dockerfile     text eol=lf
 docker-compose*.yml text eol=lf
 nginx.conf     text eol=lf
 *.conf.template text eol=lf
+# The CSP in apps/web/nginx/security-headers.conf pins the inline theme
+# script by its sha256 hash, which is computed over LF bytes. A CRLF checkout
+# changes the hash and the browser blocks the script.
+*.html         text eol=lf
+.env.example   text eol=lf
