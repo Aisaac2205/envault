@@ -200,6 +200,7 @@ export default function Cronjobs() {
 
           {showForm && (
             <CronjobForm
+              key={editingCronjob?.id ?? "new"}
               cronjob={editingCronjob}
               connections={connections}
               connectionsLoading={connectionsLoading}

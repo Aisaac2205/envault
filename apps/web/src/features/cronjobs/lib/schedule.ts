@@ -1,5 +1,5 @@
 import type { TFunction } from "i18next";
-import type { EveryHours, Schedule } from "../types";
+import type { EveryHours, Schedule, ScheduleKind } from "../types";
 
 /**
  * Plain-language helpers for the structured schedule. The API owns the cron
@@ -10,6 +10,13 @@ export type ScheduleTranslator = TFunction<"cronjobs">;
 
 // Only the values the API accepts: divisors of 24, so the gaps stay even.
 export const EVERY_HOURS_VALUES: readonly EveryHours[] = [1, 2, 3, 4, 6, 8, 12];
+
+export const SCHEDULE_KINDS: readonly ScheduleKind[] = [
+  "every_hours",
+  "daily",
+  "weekly",
+  "monthly",
+];
 
 // Every month has a 28th, so a monthly schedule never skips one.
 export const MAX_DAY_OF_MONTH = 28;
@@ -44,6 +51,33 @@ export const SCHEDULE_PRESETS: readonly SchedulePreset[] = [
 ];
 
 export const DEFAULT_SCHEDULE: Schedule = { kind: "daily", time: DEFAULT_TIME };
+
+const DEFAULT_EVERY_HOURS: EveryHours = 6;
+
+/**
+ * The builder's starting point for another kind of repeat: the time carries
+ * over when both kinds have one, everything else starts at a sensible default.
+ */
+export function changeScheduleKind(
+  current: Schedule | null,
+  kind: ScheduleKind,
+): Schedule {
+  if (current?.kind === kind) return current;
+  const time =
+    current !== null && current.kind !== "every_hours"
+      ? current.time
+      : DEFAULT_TIME;
+  switch (kind) {
+    case "every_hours":
+      return { kind, everyHours: DEFAULT_EVERY_HOURS };
+    case "daily":
+      return { kind, time };
+    case "weekly":
+      return { kind, time, daysOfWeek: [1] };
+    case "monthly":
+      return { kind, time, dayOfMonth: 1 };
+  }
+}
 
 function sameDays(a: number[], b: number[]): boolean {
   const first = new Set(a);
