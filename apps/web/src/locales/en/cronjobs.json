@@ -2,7 +2,7 @@
   "column.name": "Name",
   "column.connection": "Connection",
   "column.environment": "Environment",
-  "column.expression": "Cron expression",
+  "column.schedule": "Schedule",
   "column.nextRun": "Next run",
   "column.lastStatus": "Last status",
   "column.active": "Active",

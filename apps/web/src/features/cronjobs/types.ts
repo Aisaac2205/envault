@@ -1,5 +1,3 @@
-import type { CronFrequency } from "@/types/backup.types";
-
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 
 export interface Connection {
@@ -63,8 +61,6 @@ export interface Cronjob extends RetentionFields {
   name: string;
   connectionId: string;
   connectionName?: string;
-  cronExpression: string;
-  frequency: CronFrequency;
   /** `null` when the stored expression is one the schedule builder cannot represent. */
   schedule: Schedule | null;
   isActive: boolean;

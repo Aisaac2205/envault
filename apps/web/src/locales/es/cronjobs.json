@@ -2,7 +2,7 @@
   "column.name": "Nombre",
   "column.connection": "Conexión",
   "column.environment": "Entorno",
-  "column.expression": "Expresión cron",
+  "column.schedule": "Programación",
   "column.nextRun": "Próxima ejecución",
   "column.lastStatus": "Último estado",
   "column.active": "Activo",
