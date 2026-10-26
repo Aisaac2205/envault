@@ -259,7 +259,8 @@ export default function ConnectionForm({
               >
                 <option value="dev">dev</option>
                 <option value="qa">qa</option>
-                <option value="prod">prod</option>
+                {/* The API refuses to move a connection to PROD. */}
+                {!isEditMode && <option value="prod">prod</option>}
               </select>
             </div>
 

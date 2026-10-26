@@ -11,6 +11,7 @@ import {
 } from "./hooks/useConnections";
 import ConnectionsTable from "./components/ConnectionsTable";
 import ConnectionForm from "./components/ConnectionForm";
+import { ConfirmProdDeleteDialog } from "./components/ConfirmProdDeleteDialog";
 import { ConnectionsStats } from "./components/ConnectionsStats";
 import {
   ConnectionFilters,
@@ -22,13 +23,16 @@ import { Button } from "@/shared/ui/button";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { GlobalLoadingOverlay } from "@/shared/ui/TetrominoLoader";
+import { apiErrorMessage } from "@/shared/lib/api-error";
 import { Database } from "lucide-react";
-import type {
-  Connection,
-  CreateConnectionDto,
-  UpdateConnectionDto,
-  ConnectionTestResult,
-  TestRawConnectionDto,
+import {
+  isProdConnection,
+  type Connection,
+  type CreateConnectionDto,
+  type UpdateConnectionDto,
+  type ConnectionTestResult,
+  type ProdDeleteConfirmation,
+  type TestRawConnectionDto,
 } from "./types";
 
 export default function Connections() {
@@ -50,6 +54,10 @@ export default function Connections() {
   const [formLoading, setFormLoading] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, ConnectionTestResult>>({});
   const [testLoading, setTestLoading] = useState<Record<string, boolean>>({});
+  // A PROD connection is deleted through the step-up dialog, not `window.confirm`.
+  const [prodDeleteTarget, setProdDeleteTarget] = useState<Connection | null>(null);
+  const [prodDeleteError, setProdDeleteError] = useState<string | null>(null);
+  const [prodDeleting, setProdDeleting] = useState(false);
 
   const { filters, setFilters, filtered } = useConnectionFilters(connections);
 
@@ -93,29 +101,76 @@ export default function Connections() {
     setShowForm(true);
   }, []);
 
+  const handleDeleted = useCallback(
+    (id: string) => {
+      toast.success(t('toast.deleted'));
+      setTestResults((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setTestLoading((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    },
+    [t],
+  );
+
   const handleDelete = useCallback(
-    async (id: string) => {
+    async (connection: Connection) => {
+      if (isProdConnection(connection)) {
+        setProdDeleteError(null);
+        setProdDeleteTarget(connection);
+        return;
+      }
+
       const confirmed = window.confirm(t('confirm.delete'));
       if (!confirmed) return;
 
       try {
-        await deleteMutation.mutateAsync(id);
-        toast.success(t('toast.deleted'));
-        setTestResults((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-        setTestLoading((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
+        await deleteMutation.mutateAsync({ id: connection.id });
+        handleDeleted(connection.id);
       } catch {
         // Error surfaced via mutation state
       }
     },
-    [deleteMutation, t],
+    [deleteMutation, handleDeleted, t],
+  );
+
+  const handleProdDeleteOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) return;
+      setProdDeleteTarget(null);
+      setProdDeleteError(null);
+      // The refusal was shown in the dialog; it must not resurface on the page.
+      deleteMutation.reset();
+    },
+    [deleteMutation],
+  );
+
+  const handleConfirmProdDelete = useCallback(
+    async (confirmation: ProdDeleteConfirmation) => {
+      if (!prodDeleteTarget) return;
+      const { id } = prodDeleteTarget;
+      setProdDeleting(true);
+      setProdDeleteError(null);
+      try {
+        await deleteMutation.mutateAsync({ id, confirmation });
+        handleDeleted(id);
+        setProdDeleteTarget(null);
+      } catch (error) {
+        // Wrong name or password (403), too many failed passwords (429) or an
+        // expired session (401): the dialog stays open and says why.
+        setProdDeleteError(
+          apiErrorMessage(error, t('error.unexpected', { ns: 'common' })),
+        );
+      } finally {
+        setProdDeleting(false);
+      }
+    },
+    [prodDeleteTarget, deleteMutation, handleDeleted, t],
   );
 
   const handleTest = useCallback(
@@ -198,8 +253,11 @@ export default function Connections() {
 
   // ─── Normal state ───────────────────────────────────────
 
+  // While the PROD delete dialog is open it shows its own refusal.
   const mutationError =
-    createMutation.error ?? updateMutation.error ?? deleteMutation.error;
+    createMutation.error ??
+    updateMutation.error ??
+    (prodDeleteTarget ? null : deleteMutation.error);
 
   return (
     <>
@@ -216,9 +274,7 @@ export default function Connections() {
         {mutationError && (
           <Alert variant="destructive">
             <AlertDescription>
-              {mutationError instanceof Error
-                ? mutationError.message
-                : t('error.unexpected', { ns: 'common' })}
+              {apiErrorMessage(mutationError, t('error.unexpected', { ns: 'common' }))}
             </AlertDescription>
           </Alert>
         )}
@@ -246,12 +302,21 @@ export default function Connections() {
           connections={filtered}
           isLoading={isQueryLoading}
           onEdit={handleEdit}
-          onDelete={(id) => void handleDelete(id)}
+          onDelete={(connection) => void handleDelete(connection)}
           onTest={(id) => void handleTest(id)}
           testResults={testResults}
           testLoading={testLoading}
         />
       </div>
+
+      <ConfirmProdDeleteDialog
+        open={prodDeleteTarget !== null}
+        onOpenChange={handleProdDeleteOpenChange}
+        connectionName={prodDeleteTarget?.name ?? ""}
+        isLoading={prodDeleting}
+        error={prodDeleteError}
+        onConfirm={(confirmation) => void handleConfirmProdDelete(confirmation)}
+      />
 
       <GlobalLoadingOverlay open={isQueryLoading} label={t('loading', { defaultValue: 'Cargando conexiones...' })} />
     </>

@@ -5,6 +5,7 @@ import type {
   CreateConnectionDto,
   UpdateConnectionDto,
   ConnectionTestResult,
+  DeleteConnectionVariables,
   TestRawConnectionDto,
 } from "../types";
 
@@ -64,8 +65,11 @@ export function useDeleteConnection() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      await apiClient.delete(`/connections/${id}`);
+    mutationFn: async ({ id, confirmation }: DeleteConnectionVariables) => {
+      await apiClient.delete(
+        `/connections/${id}`,
+        confirmation ? { data: confirmation } : undefined,
+      );
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["connections"] });

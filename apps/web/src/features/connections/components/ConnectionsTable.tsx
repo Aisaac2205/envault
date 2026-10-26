@@ -1,4 +1,4 @@
-import type { Connection, ConnectionTestResult } from "../types";
+import { isProdConnection, type Connection, type ConnectionTestResult } from "../types";
 import { ConnectionStateBadge } from "@/shared/components/ConnectionStateBadge";
 import { Button } from "@/shared/ui/button";
 import { DataTable, type Column } from "@/shared/ui/data-table";
@@ -15,7 +15,7 @@ interface ConnectionsTableProps {
   connections: Connection[];
   isLoading: boolean;
   onEdit: (connection: Connection) => void;
-  onDelete: (id: string) => void;
+  onDelete: (connection: Connection) => void;
   onTest: (id: string) => void;
   testResults: Record<string, ConnectionTestResult>;
   testLoading: Record<string, boolean>;
@@ -98,15 +98,19 @@ export default function ConnectionsTable({
       accessor: (c) => {
         const isTesting = testLoading[c.id] ?? false;
         const testResult = testResults[c.id] ?? null;
+        // The API refuses every change to a PROD connection, so it offers no Edit.
+        const canEdit = !isProdConnection(c);
 
         return (
           <>
             {/* Desktop: full button row */}
             <div className="hidden sm:flex items-center justify-center gap-2 whitespace-nowrap">
-              <Button variant="outline" size="sm" onClick={() => onEdit(c)}>
-                {t('action.edit')}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onDelete(c.id)}>
+              {canEdit && (
+                <Button variant="outline" size="sm" onClick={() => onEdit(c)}>
+                  {t('action.edit')}
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={() => onDelete(c)}>
                 {t('action.delete')}
               </Button>
               <Button
@@ -137,15 +141,17 @@ export default function ConnectionsTable({
                     className="z-50 min-w-[8rem] rounded-md border bg-background p-1 shadow-md"
                     align="end"
                   >
+                    {canEdit && (
+                      <DropdownMenuPrimitive.Item
+                        className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent"
+                        onSelect={() => onEdit(c)}
+                      >
+                        {t('action.edit')}
+                      </DropdownMenuPrimitive.Item>
+                    )}
                     <DropdownMenuPrimitive.Item
                       className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent"
-                      onSelect={() => onEdit(c)}
-                    >
-                      {t('action.edit')}
-                    </DropdownMenuPrimitive.Item>
-                    <DropdownMenuPrimitive.Item
-                      className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent"
-                      onSelect={() => onDelete(c.id)}
+                      onSelect={() => onDelete(c)}
                     >
                       {t('action.delete')}
                     </DropdownMenuPrimitive.Item>
