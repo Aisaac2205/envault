@@ -4,16 +4,20 @@
 #
 # Black-box checks, against a running stack, for the four fixes from the
 # security audit of October 2026:
-#   H-01  PROD connections are immutable and nothing is reclassified as PROD
+#   H-01  PROD connections cannot be edited, nothing is reclassified as PROD,
+#         and a PROD connection is deleted only with a step-up confirmation
+#         (its exact name and the admin's password)
 #   H-05  a banned user's session stops working on the very next request
 #   H-06  audit_logs cannot be emptied with TRUNCATE
 #   H-07  the SPA's Content-Security-Policy is enforced, with no unsafe-inline
 #         script source
 #
 # Run it ONLY against a disposable stack with fictitious data, such as the e2e
-# stack (pnpm docker:e2e). It creates connections and a user; the PROD
-# connection it creates stays behind, because the API correctly refuses to
-# delete it.
+# stack (pnpm docker:e2e). It creates connections and a user and deletes them
+# again. H-01 sends one wrong password on purpose: the API allows an admin 5
+# failed confirmations per 15 minutes, so more than 4 runs in that window lock
+# ADMIN_EMAIL out of PROD deletes (429) for the rest of the window, or until
+# the API restarts.
 #
 # Usage:
 #   ADMIN_EMAIL=... ADMIN_PASSWORD=... ./scripts/verify-security-fixes.sh
@@ -106,10 +110,15 @@ connection_body() {
   printf '{"name":"%s","environment":"%s","dbType":"postgres","host":"%s","port":%s,"database":"%s","username":"%s","password":"%s"}' \
     "$1" "$2" "$PROD_DB_HOST" "$PROD_DB_PORT" "$PROD_DB_NAME" "$PROD_DB_USER" "$PROD_DB_PASSWORD"
 }
+# delete_confirmation <connection name> <admin password>: the body of a PROD delete
+delete_confirmation() {
+  printf '{"confirmName":"%s","password":"%s"}' "$1" "$2"
+}
 
 # ------------------------------------------------------------------ H-01
-echo "H-01  PROD connections are immutable"
-prod_response="$(api POST /connections "$(connection_body "audit-verify-prod-$RUN_ID" prod)")"
+echo "H-01  PROD connections: no edits, delete only with step-up confirmation"
+PROD_NAME="audit-verify-prod-$RUN_ID"
+prod_response="$(api POST /connections "$(connection_body "$PROD_NAME" prod)")"
 PROD_ID="$(echo "$prod_response" | head -n -1 | json_field data.id)"
 qa_response="$(api POST /connections "$(connection_body "audit-verify-qa-$RUN_ID" qa)")"
 QA_ID="$(echo "$qa_response" | head -n -1 | json_field data.id)"
@@ -119,12 +128,19 @@ if [[ -z "$PROD_ID" || -z "$QA_ID" ]]; then
 fi
 check H-01a "PATCH host of a PROD connection" 403 "$(api PATCH "/connections/$PROD_ID" '{"host":"10.66.66.66"}' | tail -n 1)"
 check H-01b "PATCH environment=qa of a PROD connection" 403 "$(api PATCH "/connections/$PROD_ID" '{"environment":"qa"}' | tail -n 1)"
-check H-01c "DELETE a PROD connection" 403 "$(api DELETE "/connections/$PROD_ID" | tail -n 1)"
+check H-01c "DELETE a PROD connection without confirmation" 403 "$(api DELETE "/connections/$PROD_ID" | tail -n 1)"
 check H-01d "PATCH environment=prod of a QA connection" 403 "$(api PATCH "/connections/$QA_ID" '{"environment":"prod"}' | tail -n 1)"
 check H-01e "PATCH name of a QA connection still works" 200 "$(api PATCH "/connections/$QA_ID" "{\"name\":\"audit-verify-qa-$RUN_ID-renamed\"}" | tail -n 1)"
 prod_after="$(api GET "/connections/$PROD_ID" | head -n -1)"
 prod_host="$(echo "$prod_after" | json_field data.host)"
 check H-01f "PROD connection kept its host" "$PROD_DB_HOST" "${prod_host:-none}"
+check H-01g "DELETE a PROD connection with another name" 403 \
+  "$(api DELETE "/connections/$PROD_ID" "$(delete_confirmation "$PROD_NAME-other" "$ADMIN_PASSWORD")" | tail -n 1)"
+check H-01h "DELETE a PROD connection with a wrong password" 403 \
+  "$(api DELETE "/connections/$PROD_ID" "$(delete_confirmation "$PROD_NAME" "wrong-$RUN_ID")" | tail -n 1)"
+check H-01i "DELETE a PROD connection with name and password" 200 \
+  "$(api DELETE "/connections/$PROD_ID" "$(delete_confirmation "$PROD_NAME" "$ADMIN_PASSWORD")" | tail -n 1)"
+check H-01j "deleted PROD connection is gone" 404 "$(api GET "/connections/$PROD_ID" | tail -n 1)"
 api DELETE "/connections/$QA_ID" >/dev/null
 echo
 
@@ -173,5 +189,7 @@ check H-07b "'unsafe-inline' in script-src" absent "$observed"
 echo
 
 echo "Summary: $(green "$PASSED passed"), $( ((FAILED > 0)) && red "$FAILED failed" || echo "0 failed"), $SKIPPED skipped"
-echo "Note: when H-01 passes, connection audit-verify-prod-$RUN_ID stays in the stack (PROD connections cannot be deleted)."
+if [[ "$(api GET "/connections/$PROD_ID" | tail -n 1)" != 404 ]]; then
+  echo "Note: connection $PROD_NAME was not deleted and stays in the stack."
+fi
 ((FAILED == 0))
