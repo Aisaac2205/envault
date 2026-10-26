@@ -37,7 +37,7 @@ GET    /connections             Lista todas las conexiones activas
 GET    /connections/:id         Obtiene una conexión específica
 POST   /connections             Crea una conexión (cualquier environment)
 PATCH  /connections/:id         Actualiza una conexión (BLOQUEADO si es PROD)
-DELETE /connections/:id         Elimina una conexión (BLOQUEADO si es PROD)
+DELETE /connections/:id         Elimina una conexión (PROD: admin con confirmación reforzada, ver abajo)
 POST   /connections/test        Testea una conexión por ID en el body
 POST   /connections/:id/test    Testea una conexión por ID en la URL
 POST   /connections/test-raw    Testea credenciales sin conexión guardada
@@ -58,26 +58,25 @@ Todos los endpoints requieren sesión válida (Better Auth).
 
 ## Reglas de PROD (invariantes de seguridad)
 
-Una conexión con `environment === 'prod'` es **inmutable** desde la API:
+Una conexión con `environment === 'prod'` es **inmutable** desde la API: no se puede editar ni reclasificar, y un admin solo puede eliminarla con una confirmación reforzada:
 
 | Acción | PROD | DEV / SQA |
 |--------|------|-----------|
 | Crear (`POST`) | ✅ | ✅ |
 | Leer (`GET`) | ✅ | ✅ |
 | Testear conexión | ✅ | ✅ |
-| Editar (`PATCH`) | ❌ `403 Forbidden` | ✅ |
-| Eliminar (`DELETE`) | ❌ `403 Forbidden` | ✅ |
+| Editar (`PATCH`) | ❌ `403 Forbidden` | ✅ (cambiar `environment` a `prod`: ❌ `403 Forbidden`) |
+| Eliminar (`DELETE`) | 🔐 nombre exacto + contraseña del admin ([security-model §1.1](security-model.md#11-las-conexiones-prod-son-inmutables-desde-la-api)) | ✅ |
 | Hacer backup desde ella | ✅ | ❌ `400 BadRequest` |
 | Restaurar hacia ella | ❌ `403 Forbidden` | ✅ |
 
 **Por qué:** PROD es la fuente de verdad. Las modificaciones a una conexión PROD se hacen por **infraestructura/DBA** directamente, no por la aplicación. Esto evita que un usuario con permisos de la API pueda apuntar el job de backup a un host falso.
 
-### ¿Y si necesito desactivar una conexión PROD legítimamente?
+### ¿Y si necesito quitar o reemplazar una conexión PROD legítimamente?
 
-No hay endpoint. Por diseño. Las opciones legítimas son:
+Un admin la elimina desde la app con una confirmación reforzada: el body del `DELETE` incluye el nombre exacto de la conexión (`confirmName`) y la contraseña actual del admin (`password`), y la web pide ambos datos en un diálogo de confirmación. 5 contraseñas incorrectas en 15 minutos responden `429`. La eliminación es un soft delete que nunca toca la base de datos de producción, y se audita como cualquier otra mutación.
 
-1. **Recrear el setup**: registrar la nueva conexión PROD correcta y dejar la vieja existente — los backups apuntan al nuevo `connectionId`.
-2. **Mantenimiento directo en DB**: `UPDATE connections SET is_active = false WHERE id = '...'` ejecutado por un DBA con acceso físico a la DB de control. Este path queda fuera del audit log de la app — es intencional, es mantenimiento de infraestructura.
+Como la edición sigue bloqueada, credenciales nuevas o un host corregido implican una conexión PROD nueva: ver [devops-runbook §3.2](devops-runbook.md#32-rotar-credenciales-o-corregir-el-host-de-una-conexión). Una vez eliminada la conexión vieja, la app ya no puede restaurar los dumps guardados bajo su slug.
 
 ---
 
@@ -139,7 +138,7 @@ El test usa el cliente nativo del engine (`pg.Client` para Postgres, `mysql2/pro
      │ Solo backup │  │ Backup ❌    │  │ Verifica │
      │ Solo lectura│  │ Restore ✅   │  │ creds    │
      │ + test      │  │ Edit ✅      │  └──────────┘
-     │             │  │ Delete ✅    │
+     │ Delete 🔐    │  │ Delete ✅    │
      └─────────────┘  └─────────────┘
               │              │
               ▼              ▼
@@ -180,7 +179,7 @@ Si la conexión fue eliminada (soft delete), `connectionName` devuelve `"(elimin
 
 ## Notas operativas
 
-- **Soft delete**: cuando `DELETE` se aplica a una conexión non-PROD, no se elimina físicamente — se marca `isActive: false`. Los backups/restores históricos que la referencian siguen siendo consultables.
+- **Soft delete**: cuando `DELETE` se aplica a una conexión (a una PROD solo con confirmación reforzada), no se elimina físicamente — se marca `isActive: false`. Los backups/restores históricos que la referencian siguen siendo consultables, pero sus dumps ya no se pueden restaurar desde la app.
 - **Listado**: `GET /connections` solo devuelve `isActive: true`. No hay endpoint para listar las soft-deleted.
 - **Auditoría**: cada `POST`, `PATCH`, `DELETE` queda registrado en `audit_logs` con `userId`, `userEmail`, `action`, `metadata` (el body completo) y `environment`.
 - **Streams**: el dump se sube a R2 vía multipart upload (`@aws-sdk/lib-storage`) directamente desde el stdout del proceso — sin escribir en disco.

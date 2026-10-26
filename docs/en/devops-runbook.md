@@ -85,15 +85,15 @@ For Prometheus/Grafana stacks, EnVault Management does **not** currently expose 
 5. Trigger one manual backup; verify it appears in R2 and in the backup history.
 6. Configure the cronjob schedule.
 
-### 3.2 Rotate connection credentials
+### 3.2 Rotate credentials or fix the host of a connection
 
-Today there is no built-in rotation. Manual procedure:
+A non-PROD connection can simply be edited from the UI. A PROD connection cannot (edits are blocked by design, [security-model §1.1](security-model.md#11-prod-connections-are-immutable-from-the-api)), and there is no built-in rotation, so new credentials or a wrong host, port or database mean replacing it:
 
-1. On the source DB, create a new user with the same permissions as the old one.
-2. In EnVault Management: register a NEW connection with the new credentials (do **not** edit the existing PROD connection — PROD edits are blocked by design).
-3. Migrate cronjobs to point at the new connection (via UI).
+1. On the source DB, create a new user with the same permissions as the old one (skip this when only the host is wrong).
+2. In EnVault Management: register a NEW PROD connection with the new credentials or the corrected host. It gets a new slug.
+3. Migrate cronjobs to point at the new connection (via UI). Deleting a connection does not stop its cronjobs.
 4. Run a verification backup.
-5. Once stable, leave the old connection in place (soft-delete it if non-PROD; PROD connections cannot be deleted).
+5. Once stable, delete the old connection as an admin: the UI asks for its exact name and your current password (step-up confirmation; 5 wrong passwords in 15 minutes answer `429`). The delete is a soft delete in EnVault and never touches the source database. Dumps under the old slug stay in R2, but the app can no longer restore them, so keep the old connection while you may still need them.
 6. On the source DB, drop the old user.
 
 ### 3.3 Rotate EnVault Management's own DB password
@@ -176,7 +176,7 @@ If 1 fails: restart the container. If 2 shows the API crashed on startup: check 
    ```sql
    SELECT * FROM audit_logs WHERE user_id = '<suspect>' ORDER BY created_at DESC LIMIT 100;
    ```
-2. Look for patterns: failed PROD modification attempts (good — the guards worked), unusual restore-from-PROD attempts, mass connection creation.
+2. Look for patterns: failed PROD modification attempts (good — the guards worked), repeated failed `DELETE /connections/:id` confirmations on a PROD connection (a stolen session guessing the admin password), unusual restore-from-PROD attempts, mass connection creation.
 3. If a session was compromised: revoke the session via the Better Auth admin API, or rotate `BETTER_AUTH_SECRET` to invalidate ALL sessions simultaneously. Rotate EnVault Management's R2 credentials as defence in depth.
 4. The audit log is **not cryptographically immutable** — a DBA with control-DB access can edit it ([security-model.md §3](security-model.md#3-audit)). Export the suspicious rows to a separate system before investigating, in case they get tampered with.
 
