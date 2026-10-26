@@ -39,10 +39,12 @@ export class CronjobsController {
   async create(@Body() dto: CreateCronjobDto, @Req() req: Request) {
     const result = await this.service.create(dto);
     const connection = await this.connectionsService.findById(dto.connectionId);
+    // From the result, not the request: a request that names a schedule carries
+    // no cronExpression, the service derives it.
     setAuditContext(req, {
       environment: connection.environment,
       resourceId: result.id,
-      metadata: { connectionId: dto.connectionId, cronExpression: dto.cronExpression },
+      metadata: { connectionId: dto.connectionId, cronExpression: result.cronExpression },
     });
     return result;
   }

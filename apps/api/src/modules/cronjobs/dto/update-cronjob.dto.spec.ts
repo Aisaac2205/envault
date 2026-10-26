@@ -50,4 +50,36 @@ describe('UpdateCronjobDto', () => {
   it('rejects an unknown frequency with 400', async () => {
     await expect(validate({ frequency: 'monthly' })).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  describe('schedule', () => {
+    it('accepts a new schedule', async () => {
+      const schedule = { kind: 'weekly', time: '02:00', daysOfWeek: [1, 3] };
+
+      await expect(validate({ schedule })).resolves.toEqual({ schedule });
+    });
+
+    it('accepts a request that leaves the schedule out', async () => {
+      await expect(validate({ name: 'Renamed' })).resolves.toEqual({ name: 'Renamed' });
+    });
+
+    it('rejects a null schedule with 400', async () => {
+      await expect(validate({ schedule: null })).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it.each([
+      ['an unknown kind', { kind: 'yearly' }],
+      ['an everyHours outside the allowed set', { kind: 'every_hours', everyHours: 5 }],
+      ['a bad time', { kind: 'daily', time: '24:00' }],
+      ['no days', { kind: 'weekly', time: '02:00', daysOfWeek: [] }],
+      ['a day of month past 28', { kind: 'monthly', time: '02:00', dayOfMonth: 29 }],
+    ])('rejects %s with 400', async (_label, schedule) => {
+      await expect(validate({ schedule })).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('lets the service see the mix of a schedule with a legacy field', async () => {
+      const body = { schedule: { kind: 'daily', time: '02:00' }, cronExpression: '0 2 * * *' };
+
+      await expect(validate(body)).resolves.toMatchObject(body);
+    });
+  });
 });
