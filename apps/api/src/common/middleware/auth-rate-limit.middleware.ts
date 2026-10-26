@@ -81,6 +81,20 @@ export class AuthRateLimitStore {
     return { allowed: true };
   }
 
+  /**
+   * Gives back one request counted in the key's current window. For a caller
+   * that limits failures only: it consumes before the work, so concurrent
+   * requests cannot run it more often than the limit, and refunds the request
+   * when the work did not fail.
+   */
+  refund(key: string): void {
+    const current = this.entries.get(key);
+    if (!current || this.now() >= current.resetAt) return;
+
+    current.count -= 1;
+    if (current.count <= 0) this.entries.delete(key);
+  }
+
   private sweepIfDue(now: number): void {
     if (now < this.nextSweepAt) return;
 

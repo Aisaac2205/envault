@@ -1,16 +1,27 @@
 /// <reference types="jest" />
 import { EventEmitter } from 'events';
-import { ClassSerializerInterceptor, INestApplication, ValidationPipe } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import {
+  CanActivate,
+  ClassSerializerInterceptor,
+  ExecutionContext,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { AddressInfo } from 'net';
+import { Request } from 'express';
+import { PasswordConfirmation } from '../../auth/password-confirmation';
+import { AuditLogEntity } from '../../database/entities/audit-log.entity';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { Environment } from '../../database/enums/environment.enum';
 import { HttpExceptionFilter } from '../../common/filters/http-exception.filter';
+import { AuditInterceptor } from '../../common/interceptors/audit.interceptor';
 import { TransformInterceptor } from '../../common/interceptors/transform.interceptor';
 import { validationPipeOptions } from '../../common/pipes/validation-pipe.options';
+import { ConnectionDeletionService } from './connection-deletion.service';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsRepository } from './connections.repository';
 import { ConnectionsService } from './connections.service';
@@ -28,6 +39,18 @@ jest.mock('mysql2/promise', () => ({
   createConnection: jest.fn(),
 }));
 
+// Stands in for the global BetterAuthGuard: every request is signed in as the
+// admin its `x-test-user` header names, so a test can give the failed
+// password confirmations it makes a bucket of their own.
+class SignedInAsAdmin implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<Request & { user?: object }>();
+    const id = String(request.headers['x-test-user'] ?? 'admin-1');
+    request.user = { id, email: `${id}@envault.dev`, name: 'Admin', role: 'admin' };
+    return true;
+  }
+}
+
 // Responses of every connections endpoint must never carry the database
 // password. The app below wires the same global pipe, serializer, envelope and
 // filter as AppModule, and the real controller, service and repository run on
@@ -36,6 +59,7 @@ describe('ConnectionsController responses', () => {
   const CONNECTION_ID = '5f0f9f0e-9a7e-4f1d-8f43-3b0a3d8b6a11';
   const STORED_PASSWORD = 'stored-secret-password';
   const NEW_PASSWORD = 'new-secret-password';
+  const ADMIN_PASSWORD = 'admin-account-password';
 
   const newPayload = {
     name: 'Billing',
@@ -71,7 +95,12 @@ describe('ConnectionsController responses', () => {
   let app: INestApplication;
   let manager: { findOne: jest.Mock; query: jest.Mock; save: jest.Mock };
   let connectionFindOne: jest.Mock;
+  let auditSave: jest.Mock;
   let baseUrl: string;
+  // Better Auth's check of the signed-in admin's password.
+  const passwordConfirmation = {
+    verify: jest.fn(async (_headers: unknown, password: string) => password === ADMIN_PASSWORD),
+  };
 
   beforeAll(async () => {
     // TypeORM's save() resolves the object it was given, completed with the
@@ -95,17 +124,23 @@ describe('ConnectionsController responses', () => {
     const dataSource = {
       transaction: jest.fn(async (work: (m: typeof manager) => Promise<unknown>) => work(manager)),
     };
+    auditSave = jest.fn(async (entry: object) => entry);
 
     const moduleRef = await Test.createTestingModule({
       controllers: [ConnectionsController],
       providers: [
         ConnectionsService,
+        ConnectionDeletionService,
         ConnectionsRepository,
         { provide: getRepositoryToken(ConnectionEntity), useValue: connectionRepo },
         { provide: getDataSourceToken(), useValue: dataSource },
+        { provide: getRepositoryToken(AuditLogEntity), useValue: { save: auditSave } },
+        { provide: PasswordConfirmation, useValue: passwordConfirmation },
+        { provide: APP_GUARD, useClass: SignedInAsAdmin },
         { provide: APP_PIPE, useValue: new ValidationPipe(validationPipeOptions) },
         { provide: APP_INTERCEPTOR, useClass: ClassSerializerInterceptor },
         { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
+        { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
         { provide: APP_FILTER, useClass: HttpExceptionFilter },
       ],
     })
@@ -126,14 +161,24 @@ describe('ConnectionsController responses', () => {
     mockPgClient.end.mockResolvedValue(undefined);
   });
 
-  async function call(method: string, path: string, body?: object) {
+  async function call(
+    method: string,
+    path: string,
+    body?: object,
+    headers: Record<string, string> = {},
+  ) {
     const response = await fetch(`${baseUrl}${path}`, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await response.text();
-    return { status: response.status, text, json: text ? JSON.parse(text) : undefined };
+    return {
+      status: response.status,
+      headers: response.headers,
+      text,
+      json: text ? JSON.parse(text) : undefined,
+    };
   }
 
   function keysOf(value: unknown, found = new Set<string>()): Set<string> {
@@ -284,6 +329,227 @@ describe('ConnectionsController responses', () => {
     it('reclassifying a QA connection as PROD is rejected with 403', async () => {
       const response = await call('PATCH', connectionPath, { environment: Environment.PROD });
       expect(response.status).toBe(403);
+    });
+
+    it('a refused PATCH on a PROD connection is audited under prod', async () => {
+      connectionFindOne.mockResolvedValue(loadedEntity({ environment: Environment.PROD }));
+      auditSave.mockClear();
+      try {
+        const response = await call('PATCH', connectionPath, { host: '10.66.66.66' });
+
+        expect(response.status).toBe(403);
+        expect(auditSave).toHaveBeenCalledWith(
+          expect.objectContaining({ action: `PATCH ${connectionPath}`, environment: Environment.PROD }),
+        );
+      } finally {
+        connectionFindOne.mockImplementation(async () => loadedEntity());
+      }
+    });
+
+    // Telling PROD apart needs the environment only: the lookup must not load,
+    // and so decrypt, the stored password. The locked read inside the
+    // transaction is a separate query and is not covered here.
+    it.each([
+      ['PATCH', { host: '10.66.66.66' }],
+      ['DELETE', undefined],
+    ])('%s on a PROD connection reads it without the password', async (method, body) => {
+      connectionFindOne.mockResolvedValue(loadedEntity({ environment: Environment.PROD }));
+      connectionFindOne.mockClear();
+      try {
+        await call(method, connectionPath, body);
+
+        expect(connectionFindOne).toHaveBeenCalled();
+        for (const [options] of connectionFindOne.mock.calls) {
+          expect(options).toHaveProperty('select');
+          expect(options.select).not.toHaveProperty('password');
+        }
+      } finally {
+        connectionFindOne.mockImplementation(async () => loadedEntity());
+      }
+    });
+  });
+
+  // An admin may delete a PROD connection (a soft delete: the production
+  // database itself is never touched) after proving it is deliberate: the
+  // exact connection name, and the admin's own password checked by Better
+  // Auth against the session that sent the request.
+  describe('deleting a PROD connection needs its exact name and the admin password', () => {
+    const connectionPath = `/connections/${CONNECTION_ID}`;
+    const confirmed = { confirmName: 'Billing', password: ADMIN_PASSWORD };
+    const wrongPassword = { confirmName: 'Billing', password: 'not-the-password' };
+    let admins = 0;
+    // Failed confirmations are counted per admin, and this app lives for the
+    // whole file: a test that fails passwords uses an admin of its own.
+    const freshAdmin = (): string => `admin-${(admins += 1)}-${Date.now()}`;
+    const deleteAs = (admin: string, body?: object, headers: Record<string, string> = {}) =>
+      call('DELETE', connectionPath, body, { 'x-test-user': admin, ...headers });
+
+    beforeEach(() => {
+      connectionFindOne.mockResolvedValue(loadedEntity({ environment: Environment.PROD }));
+      manager.findOne.mockResolvedValue(loadedEntity({ environment: Environment.PROD }));
+      manager.save.mockClear();
+      passwordConfirmation.verify.mockClear();
+      auditSave.mockClear();
+    });
+
+    afterEach(() => {
+      connectionFindOne.mockImplementation(async () => loadedEntity());
+      manager.findOne.mockImplementation(async () => loadedEntity());
+    });
+
+    it.each([
+      ['no body', undefined],
+      ['no password', { confirmName: 'Billing' }],
+      ['no name', { password: ADMIN_PASSWORD }],
+      ['an empty password', { confirmName: 'Billing', password: '' }],
+    ])('is refused with 403 for %s, without checking a password', async (_case, body) => {
+      const response = await deleteAs(freshAdmin(), body);
+
+      expect(response.status).toBe(403);
+      expect(response.json.error).toEqual({
+        code: 'ForbiddenException',
+        statusCode: 403,
+        message: expect.stringContaining('nombre exacto'),
+      });
+      expect(passwordConfirmation.verify).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it.each(['billing', 'Billing ', 'Other'])(
+      'is refused with 403 when the name is %p, without checking a password',
+      async (confirmName) => {
+        const response = await deleteAs(freshAdmin(), { confirmName, password: ADMIN_PASSWORD });
+
+        expect(response.status).toBe(403);
+        expect(response.json.error).toMatchObject({ code: 'ForbiddenException', statusCode: 403 });
+        expect(passwordConfirmation.verify).not.toHaveBeenCalled();
+        expect(manager.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('is refused with 403 when the password is wrong', async () => {
+      const response = await deleteAs(freshAdmin(), wrongPassword);
+
+      expect(response.status).toBe(403);
+      expect(response.json.error).toEqual({
+        code: 'ForbiddenException',
+        statusCode: 403,
+        message: 'La confirmación de contraseña falló.',
+      });
+      expect(passwordConfirmation.verify).toHaveBeenCalledTimes(1);
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('checks the password against the session that sent the request', async () => {
+      const cookie = 'better-auth.session_token=session-of-admin';
+
+      await deleteAs(freshAdmin(), confirmed, { cookie });
+
+      expect(passwordConfirmation.verify).toHaveBeenCalledWith(
+        expect.objectContaining({ cookie }),
+        ADMIN_PASSWORD,
+      );
+    });
+
+    it('soft deletes the connection with the exact name and the right password', async () => {
+      const response = await deleteAs(freshAdmin(), confirmed);
+
+      expect(response.status).toBe(200);
+      expect(response.json).toEqual({ timestamp: expect.any(String) });
+      expect(manager.save).toHaveBeenCalledTimes(1);
+      expect(manager.save.mock.calls[0].at(-1)).toMatchObject({ id: CONNECTION_ID, isActive: false });
+    });
+
+    it('is audited under prod, with the password redacted', async () => {
+      await deleteAs(freshAdmin(), confirmed);
+
+      expect(auditSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: `DELETE ${connectionPath}`,
+          environment: Environment.PROD,
+          metadata: expect.objectContaining({
+            body: { confirmName: 'Billing', password: '[REDACTED]' },
+          }),
+        }),
+      );
+    });
+
+    it('answers 429 with Retry-After after 5 failed passwords, without checking a 6th', async () => {
+      const admin = freshAdmin();
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        expect((await deleteAs(admin, wrongPassword)).status).toBe(403);
+      }
+      passwordConfirmation.verify.mockClear();
+
+      const response = await deleteAs(admin, confirmed);
+
+      expect(response.status).toBe(429);
+      expect(response.json.error).toMatchObject({ code: 'TooManyRequestsException', statusCode: 429 });
+      const retryAfter = Number(response.headers.get('retry-after'));
+      expect(retryAfter).toBeGreaterThan(0);
+      expect(retryAfter).toBeLessThanOrEqual(15 * 60);
+      expect(passwordConfirmation.verify).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+
+      // The budget is the admin's own: another admin is not locked out.
+      expect((await deleteAs(freshAdmin(), confirmed)).status).toBe(200);
+    });
+
+    it('runs no more than 5 password checks for parallel wrong passwords', async () => {
+      const admin = freshAdmin();
+      // Every check is still pending when the next request arrives.
+      let release = (): void => undefined;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      passwordConfirmation.verify.mockImplementation(async () => {
+        await pending;
+        return false;
+      });
+      try {
+        const responses = Promise.all(
+          Array.from({ length: 8 }, () => deleteAs(admin, wrongPassword)),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        release();
+        const statuses = (await responses).map(({ status }) => status).sort();
+
+        expect(statuses).toEqual([403, 403, 403, 403, 403, 429, 429, 429]);
+        expect(passwordConfirmation.verify).toHaveBeenCalledTimes(5);
+      } finally {
+        passwordConfirmation.verify.mockImplementation(
+          async (_headers: unknown, password: string) => password === ADMIN_PASSWORD,
+        );
+      }
+    });
+
+    it('does not count successful deletes against the failure budget', async () => {
+      const admin = freshAdmin();
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        expect((await deleteAs(admin, wrongPassword)).status).toBe(403);
+      }
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        expect((await deleteAs(admin, confirmed)).status).toBe(200);
+      }
+
+      // The 5th failure is still checked and refused; only then is it locked.
+      expect((await deleteAs(admin, wrongPassword)).status).toBe(403);
+      expect((await deleteAs(admin, confirmed)).status).toBe(429);
+    });
+
+    it('a non-PROD connection is deleted with or without a body, and no password is checked', async () => {
+      connectionFindOne.mockResolvedValue(loadedEntity({ environment: Environment.QA }));
+      manager.findOne.mockResolvedValue(loadedEntity({ environment: Environment.QA }));
+      const admin = freshAdmin();
+
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        expect((await deleteAs(admin, attempt % 2 === 0 ? undefined : wrongPassword)).status).toBe(200);
+      }
+
+      expect(passwordConfirmation.verify).not.toHaveBeenCalled();
+      expect(auditSave).toHaveBeenLastCalledWith(
+        expect.objectContaining({ environment: Environment.QA }),
+      );
     });
   });
 

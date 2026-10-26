@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { TooManyRequestsException } from '../exceptions/too-many-requests.exception';
 
 interface ErrorBody {
   error: {
@@ -48,6 +49,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
         path: request.url,
       };
 
+      if (exception instanceof TooManyRequestsException) {
+        response.setHeader('Retry-After', String(exception.retryAfterSeconds));
+      }
       response.status(statusCode).json(body);
       return;
     }

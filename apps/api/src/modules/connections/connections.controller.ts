@@ -11,10 +11,13 @@ import {
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { AuthUser, CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { RequirePermission } from '../../common/authorization';
 import { setAuditContext } from '../../common/audit/audit-context';
+import { ConnectionDeletionService } from './connection-deletion.service';
 import { ConnectionsService } from './connections.service';
 import { CreateConnectionDto } from './dto/create-connection.dto';
+import { DeleteConnectionDto } from './dto/delete-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { TestConnectionDto } from './dto/test-connection.dto';
 import { TestRawConnectionDto } from './dto/test-raw-connection.dto';
@@ -22,7 +25,10 @@ import { TestRawConnectionDto } from './dto/test-raw-connection.dto';
 @Controller('connections')
 @RequirePermission('connections')
 export class ConnectionsController {
-  constructor(private readonly service: ConnectionsService) {}
+  constructor(
+    private readonly service: ConnectionsService,
+    private readonly deletion: ConnectionDeletionService,
+  ) {}
 
   @Get()
   findAll(@Query('environment') environment?: string) {
@@ -50,16 +56,25 @@ export class ConnectionsController {
     @Body() dto: UpdateConnectionDto,
     @Req() req: Request,
   ) {
+    // Set before the update, so that a PATCH the service refuses (one on a
+    // PROD connection) is still audited under the environment it targeted.
+    const existing = await this.service.findByIdSafe(id);
+    setAuditContext(req, { environment: existing.environment });
     const result = await this.service.update(id, dto);
     setAuditContext(req, { environment: result.environment });
     return result;
   }
 
   @Delete(':id')
-  async remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
-    const existing = await this.service.findById(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeleteConnectionDto,
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+  ) {
+    const existing = await this.service.findByIdSafe(id);
     setAuditContext(req, { environment: existing.environment });
-    return this.service.delete(id);
+    return this.deletion.delete(id, dto, { user, headers: req.headers });
   }
 
   @Post('test-raw')

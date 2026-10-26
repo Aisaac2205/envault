@@ -9,6 +9,7 @@ import { AuditController } from '../../modules/audit/audit.controller';
 import { AuditService } from '../../modules/audit/audit.service';
 import { BackupController } from '../../modules/backup/backup.controller';
 import { BackupService } from '../../modules/backup/backup.service';
+import { ConnectionDeletionService } from '../../modules/connections/connection-deletion.service';
 import { ConnectionsController } from '../../modules/connections/connections.controller';
 import { ConnectionsService } from '../../modules/connections/connections.service';
 import { BackupSettingsController } from '../../modules/cronjobs/backup-settings.controller';
@@ -44,7 +45,8 @@ describe('UUID path parameters', () => {
     jobId: VALID_ID,
   };
   const serviceMethods = {
-    connections: ['findAll', 'findById', 'update', 'delete', 'testByConnectionId'],
+    connections: ['findAll', 'findById', 'findByIdSafe', 'update', 'testByConnectionId'],
+    connectionDeletion: ['delete'],
     backup: [
       'getHistory',
       'listBackups',
@@ -88,6 +90,7 @@ describe('UUID path parameters', () => {
       ],
       providers: [
         { provide: ConnectionsService, useValue: services.connections },
+        { provide: ConnectionDeletionService, useValue: services.connectionDeletion },
         { provide: BackupService, useValue: services.backup },
         { provide: RestoreService, useValue: services.restore },
         { provide: JobsService, useValue: services.jobs },
@@ -162,7 +165,7 @@ describe('UUID path parameters', () => {
       route: 'DELETE /connections/:id',
       method: 'DELETE',
       path: (id) => `/connections/${id}`,
-      handler: ['connections', 'findById'],
+      handler: ['connections', 'findByIdSafe'],
     },
     {
       route: 'POST /connections/:id/test',
