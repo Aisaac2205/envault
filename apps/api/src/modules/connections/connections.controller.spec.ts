@@ -395,7 +395,31 @@ describe('ConnectionsController responses', () => {
     afterEach(() => {
       connectionFindOne.mockImplementation(async () => loadedEntity());
       manager.findOne.mockImplementation(async () => loadedEntity());
+      passwordConfirmation.verify.mockImplementation(
+        async (_headers: unknown, password: string) => password === ADMIN_PASSWORD,
+      );
     });
+
+    // Holds every password check until the returned release is called, so
+    // that parallel requests are all in flight at the same time.
+    function holdPasswordChecks(answer: boolean): () => void {
+      let release = (): void => undefined;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      passwordConfirmation.verify.mockImplementation(async () => {
+        await pending;
+        return answer;
+      });
+      return release;
+    }
+
+    async function inParallel(count: number, send: () => ReturnType<typeof call>, release: () => void) {
+      const responses = Promise.all(Array.from({ length: count }, send));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      release();
+      return (await responses).map(({ status }) => status).sort();
+    }
 
     it.each([
       ['no body', undefined],
@@ -421,7 +445,12 @@ describe('ConnectionsController responses', () => {
         const response = await deleteAs(freshAdmin(), { confirmName, password: ADMIN_PASSWORD });
 
         expect(response.status).toBe(403);
-        expect(response.json.error).toMatchObject({ code: 'ForbiddenException', statusCode: 403 });
+        // The answer does not tell the real name to whoever guesses it.
+        expect(response.json.error).toEqual({
+          code: 'ForbiddenException',
+          statusCode: 403,
+          message: 'El nombre de confirmación no coincide con el nombre de la conexión.',
+        });
         expect(passwordConfirmation.verify).not.toHaveBeenCalled();
         expect(manager.save).not.toHaveBeenCalled();
       },
@@ -497,30 +526,46 @@ describe('ConnectionsController responses', () => {
 
     it('runs no more than 5 password checks for parallel wrong passwords', async () => {
       const admin = freshAdmin();
-      // Every check is still pending when the next request arrives.
-      let release = (): void => undefined;
-      const pending = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      passwordConfirmation.verify.mockImplementation(async () => {
-        await pending;
-        return false;
-      });
-      try {
-        const responses = Promise.all(
-          Array.from({ length: 8 }, () => deleteAs(admin, wrongPassword)),
-        );
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        release();
-        const statuses = (await responses).map(({ status }) => status).sort();
+      const release = holdPasswordChecks(false);
 
-        expect(statuses).toEqual([403, 403, 403, 403, 403, 429, 429, 429]);
-        expect(passwordConfirmation.verify).toHaveBeenCalledTimes(5);
-      } finally {
-        passwordConfirmation.verify.mockImplementation(
-          async (_headers: unknown, password: string) => password === ADMIN_PASSWORD,
-        );
-      }
+      const statuses = await inParallel(8, () => deleteAs(admin, wrongPassword), release);
+
+      expect(statuses).toEqual([403, 403, 403, 403, 403, 429, 429, 429]);
+      expect(passwordConfirmation.verify).toHaveBeenCalledTimes(5);
+    });
+
+    // A check still running is not a failure: one admin's parallel deletes
+    // with the right password must not lock each other out.
+    it('lets every parallel delete with the right password through', async () => {
+      const admin = freshAdmin();
+      const release = holdPasswordChecks(true);
+
+      const statuses = await inParallel(8, () => deleteAs(admin, confirmed), release);
+
+      expect(statuses).toEqual(Array(8).fill(200));
+      expect(passwordConfirmation.verify).toHaveBeenCalledTimes(8);
+      expect(manager.save).toHaveBeenCalledTimes(8);
+    });
+
+    it("does not make one admin's password check wait for another admin's", async () => {
+      const slowAdmin = freshAdmin();
+      let releaseSlow = (): void => undefined;
+      passwordConfirmation.verify.mockImplementation(async (headers: unknown, password: string) => {
+        if ((headers as Record<string, string>)['x-test-user'] === slowAdmin) {
+          await new Promise<void>((resolve) => {
+            releaseSlow = resolve;
+          });
+        }
+        return password === ADMIN_PASSWORD;
+      });
+
+      const slow = deleteAs(slowAdmin, confirmed);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const other = await deleteAs(freshAdmin(), confirmed);
+      releaseSlow();
+
+      expect(other.status).toBe(200);
+      expect((await slow).status).toBe(200);
     });
 
     it('does not count successful deletes against the failure budget', async () => {

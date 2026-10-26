@@ -42,6 +42,17 @@ describe('BetterAuthPasswordConfirmation', () => {
     await expect(confirmation.verify(headers, 'wrong')).resolves.toBe(false);
   });
 
+  // Only Better Auth's explicit `{ status: true }` confirms the password.
+  it.each([
+    ['status false', { status: false }],
+    ['no status', {}],
+    ['no result', undefined],
+  ])('does not confirm a result with %s', async (_case, result) => {
+    mockVerifyPassword.mockResolvedValue(result);
+
+    await expect(confirmation.verify(headers, 'admin-password')).resolves.toBe(false);
+  });
+
   it('answers 401 when the session is gone', async () => {
     mockVerifyPassword.mockRejectedValue(apiError(401, 'UNAUTHORIZED'));
 

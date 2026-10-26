@@ -30,11 +30,13 @@ function isBetterAuthApiError(error: unknown): error is BetterAuthApiError {
 export class BetterAuthPasswordConfirmation extends PasswordConfirmation {
   async verify(headers: IncomingHttpHeaders, password: string): Promise<boolean> {
     try {
-      await auth.api.verifyPassword({
+      const result = await auth.api.verifyPassword({
         body: { password },
         headers: fromNodeHeaders(headers),
       });
-      return true;
+      // Only an explicit `{ status: true }` confirms; any other answer is a
+      // failed confirmation rather than a pass.
+      return result?.status === true;
     } catch (error) {
       // 400 (INVALID_PASSWORD) is a wrong password. 401 means the session
       // ended after the guard let the request in. Anything else is a fault,

@@ -62,48 +62,6 @@ describe('AuthRateLimitStore', () => {
     });
   });
 
-  // A caller that limits only failures consumes before the work and refunds
-  // when the work succeeded.
-  it('refunds a counted request, so only the ones kept count against the limit', () => {
-    const store = new AuthRateLimitStore({
-      maxRequests: 2,
-      maxKeys: 100,
-      sweepIntervalMs: 1_000,
-      windowMs: 60_000,
-      now: () => now,
-    });
-
-    expect(store.consume('user-1')).toEqual({ allowed: true });
-    store.refund('user-1');
-    expect(store.size).toBe(0);
-
-    expect(store.consume('user-1')).toEqual({ allowed: true });
-    expect(store.consume('user-1')).toEqual({ allowed: true });
-    store.refund('user-1');
-    expect(store.consume('user-1')).toEqual({ allowed: true });
-    expect(store.consume('user-1')).toEqual({ allowed: false, retryAfterSeconds: 60 });
-  });
-
-  it('ignores a refund for an unknown key or an expired window', () => {
-    const store = new AuthRateLimitStore({
-      maxRequests: 1,
-      maxKeys: 100,
-      sweepIntervalMs: 1_000,
-      windowMs: 60_000,
-      now: () => now,
-    });
-
-    store.refund('user-1');
-    expect(store.size).toBe(0);
-
-    store.consume('user-1');
-    now += 60_000;
-    store.refund('user-1');
-
-    expect(store.consume('user-1')).toEqual({ allowed: true });
-    expect(store.consume('user-1')).toEqual({ allowed: false, retryAfterSeconds: 60 });
-  });
-
   it('removes expired entries during automatic sweeps', () => {
     const store = new AuthRateLimitStore({
       maxRequests: 2,

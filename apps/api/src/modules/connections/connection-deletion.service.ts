@@ -3,11 +3,11 @@ import type { IncomingHttpHeaders } from 'http';
 import { AuthUser } from '../../auth/decorators/current-user.decorator';
 import { PasswordConfirmation } from '../../auth/password-confirmation';
 import { TooManyRequestsException } from '../../common/exceptions/too-many-requests.exception';
-import { AuthRateLimitStore } from '../../common/middleware/auth-rate-limit.middleware';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
 import { Environment } from '../../database/enums/environment.enum';
 import { ConnectionsRepository } from './connections.repository';
 import { DeleteConnectionDto } from './dto/delete-connection.dto';
+import { FailedConfirmationLimiter } from './failed-confirmation-limiter';
 
 /** Failed password confirmations an admin may make in one window. */
 const MAX_FAILED_CONFIRMATIONS = 5;
@@ -33,11 +33,10 @@ export class ConnectionDeletionService {
   // Failed password confirmations per admin, so a stolen session cannot guess
   // the password through this endpoint. In memory, like the auth rate limiter,
   // for the supported single API replica; a restart forgets them.
-  private readonly failedConfirmations = new AuthRateLimitStore({
+  private readonly failedConfirmations = new FailedConfirmationLimiter({
+    maxFailures: MAX_FAILED_CONFIRMATIONS,
     windowMs: FAILED_CONFIRMATION_WINDOW_MS,
-    maxRequests: MAX_FAILED_CONFIRMATIONS,
     maxKeys: 10_000,
-    sweepIntervalMs: 60_000,
   });
 
   constructor(
@@ -84,29 +83,22 @@ export class ConnectionDeletionService {
     }
     if (confirmName !== connection.name) {
       throw new ForbiddenException(
-        `El nombre de confirmación no coincide con el nombre de la conexión "${connection.name}".`,
+        'El nombre de confirmación no coincide con el nombre de la conexión.',
       );
     }
 
-    // Counted before the check, so parallel requests cannot run more checks
-    // than the limit, and given back unless the password turned out wrong.
-    const decision = this.failedConfirmations.consume(requester.user.id);
-    if (!decision.allowed) {
+    // One check at a time per admin, after the budget is read: only a wrong
+    // password is recorded, and a check still running is not a failure.
+    const attempt = await this.failedConfirmations.attempt(requester.user.id, () =>
+      this.passwordConfirmation.verify(requester.headers, password),
+    );
+    if (attempt.outcome === 'locked') {
       throw new TooManyRequestsException(
         'Demasiadas confirmaciones de contraseña fallidas. Vuelva a intentarlo más tarde.',
-        decision.retryAfterSeconds,
+        attempt.retryAfterSeconds,
       );
     }
-
-    let wrongPassword = false;
-    try {
-      wrongPassword = !(await this.passwordConfirmation.verify(requester.headers, password));
-    } finally {
-      if (!wrongPassword) {
-        this.failedConfirmations.refund(requester.user.id);
-      }
-    }
-    if (wrongPassword) {
+    if (attempt.outcome === 'refused') {
       throw new ForbiddenException('La confirmación de contraseña falló.');
     }
   }
