@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { join } from 'path';
-import { DataSource } from 'typeorm';
+import { DataSource, DataSourceOptions } from 'typeorm';
 
 // DataSource standalone para el CLI de TypeORM (migration:generate, migration:run, etc.).
 //
@@ -15,9 +15,20 @@ import { DataSource } from 'typeorm';
 // Las dos configs deben mantenerse consistentes en `type`, `url` y `migrations`.
 // `synchronize` y `migrationsRun` NO van acá: son responsabilidades del runtime,
 // no del CLI.
-export const AppDataSource = new DataSource({
+//
+// `buildDataSourceOptions` es la definición compartida: `database/run-migrations.ts`
+// la usa para correr las migraciones pendientes ANTES de cargar la app (y con ella
+// Better Auth, que valida el esquema al importarse). Como los globs se resuelven
+// con `__dirname`, funcionan igual desde `src` (ts-node) y desde `dist`.
+export const buildDataSourceOptions = (
+  url: string | undefined,
+): DataSourceOptions => ({
   type: 'postgres',
-  url: process.env.DATABASE_URL,
+  url,
   entities: [join(__dirname, '**/*.entity{.ts,.js}')],
   migrations: [join(__dirname, 'database/migrations/*{.ts,.js}')],
 });
+
+export const AppDataSource = new DataSource(
+  buildDataSourceOptions(process.env.DATABASE_URL),
+);
