@@ -113,6 +113,19 @@ async function expectObjectsWork(database: string): Promise<void> {
   });
 }
 
+/**
+ * A probe that waited for nothing would prove nothing: DDL on the table must
+ * really be blocked, with the same error the restore will get (1205).
+ */
+async function expectDdlBlocked(database: string, table: string): Promise<void> {
+  await withMysql(database, async (probe) => {
+    await probe.query('SET SESSION lock_wait_timeout = 1');
+    await expect(probe.query(`ALTER TABLE ${table} COMMENT = 'probe'`)).rejects.toMatchObject({
+      errno: 1205,
+    });
+  });
+}
+
 const ACCENTED = 'revisión';
 
 test.describe('MySQL restore of schema objects', () => {
@@ -257,6 +270,84 @@ test.describe('MySQL restore of schema objects', () => {
     });
     expect(restore).toMatchObject({ status: 'completed', errorMessage: null });
 
+    expect(await inventory(target.name)).toEqual(EXPECTED);
+    await expectObjectsWork(target.name);
+    expect(await leftoverStagingDatabases(target.name)).toEqual([]);
+  });
+
+  test('gives up when another session holds a lock on the target, leaves it intact and succeeds once it is released', async ({
+    newDatabase,
+    createConnection,
+    jobs,
+  }) => {
+    const source = await newDatabase('mysql', 'empty');
+    await createSchemaObjects(source.name);
+    const { connection: sourceConnection } = await createConnection({
+      ...source.settings,
+      environment: 'prod',
+    });
+    const backup = await jobs.backup(sourceConnection.id);
+    expect(backup.status).toBe('completed');
+
+    const target = await newDatabase('mysql', 'empty');
+    await withMysql(target.name, async (c) => {
+      await c.query('CREATE TABLE old_main (id INT PRIMARY KEY) ENGINE=InnoDB');
+      await c.query('CREATE TABLE old_log (id INT PRIMARY KEY AUTO_INCREMENT, ref INT) ENGINE=InnoDB');
+      await c.query(
+        'CREATE TRIGGER trg_old_ai AFTER INSERT ON old_main FOR EACH ROW INSERT INTO old_log (ref) VALUES (NEW.id)',
+      );
+      await c.query('CREATE VIEW v_old AS SELECT id FROM old_main');
+      await c.query('INSERT INTO old_main (id) VALUES (1)');
+    });
+    const before = await inventory(target.name);
+    expect(before.triggers, 'scenario input: the target holds a trigger').toEqual(['trg_old_ai']);
+    expect(before.views, 'scenario input: the target holds a view').toEqual(['v_old']);
+
+    const { connection: targetConnection } = await createConnection({
+      ...target.settings,
+      environment: 'dev',
+    });
+    const request = { sourceBackupId: backup.id, targetConnectionId: targetConnection.id };
+
+    // The application of the target: an open transaction that has read the table
+    // holds a metadata lock on it until it ends, so DROP TRIGGER and RENAME TABLE
+    // on that table wait. The stack gives the restore a few seconds of patience
+    // (RESTORE_LOCK_WAIT_TIMEOUT_MS) instead of the 30 s default.
+    await withMysql(target.name, async (holder) => {
+      await holder.query('START TRANSACTION');
+      await holder.query('SELECT id FROM old_main');
+      await expectDdlBlocked(target.name, 'old_main');
+
+      const { jobId } = await jobs.startRestore(request);
+      // Without the bound the swap waits for a year (the server default), so
+      // ending inside the job timeout is the proof that it is bounded.
+      const failed = await jobs.waitForRestore(jobId, {
+        until: (job) => job.status === 'failed' || job.status === 'completed',
+        failFast: false,
+        description: 'finish while another session held a lock on the target',
+      });
+      expect(failed.status).toBe('failed');
+      expect(failed.errorMessage).toMatch(/waiting for a lock on the target database/);
+      expect(failed.errorMessage).toContain('The target was left unchanged');
+
+      // Still locked: nothing was lost, and what was dropped came back.
+      expect(await inventory(target.name), 'the target keeps every table, view and trigger').toEqual(
+        before,
+      );
+      expect(await leftoverStagingDatabases(target.name), 'no temporary database is left').toEqual([]);
+      await withMysql(target.name, async (c) => {
+        const [view] = await c.query<RowDataPacket[]>('SELECT id FROM v_old');
+        expect(view).toEqual([{ id: 1 }]);
+        await c.query('INSERT INTO old_main (id) VALUES (2)');
+        const [log] = await c.query<RowDataPacket[]>('SELECT ref FROM old_log ORDER BY id');
+        expect(log, 'the recreated trigger still fires').toEqual([{ ref: 1 }, { ref: 2 }]);
+      });
+
+      await holder.query('COMMIT');
+    });
+
+    const restore = await jobs.restore(request);
+    expect(restore).toMatchObject({ status: 'completed', errorMessage: null });
     expect(await inventory(target.name)).toEqual(EXPECTED);
     await expectObjectsWork(target.name);
     expect(await leftoverStagingDatabases(target.name)).toEqual([]);

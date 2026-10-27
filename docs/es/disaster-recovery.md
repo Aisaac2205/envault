@@ -66,6 +66,7 @@ R2_ACCESS_KEY_ID=clave_acceso_r2
 R2_SECRET_ACCESS_KEY=secreto_acceso_r2
 R2_BUCKET_NAME=nombre_del_bucket
 RESTORE_TIMEOUT_MS=1800000
+RESTORE_LOCK_WAIT_TIMEOUT_MS=30000
 ```
 
 ### Paso 3. Inicializar el Esquema

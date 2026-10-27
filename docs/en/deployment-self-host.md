@@ -96,6 +96,7 @@ Full reference in [environment-variables.md](environment-variables.md). The tabl
 | `R2_BUCKET_NAME` | yes in production | Cloudflare R2 bucket designated for backups |
 | `BACKUP_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for database dump execution (30 minutes) |
 | `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for restore executions |
+| `RESTORE_LOCK_WAIT_TIMEOUT_MS` | no (default `30000`) | MySQL restores: milliseconds the final swap waits for each lock another session holds on the target's tables before failing and leaving the target unchanged. It applies per lock attempt, and the target application's queries on those tables wait meanwhile |
 
 > **Redis network**: keep Redis on a private network (the Docker network, or Railway private networking). If it must cross a public network, connect with a `rediss://` `REDIS_URL` or set `REDIS_TLS=true`.
 

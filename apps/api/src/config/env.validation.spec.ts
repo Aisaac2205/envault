@@ -18,6 +18,7 @@ describe('envValidationSchema auth rate limiting', () => {
     expect(value.AUTH_RATE_MAX_KEYS).toBe(10_000);
     expect(value.AUTH_RATE_SWEEP_INTERVAL_MS).toBe(60_000);
     expect(value.RESTORE_TIMEOUT_MS).toBe(1_800_000);
+    expect(value.RESTORE_LOCK_WAIT_TIMEOUT_MS).toBe(30_000);
     expect(value.BACKUP_TIMEOUT_MS).toBe(1_800_000);
     expect(value.REDIS_HOST).toBe('localhost');
     expect(value.REDIS_PORT).toBe(6379);
@@ -30,6 +31,9 @@ describe('envValidationSchema auth rate limiting', () => {
     ['AUTH_RATE_MAX_KEYS', 99],
     ['AUTH_RATE_SWEEP_INTERVAL_MS', 999],
     ['RESTORE_TIMEOUT_MS', 9_999],
+    ['RESTORE_LOCK_WAIT_TIMEOUT_MS', 999],
+    ['RESTORE_LOCK_WAIT_TIMEOUT_MS', 31_536_000_001],
+    ['RESTORE_LOCK_WAIT_TIMEOUT_MS', 1_500.5],
     ['BACKUP_TIMEOUT_MS', 9_999],
     ['REDIS_PORT', 0],
     ['REDIS_PORT', 65536],
@@ -41,6 +45,19 @@ describe('envValidationSchema auth rate limiting', () => {
 
     expect(error).toBeDefined();
   });
+
+  it.each([1_000, 5_000, 31_536_000_000])(
+    'accepts RESTORE_LOCK_WAIT_TIMEOUT_MS=%p',
+    (milliseconds) => {
+      const { error, value } = envValidationSchema.validate({
+        ...validEnvironment,
+        RESTORE_LOCK_WAIT_TIMEOUT_MS: milliseconds,
+      });
+
+      expect(error).toBeUndefined();
+      expect(value.RESTORE_LOCK_WAIT_TIMEOUT_MS).toBe(milliseconds);
+    },
+  );
 });
 
 describe('envValidationSchema PostgreSQL clients', () => {

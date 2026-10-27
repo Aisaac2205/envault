@@ -52,26 +52,92 @@ export interface SwapOptions {
   backupDb: string;
   onLog: (message: string) => void;
   abortSignal?: AbortSignal;
+  /** The session's lock_wait_timeout in seconds; only used to word a timeout. */
+  lockWaitTimeoutSeconds?: number;
 }
 
 const CANCELLED_MESSAGE = 'Operación cancelada por el usuario';
 
+/** What the rollback learned before it failed, so the error can say where the data is. */
+export interface RollbackState {
+  /** Whether the base tables were swapped; undefined when that could not be determined. */
+  renamed?: boolean;
+  /** Triggers and views of the target that may still be missing ("trigger x", "view y"). */
+  missing?: string[];
+}
+
 /**
  * Thrown when the swap failed and the target could not be put back as it was.
- * `<db>_pre_restore_<ts>` then holds the original data and must not be dropped.
+ * Once the tables were swapped, `<db>_pre_restore_<ts>` holds the original data
+ * and must not be dropped. Before the swap the tables never left the target and
+ * that database is empty, which `backupIsEmpty` reports only when it was verified.
  */
 export class RestoreRollbackError extends Error {
+  /** True only when the pre-restore database is known to hold no base tables. */
+  readonly backupIsEmpty: boolean;
+
   constructor(
     readonly backupDb: string,
     cause: unknown,
     rollbackCause: unknown,
+    state: RollbackState = {},
   ) {
     super(
       `Restore failed (${errorText(cause)}) and the rollback also failed (${errorText(rollbackCause)}). ` +
-        `The original tables are preserved in database ${backupDb}`,
+        rollbackAdvice(backupDb, state),
     );
     this.name = 'RestoreRollbackError';
+    this.backupIsEmpty = state.renamed === false;
   }
+}
+
+function rollbackAdvice(backupDb: string, { renamed, missing = [] }: RollbackState): string {
+  if (renamed === undefined) {
+    return `The original tables may be in the target database or in ${backupDb}, which was kept.`;
+  }
+  if (renamed) {
+    return `The original tables are preserved in database ${backupDb}.`;
+  }
+  const advice = `The original tables were not moved: they are still in the target database and ${backupDb} is empty.`;
+  return missing.length === 0
+    ? advice
+    : `${advice} These objects may still be missing from the target and must be recreated by hand: ${missing.join(', ')}.`;
+}
+
+/** mysql2 errno 1205, raised for metadata lock waits and InnoDB row lock waits alike. */
+function isLockWaitTimeout(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { errno, code } = error as { errno?: unknown; code?: unknown };
+  return errno === 1205 || code === 'ER_LOCK_WAIT_TIMEOUT';
+}
+
+/** How far the swap got, so the rollback undoes only what was done. */
+type SwapStage = 'reading-definitions' | 'dropping-blockers' | 'renaming' | 'recreating-objects';
+
+const STAGE_LABELS: Record<SwapStage, string> = {
+  'reading-definitions': 'reading the object definitions',
+  'dropping-blockers': 'dropping the triggers and views of the target',
+  renaming: 'renaming the tables',
+  'recreating-objects': 'recreating the restored objects',
+};
+
+/**
+ * A lock wait timeout becomes a message naming the stage, in place of MySQL's
+ * "try restarting transaction". `unchanged` is only set once the target is known
+ * to be as it was. Any other error passes through.
+ */
+function describeFailure(
+  error: unknown,
+  stage: SwapStage,
+  lockWaitSeconds: number | undefined,
+  unchanged: boolean,
+): unknown {
+  if (!isLockWaitTimeout(error)) return error;
+  const waited = lockWaitSeconds === undefined ? 'Timed out' : `Timed out after ${lockWaitSeconds} s`;
+  const message =
+    `${waited} waiting for a lock on the target database while ${STAGE_LABELS[stage]}; ` +
+    'another session is using the target tables';
+  return new Error(unchanged ? `${message}. The target was left unchanged.` : message);
 }
 
 export function quoteId(identifier: string): string {
@@ -116,6 +182,22 @@ async function names(
   return result.map((row) => row.name);
 }
 
+async function listViewNames(session: MysqlSession, database: string): Promise<string[]> {
+  return names(
+    session,
+    "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'VIEW' ORDER BY TABLE_NAME",
+    database,
+  );
+}
+
+async function listTriggerNames(session: MysqlSession, database: string): Promise<string[]> {
+  return names(
+    session,
+    'SELECT TRIGGER_NAME AS name FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ? ORDER BY TRIGGER_NAME',
+    database,
+  );
+}
+
 type Row = Record<string, unknown>;
 
 function definition(row: Row, column: string, objectName: string): string {
@@ -155,11 +237,7 @@ export async function captureSchemaObjects(
 ): Promise<CapturedSchemaObjects> {
   await useDatabase(session, database);
 
-  const viewNames = await names(
-    session,
-    "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'VIEW' ORDER BY TABLE_NAME",
-    database,
-  );
+  const viewNames = await listViewNames(session, database);
   const views: CapturedObject[] = [];
   for (const name of viewNames) {
     const row = await showCreate(session, `SHOW CREATE VIEW ${quoteId(name)}`);
@@ -379,18 +457,54 @@ async function renameWithoutForeignKeyChecks(
   }
 }
 
-/** How far the critical section got, so the rollback undoes only what was done. */
-type SwapStage = 'dropping-blockers' | 'renaming' | 'recreating-objects';
+/**
+ * Whether the rename happened, read from the databases and not assumed: the
+ * shadow is emptied by it (the swap refuses an empty shadow, so empty means
+ * moved). When it did not happen the pre-restore database must be empty too;
+ * if it is not, the state is not what this code assumes and nothing is certain.
+ */
+async function hasRenamed(
+  session: MysqlSession,
+  { shadowDb, backupDb }: SwapOptions,
+  stage: SwapStage,
+): Promise<boolean | undefined> {
+  if (stage !== 'dropping-blockers' && (await listBaseTables(session, shadowDb)).length === 0) {
+    return true;
+  }
+  return (await listBaseTables(session, backupDb)).length === 0 ? false : undefined;
+}
+
+type DroppedObjects = Pick<CapturedSchemaObjects, 'views' | 'triggers'>;
+
+/** The target's own views and triggers that it does not have right now. */
+async function missingFromTarget(
+  session: MysqlSession,
+  database: string,
+  original: CapturedSchemaObjects,
+): Promise<DroppedObjects> {
+  const views = new Set(await listViewNames(session, database));
+  const triggers = new Set(await listTriggerNames(session, database));
+  return {
+    views: original.views.filter((v) => !views.has(v.name)),
+    triggers: original.triggers.filter((t) => !triggers.has(t.name)),
+  };
+}
+
+function labelsOf({ views, triggers }: DroppedObjects): string[] {
+  return [...views.map((v) => `view ${v.name}`), ...triggers.map((t) => `trigger ${t.name}`)];
+}
 
 /**
  * Puts the target back as it was before the critical section began.
  *
  * Before the rename only the target's triggers and views were touched, so only
- * those are recreated (routines and events were never dropped and recreating
- * them would add failure points). Once the rename may have happened (its
- * outcome is read from the shadow, not assumed) every object name involved is
- * dropped with IF EXISTS, the rename is reversed, and all of the target's own
- * objects are recreated from their captured definitions.
+ * those that are missing are recreated: no DROP is repeated, because whatever
+ * blocked the first one (a lock held by another session) would block it again
+ * and strand objects that were never touched. Routines and events were not
+ * dropped and recreating them would add failure points. Once the rename has
+ * happened every object name involved is dropped with IF EXISTS, the rename is
+ * reversed, and all of the target's own objects are recreated from their
+ * captured definitions. `state` records what was learned, for the error.
  */
 async function rollback(
   session: MysqlSession,
@@ -400,19 +514,29 @@ async function rollback(
   shadowTables: string[],
   original: CapturedSchemaObjects,
   shadow: CapturedSchemaObjects,
+  state: RollbackState,
 ): Promise<void> {
   const { database, shadowDb, backupDb } = options;
 
-  const swapped =
-    stage !== 'dropping-blockers' && (await listBaseTables(session, shadowDb)).length === 0;
-  if (!swapped) {
-    await run(session, dropStatements(database, original, { triggers: true, views: true }));
-    await createSchemaObjects(session, database, {
-      routines: [],
-      views: original.views,
-      triggers: original.triggers,
-      events: [],
-    });
+  state.renamed = await hasRenamed(session, options, stage);
+  if (state.renamed === undefined) {
+    throw new Error(`Cannot tell whether the tables of ${database} were swapped`);
+  }
+  if (!state.renamed) {
+    // Until the check says otherwise, any of them may be missing.
+    state.missing = labelsOf(original);
+    const missing = await missingFromTarget(session, database, original);
+    state.missing = labelsOf(missing);
+    try {
+      await createSchemaObjects(session, database, { routines: [], events: [], ...missing });
+    } catch (error) {
+      // Narrow the list to what is still missing, if that can be read.
+      await missingFromTarget(session, database, original).then(
+        (left) => (state.missing = labelsOf(left)),
+        () => undefined,
+      );
+      throw error;
+    }
     return;
   }
 
@@ -448,10 +572,26 @@ export async function swapSchemaObjects(
 ): Promise<void> {
   const { database, shadowDb, backupDb, onLog, abortSignal } = options;
 
+  const lockWaitSeconds = options.lockWaitTimeoutSeconds;
   const originalTables = await listBaseTables(session, database);
   const shadowTables = await listBaseTables(session, shadowDb);
-  const original = await captureSchemaObjects(session, database);
-  const shadow = await captureSchemaObjects(session, shadowDb);
+  // The rollback reads "the shadow has no base tables" as "the rename already
+  // happened", so an empty shadow would make it undo a rename that never ran.
+  // Refused before the `try` so that no rollback is attempted for it.
+  if (shadowTables.length === 0) {
+    throw new Error(
+      `Cannot swap: shadow database ${shadowDb} has no base tables, the target was not touched`,
+    );
+  }
+  let original: CapturedSchemaObjects;
+  let shadow: CapturedSchemaObjects;
+  try {
+    original = await captureSchemaObjects(session, database);
+    shadow = await captureSchemaObjects(session, shadowDb);
+  } catch (error) {
+    // Nothing was changed yet, so there is nothing to roll back.
+    throw describeFailure(error, 'reading-definitions', lockWaitSeconds, true);
+  }
 
   if (abortSignal?.aborted) {
     throw new Error(CANCELLED_MESSAGE);
@@ -488,11 +628,17 @@ export async function swapSchemaObjects(
     );
   } catch (error) {
     onLog('Restore swap failed, rolling back the target database');
+    const state: RollbackState = {};
     try {
-      await rollback(session, options, stage, originalTables, shadowTables, original, shadow);
+      await rollback(session, options, stage, originalTables, shadowTables, original, shadow, state);
     } catch (rollbackError) {
-      throw new RestoreRollbackError(backupDb, error, rollbackError);
+      throw new RestoreRollbackError(
+        backupDb,
+        describeFailure(error, stage, lockWaitSeconds, false),
+        rollbackError,
+        state,
+      );
     }
-    throw error;
+    throw describeFailure(error, stage, lockWaitSeconds, true);
   }
 }

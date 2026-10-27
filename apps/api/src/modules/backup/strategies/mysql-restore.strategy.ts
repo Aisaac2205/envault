@@ -14,17 +14,29 @@ import {
 } from './mysql-schema-objects';
 
 const DEFAULT_RESTORE_TIMEOUT_MS = 1_800_000;
+const DEFAULT_RESTORE_LOCK_WAIT_TIMEOUT_MS = 30_000;
 const CONNECT_TIMEOUT_MS = 10_000;
+/** MySQL's own bounds for lock_wait_timeout, in seconds (1 s to 1 year). */
+const MIN_LOCK_WAIT_SECONDS = 1;
+const MAX_LOCK_WAIT_SECONDS = 31_536_000;
 
 @Injectable()
 export class MySQLRestoreStrategy implements RestoreStrategy {
   private readonly logger = new Logger(MySQLRestoreStrategy.name);
   private readonly timeoutMs: number;
+  private readonly lockWaitSeconds: number;
 
   constructor(@Optional() configService?: ConfigService) {
     this.timeoutMs =
       configService?.get<number>('RESTORE_TIMEOUT_MS') ??
       DEFAULT_RESTORE_TIMEOUT_MS;
+    const lockWaitMs =
+      configService?.get<number>('RESTORE_LOCK_WAIT_TIMEOUT_MS') ??
+      DEFAULT_RESTORE_LOCK_WAIT_TIMEOUT_MS;
+    this.lockWaitSeconds = Math.min(
+      Math.max(Math.ceil(lockWaitMs / 1000), MIN_LOCK_WAIT_SECONDS),
+      MAX_LOCK_WAIT_SECONDS,
+    );
   }
 
   async execute(
@@ -64,6 +76,7 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
           backupDb,
           onLog,
           abortSignal: options?.abortSignal,
+          lockWaitTimeoutSeconds: this.lockWaitSeconds,
         });
       });
 
@@ -74,13 +87,19 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
     } catch (error) {
       // The target is untouched or already rolled back, so the temp databases
       // can go. If the rollback itself failed, the pre-restore database holds
-      // the original data and must survive.
+      // the original data and must survive, unless the rollback verified that
+      // the tables never left the target and it is empty.
       await this.safeDropDatabase(connection, shadowDb);
-      if (error instanceof RestoreRollbackError) {
+      if (error instanceof RestoreRollbackError && !error.backupIsEmpty) {
         this.logger.error(
-          `Rollback failed; original data preserved in database ${backupDb}`,
+          `Rollback failed; database ${backupDb} was kept and may hold the original data`,
         );
       } else {
+        if (error instanceof RestoreRollbackError) {
+          this.logger.error(
+            'Rollback failed before the tables moved; the target still holds its original tables',
+          );
+        }
         await this.safeDropDatabase(connection, backupDb);
       }
       throw error;
@@ -104,6 +123,10 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
       this.logger.warn(`Restore session error: ${sanitizeMessage(error.message)}`);
     });
     try {
+      // Bounds every metadata lock wait of this session, the swap's DDL included.
+      // Done server-side on purpose: a client-side query timeout would leave the
+      // statement running on the server and make conn.end() wait behind it.
+      await conn.query('SET SESSION lock_wait_timeout = ?', [this.lockWaitSeconds]);
       return await work({ query: (sql, values) => conn.query(sql, values) });
     } finally {
       await conn.end().catch(() => undefined);

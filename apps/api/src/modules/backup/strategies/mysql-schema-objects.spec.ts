@@ -34,6 +34,8 @@ class FakeSession implements MysqlSession {
   readonly log: string[] = [];
   readonly created: Array<{ ddl: string; context: Record<string, string> }> = [];
   failOn: (sql: string) => boolean = () => false;
+  /** The error `failOn` raises; a lock wait timeout carries mysql2's errno/code. */
+  failWith: (sql: string) => Error = (sql) => new Error(`boom: ${sql}`);
   private current = '';
   private context: Record<string, string> = {
     sql_mode: 'ORIGINAL_MODE',
@@ -48,7 +50,7 @@ class FakeSession implements MysqlSession {
   async query(sql: string, values: unknown[] = []): Promise<unknown> {
     this.log.push(sql);
     this.onStatement?.(sql);
-    if (this.failOn(sql)) throw new Error(`boom: ${sql}`);
+    if (this.failOn(sql)) throw this.failWith(sql);
     const db = this.dbs[(values[0] as string) ?? this.current];
 
     let match: RegExpMatchArray | null;
@@ -93,8 +95,23 @@ class FakeSession implements MysqlSession {
       }
       return [[], []];
     }
+    // Triggers and views are tracked so the rollback can ask which ones are missing.
+    if ((match = sql.match(/^DROP (TRIGGER|VIEW) IF EXISTS `([^`]+)`\.`([^`]+)`$/))) {
+      const key = match[1] === 'VIEW' ? 'views' : 'triggers';
+      const owner = this.dbs[match[2]];
+      owner[key] = (owner[key] ?? []).filter((o) => o.name !== match![3]) as never;
+      return [[], []];
+    }
     if (sql.startsWith('CREATE')) {
       this.created.push({ ddl: sql, context: { ...this.context } });
+      if ((match = sql.match(/^CREATE (TRIGGER|VIEW) `([^`]+)`/))) {
+        const owner = this.dbs[this.current];
+        if (match[1] === 'VIEW') {
+          (owner.views ??= []).push({ name: match[2], ddl: sql });
+        } else {
+          (owner.triggers ??= []).push({ name: match[2], table: '', ddl: sql });
+        }
+      }
     }
     return [[], []];
   }
@@ -368,7 +385,7 @@ describe('mysql-schema-objects', () => {
       expect(session.log.some((s) => /^DROP (FUNCTION|PROCEDURE|EVENT)/.test(s))).toBe(false);
     });
 
-    it('recreates only triggers and views when it fails before the rename', async () => {
+    it('recreates nothing when the very first drop fails, since nothing was dropped', async () => {
       const session = new FakeSession(fixtureDbs());
       let failed = false;
       session.failOn = (sql) => {
@@ -380,10 +397,27 @@ describe('mysql-schema-objects', () => {
 
       expect(session.log.some((s) => s.startsWith('RENAME TABLE'))).toBe(false);
       expect(session.log.some((s) => /^DROP (FUNCTION|PROCEDURE|EVENT)/.test(s))).toBe(false);
-      expect(session.created.map((c) => c.ddl)).toEqual([
-        'CREATE VIEW `v_old` AS select 1',
-        'CREATE TRIGGER `trg_old` ...',
-      ]);
+      expect(session.created).toEqual([]);
+      expect(session.dbs.app.tables).toEqual(['old_a']);
+    });
+
+    it('recreates only what was dropped and never re-runs a DROP when it fails before the rename', async () => {
+      const session = new FakeSession(fixtureDbs());
+      let failed = false;
+      session.failOn = (sql) => {
+        if (failed || !sql.startsWith('DROP VIEW IF EXISTS `app`.`v_old`')) return false;
+        return (failed = true);
+      };
+
+      await expect(swapSchemaObjects(session, OPTIONS)).rejects.toThrow(/boom/);
+
+      expect(session.log.some((s) => s.startsWith('RENAME TABLE'))).toBe(false);
+      expect(session.log.some((s) => /^DROP (FUNCTION|PROCEDURE|EVENT)/.test(s))).toBe(false);
+      // The trigger was dropped before the view failed; the view was never dropped.
+      expect(session.created.map((c) => c.ddl)).toEqual(['CREATE TRIGGER `trg_old` ...']);
+      // A persistent lock holder would block a repeated DROP all over again.
+      const failedAt = session.log.findIndex((s) => s.startsWith('DROP VIEW IF EXISTS `app`.`v_old`'));
+      expect(session.log.slice(failedAt + 1).filter((s) => s.startsWith('DROP'))).toEqual([]);
       expect(session.dbs.app.tables).toEqual(['old_a']);
     });
 
@@ -411,7 +445,147 @@ describe('mysql-schema-objects', () => {
 
       expect(error).toBeInstanceOf(RestoreRollbackError);
       expect((error as RestoreRollbackError).backupDb).toBe('app_pre_restore_1');
+      expect((error as RestoreRollbackError).backupIsEmpty).toBe(false);
       expect((error as Error).message).toContain('preserved in database app_pre_restore_1');
+    });
+
+    describe('lock wait timeouts', () => {
+      const lockWait = () =>
+        Object.assign(new Error('Lock wait timeout exceeded; try restarting transaction'), {
+          code: 'ER_LOCK_WAIT_TIMEOUT',
+          errno: 1205,
+        });
+      const options = { ...OPTIONS, lockWaitTimeoutSeconds: 5 };
+
+      /** Raises a lock wait timeout on the first statement starting with `prefix`. */
+      function timeOutOn(session: FakeSession, prefix: string): void {
+        let raised = false;
+        session.failOn = (sql) => !raised && sql.startsWith(prefix) && (raised = true);
+        session.failWith = lockWait;
+      }
+
+      it('names the stage and says the target was left unchanged once the rollback succeeded', async () => {
+        const session = new FakeSession(fixtureDbs());
+        timeOutOn(session, 'RENAME TABLE');
+
+        const error = await swapSchemaObjects(session, options).catch((e: unknown) => e);
+
+        expect(error).not.toBeInstanceOf(RestoreRollbackError);
+        expect((error as Error).message).toBe(
+          'Timed out after 5 s waiting for a lock on the target database while renaming the tables; ' +
+            'another session is using the target tables. The target was left unchanged.',
+        );
+        expect(session.dbs.app.tables).toEqual(['old_a']);
+        expect(session.created.map((c) => c.ddl)).toEqual([
+          'CREATE VIEW `v_old` AS select 1',
+          'CREATE TRIGGER `trg_old` ...',
+        ]);
+      });
+
+      it.each([
+        ['DROP TRIGGER IF EXISTS `app`.`trg_old`', 'dropping the triggers and views of the target'],
+        ['CREATE EVENT `ev_daily`', 'recreating the restored objects'],
+        ['SHOW CREATE TRIGGER', 'reading the object definitions'],
+      ])('names the stage of a timeout on %s', async (prefix, stage) => {
+        const session = new FakeSession(fixtureDbs());
+        timeOutOn(session, prefix);
+
+        const error = await swapSchemaObjects(session, options).catch((e: unknown) => e);
+
+        expect((error as Error).message).toContain(`waiting for a lock on the target database while ${stage};`);
+        expect(session.dbs.app.tables).toEqual(['old_a']);
+      });
+
+      it('leaves the target alone when the definitions cannot be read', async () => {
+        const session = new FakeSession(fixtureDbs());
+        timeOutOn(session, 'SHOW CREATE TRIGGER');
+
+        await swapSchemaObjects(session, options).catch(() => undefined);
+
+        expect(session.log.filter((s) => /^(DROP|RENAME|CREATE)/.test(s))).toEqual([]);
+      });
+
+      it('omits the duration when the session limit is not known', async () => {
+        const session = new FakeSession(fixtureDbs());
+        timeOutOn(session, 'RENAME TABLE');
+
+        const error = await swapSchemaObjects(session, OPTIONS).catch((e: unknown) => e);
+
+        expect((error as Error).message).toMatch(/^Timed out waiting for a lock on the target database/);
+      });
+
+      it('does not claim the target is unchanged when the rollback failed, and names what is missing', async () => {
+        const session = new FakeSession(fixtureDbs());
+        let raised = false;
+        session.failOn = (sql) => {
+          if (sql.startsWith('CREATE TRIGGER `trg_old`')) return true;
+          return !raised && sql.startsWith('RENAME TABLE') && (raised = true);
+        };
+        session.failWith = (sql) => (sql.startsWith('RENAME') ? lockWait() : new Error('boom: trigger'));
+
+        const error = await swapSchemaObjects(session, options).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(RestoreRollbackError);
+        const rollbackError = error as RestoreRollbackError;
+        expect(rollbackError.message).toContain('Timed out after 5 s waiting for a lock');
+        expect(rollbackError.message).not.toContain('left unchanged');
+        // The tables never moved, so the pre-restore database is empty and may go.
+        expect(rollbackError.backupIsEmpty).toBe(true);
+        expect(rollbackError.message).toContain(
+          'still in the target database and app_pre_restore_1 is empty',
+        );
+        // The view was recreated before the trigger failed; only the trigger is missing.
+        expect(rollbackError.message).toContain('recreated by hand: trigger trg_old.');
+        expect(rollbackError.message).not.toContain('view v_old');
+        expect(rollbackError.message).not.toContain('preserved in database');
+      });
+    });
+
+    describe('what the rollback knows about the rename', () => {
+      it('keeps the pre-restore database when the swap state cannot be read', async () => {
+        const session = new FakeSession(fixtureDbs());
+        let renameFailed = false;
+        session.failOn = (sql) => {
+          if (sql.startsWith('RENAME TABLE')) return (renameFailed = true);
+          return renameFailed && sql.includes("'BASE TABLE'");
+        };
+
+        const error = await swapSchemaObjects(session, OPTIONS).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(RestoreRollbackError);
+        expect((error as RestoreRollbackError).backupIsEmpty).toBe(false);
+        expect((error as Error).message).toContain('may be in the target database or in app_pre_restore_1');
+      });
+
+      it('keeps the pre-restore database when it holds tables although the shadow still does', async () => {
+        const dbs = fixtureDbs();
+        dbs.app_pre_restore_1.tables = ['stray'];
+        const session = new FakeSession(dbs);
+        session.failOn = (sql) => sql.startsWith('RENAME TABLE');
+
+        const error = await swapSchemaObjects(session, OPTIONS).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(RestoreRollbackError);
+        expect((error as RestoreRollbackError).backupIsEmpty).toBe(false);
+        expect(dbs.app_pre_restore_1.tables).toEqual(['stray']);
+        // Nothing was changed to "repair" a state the rollback could not trust.
+        expect(session.created).toEqual([]);
+      });
+    });
+
+    it('refuses an empty shadow database before touching the target', async () => {
+      const dbs = fixtureDbs();
+      dbs.app_shadow.tables = [];
+      const session = new FakeSession(dbs);
+
+      await expect(swapSchemaObjects(session, OPTIONS)).rejects.toThrow(
+        /shadow database app_shadow has no base tables/,
+      );
+
+      // No DROP/RENAME/CREATE ran, so there is nothing to roll back either.
+      const destructive = session.log.filter((s) => /^(DROP|RENAME|CREATE)/.test(s));
+      expect(destructive).toEqual([]);
+      expect(session.dbs.app.tables).toEqual(['old_a']);
     });
 
     it('honors an abort requested before the critical section', async () => {
