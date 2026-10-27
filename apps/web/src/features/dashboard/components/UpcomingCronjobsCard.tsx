@@ -4,6 +4,7 @@ import { DataTable, type Column } from "@/shared/ui/data-table";
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatUpcomingTime } from "@/lib/format";
+import { describeSchedule } from "@/features/cronjobs/lib/schedule";
 import type { CronjobEntity } from "../types";
 
 interface UpcomingCronjobsCardProps {
@@ -12,6 +13,8 @@ interface UpcomingCronjobsCardProps {
 
 export function UpcomingCronjobsCard({ cronjobs }: UpcomingCronjobsCardProps) {
   const { t } = useTranslation('dashboard');
+  // Schedule wording lives with the cronjobs feature, so it comes from its namespace.
+  const { t: tCronjobs } = useTranslation('cronjobs');
   const active = cronjobs.filter((c) => c.isActive);
   const paused = cronjobs.filter((c) => !c.isActive);
 
@@ -34,7 +37,7 @@ export function UpcomingCronjobsCard({ cronjobs }: UpcomingCronjobsCardProps) {
             {cj.name}
           </span>
           <span className="text-[11px] text-muted-foreground truncate">
-            {cj.connectionName ?? cj.cronExpression}
+            {cj.connectionName ?? describeSchedule(cj.schedule, tCronjobs)}
           </span>
         </div>
       ),

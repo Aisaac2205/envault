@@ -1,4 +1,5 @@
 import type { Cronjob } from "../types";
+import { describeSchedule } from "../lib/schedule";
 import { formatDateTimeShort as formatDate, formatEnvironment } from "@/lib/format";
 import { useTranslation } from "react-i18next";
 import { StatusBadge } from "@/shared/ui/status-badge";
@@ -63,11 +64,9 @@ export default function CronjobsTable({
       },
     },
     {
-      header: t('column.cronExpression'),
+      header: t('column.schedule'),
       accessor: (cronjob) => (
-        <span className="font-mono text-xs whitespace-nowrap">
-          {cronjob.cronExpression}
-        </span>
+        <span className="text-xs">{describeSchedule(cronjob.schedule, t)}</span>
       ),
       className: "hidden sm:table-cell",
       headerClassName: "hidden sm:table-cell",

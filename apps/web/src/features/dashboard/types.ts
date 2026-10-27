@@ -1,3 +1,5 @@
+import type { Schedule } from "@/features/cronjobs/types";
+
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 
 export interface JobSummary {
@@ -44,7 +46,8 @@ export interface CronjobEntity {
   id: string;
   name: string;
   isActive: boolean;
-  cronExpression: string;
+  /** `null` when the stored expression is one the schedule builder cannot represent. */
+  schedule: Schedule | null;
   connectionId: string;
   connectionName: string | null;
   nextRunAt: string | null;

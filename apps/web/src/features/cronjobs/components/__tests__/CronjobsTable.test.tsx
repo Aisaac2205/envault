@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import CronjobsTable from "../CronjobsTable";
+import type { Cronjob } from "../../types";
 
 // Mock useConnections to return test connection data
 vi.mock("@/features/connections/hooks/useConnections", () => ({
@@ -20,8 +21,6 @@ const mockCronjobs = [
     name: "Daily Backup",
     connectionId: "conn-1",
     connectionName: "Prod DB",
-    cronExpression: "0 2 * * *",
-    frequency: "daily" as const,
     schedule: { kind: "daily" as const, time: "02:00" },
     isActive: true,
     lastRunAt: "2026-06-13T02:00:00Z",
@@ -33,8 +32,6 @@ const mockCronjobs = [
     name: "Dev Snapshot",
     connectionId: "conn-2",
     connectionName: "Dev DB",
-    cronExpression: "0 */6 * * *",
-    frequency: "daily" as const,
     schedule: { kind: "every_hours" as const, everyHours: 6 as const },
     isActive: false,
     nextRunAt: "2026-06-13T18:00:00Z",
@@ -93,6 +90,44 @@ describe("CronjobsTable", () => {
     render(<CronjobsTable {...defaultProps} />);
     // The header should still show Entorno
     expect(screen.getByText("Entorno")).toBeInTheDocument();
+  });
+
+  it("renders the schedule column header", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    expect(screen.getByText("Programación")).toBeInTheDocument();
+    expect(screen.queryByText(/cron/i)).not.toBeInTheDocument();
+  });
+
+  it("describes each schedule in plain language", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    expect(screen.getByText("Todos los días a las 02:00")).toBeInTheDocument();
+    expect(screen.getByText("Cada 6 horas")).toBeInTheDocument();
+  });
+
+  it("keeps the schedule column hidden on small screens", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    const header = screen.getByText("Programación").closest("th");
+    const cell = screen.getByText("Todos los días a las 02:00").closest("td");
+    for (const element of [header, cell]) {
+      expect(element).toHaveClass("hidden", "sm:table-cell");
+    }
+  });
+
+  it("shows a generic label for a schedule the builder cannot represent", () => {
+    const legacy: Cronjob[] = [{ ...mockCronjobs[0], schedule: null }];
+    render(<CronjobsTable {...defaultProps} cronjobs={legacy} />);
+    expect(screen.getByText("Programación personalizada")).toBeInTheDocument();
+  });
+
+  it("never renders the raw cron expression the API still sends", () => {
+    const legacy: Cronjob = { ...mockCronjobs[0], schedule: null };
+    // The API still sends the expression; the type no longer knows about it.
+    const withExpression = { ...legacy, cronExpression: "*/7 3-5 * * 2,4" };
+    const { container } = render(
+      <CronjobsTable {...defaultProps} cronjobs={[withExpression]} />,
+    );
+    expect(container.textContent).not.toContain("*/7");
+    expect(container.querySelector(".font-mono")).toBeNull();
   });
 
   it("renders empty state when no cronjobs", () => {
