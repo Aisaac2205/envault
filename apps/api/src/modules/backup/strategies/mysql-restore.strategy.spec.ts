@@ -106,6 +106,26 @@ describe('MySQLRestoreStrategy', () => {
     expect(drops().some((s) => s.includes('_pre_restore_'))).toBe(false);
   });
 
+  it('propagates a connect failure, never swaps and only drops what it created', async () => {
+    const connectError = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:1'), {
+      code: 'ECONNREFUSED',
+      fatal: true,
+    });
+    createConnectionMock.mockRejectedValue(connectError);
+
+    await expect(run()).rejects.toBe(connectError);
+
+    expect(listBaseTablesMock).not.toHaveBeenCalled();
+    expect(swapMock).not.toHaveBeenCalled();
+    // The session never opened, so the pre-restore database was never created
+    // and the target holds all of its data: only the shadow has anything to drop.
+    expect(cliStatements.filter((s) => s.includes('CREATE DATABASE'))).toHaveLength(1);
+    expect(cliStatements.some((s) => s.includes('CREATE DATABASE') && s.includes('_pre_restore_'))).toBe(false);
+    expect(drops().some((s) => s.includes('_shadow_'))).toBe(true);
+    expect(drops().some((s) => s.includes('_pre_restore_'))).toBe(true);
+    expect(drops().every((s) => s.includes('IF EXISTS'))).toBe(true);
+  });
+
   it('does nothing when cancelled before it starts', async () => {
     const controller = new AbortController();
     controller.abort();
