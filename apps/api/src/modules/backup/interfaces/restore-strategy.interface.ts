@@ -1,9 +1,12 @@
 import type { ChildProcess } from 'child_process';
+import { Logger } from '@nestjs/common';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
+
+const logger = new Logger('stopChildProcess');
 
 /** How long a CLI gets to react to SIGTERM before it is killed. */
 const CHILD_TERM_GRACE_MS = 5_000;
-/** How long to wait for the exit after SIGKILL before giving up on it. */
+/** How long after SIGKILL a child that has not exited is reported as stuck. */
 const CHILD_KILL_WAIT_MS = 5_000;
 
 /**
@@ -13,8 +16,9 @@ const CHILD_KILL_WAIT_MS = 5_000;
  * lock and lease, and a live pg_restore or mysql would go on loading into a
  * target that another restore may already own.
  *
- * Never waits for ever: if the child is still there a few seconds after
- * SIGKILL, it resolves anyway so the job can end.
+ * It never resolves before the child has exited: the safety of the target comes
+ * before ending the job. A child still alive `killWaitMs` after SIGKILL is
+ * logged once as a warning for the operator, and the wait goes on.
  */
 export function stopChildProcess(
   child: ChildProcess,
@@ -27,10 +31,10 @@ export function stopChildProcess(
       return;
     }
 
-    let giveUpTimer: NodeJS.Timeout | undefined;
+    let stuckTimer: NodeJS.Timeout | undefined;
     const done = () => {
       clearTimeout(forceTimer);
-      clearTimeout(giveUpTimer);
+      clearTimeout(stuckTimer);
       child.off('exit', done);
       child.off('close', done);
       child.off('error', done);
@@ -38,8 +42,12 @@ export function stopChildProcess(
     };
     const forceTimer = setTimeout(() => {
       child.kill('SIGKILL');
-      giveUpTimer = setTimeout(done, killWaitMs);
-      giveUpTimer.unref?.();
+      stuckTimer = setTimeout(() => {
+        logger.warn(
+          `${child.spawnfile ?? 'Restore process'} (pid ${child.pid}) is still alive ${killWaitMs}ms after SIGKILL; the restore keeps waiting for it so the target is not released under a live process`,
+        );
+      }, killWaitMs);
+      stuckTimer.unref?.();
     }, graceMs);
     forceTimer.unref?.();
     child.once('exit', done);

@@ -844,7 +844,9 @@ describe('RestoreService deadline of the whole restore', () => {
     (...args: unknown[]) => {
       const options = args[args.length - 1] as { abortSignal?: AbortSignal } | undefined;
       return new Promise<never>((_resolve, reject) => {
-        options?.abortSignal?.addEventListener('abort', () => reject(new Error(message)));
+        options?.abortSignal?.addEventListener('abort', () =>
+          reject(Object.assign(new Error(message), { name: 'AbortError' })),
+        );
       });
     };
 
@@ -1155,6 +1157,30 @@ describe('RestoreService deadline of the whole restore', () => {
         JobStatus.FAILED,
         expect.objectContaining({ errorMessage: DEADLINE_MESSAGE }),
       );
+    });
+
+    it.each([
+      ['the deadline', () => jest.advanceTimersByTimeAsync(DEADLINE_MS), DEADLINE_MESSAGE],
+      ['a cancel', (t: Awaited<ReturnType<typeof build>>) => t.service.cancelRestore(jobId, testUser), CANCEL_MESSAGE],
+    ])('after %s, keeps the error of an unrelated failure and gives an abort error the reason', async (_abort, abort, reasonMessage) => {
+      const unrelated = new Error('EACCES: permission denied');
+      const abortShaped = Object.assign(new Error('The operation was aborted'), { code: 'ABORT_ERR' });
+      for (const [failure, expected] of [[unrelated, unrelated.message], [abortShaped, reasonMessage]] as const) {
+        const s = swap();
+        const t = await build({ execute: s.execute });
+
+        const finished = t.run();
+        await settled();
+        await abort(t);
+        s.fail(failure);
+        await finished;
+
+        expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+          jobId,
+          JobStatus.FAILED,
+          expect.objectContaining({ errorMessage: expected }),
+        );
+      }
     });
 
     it('keeps the message that names the pre-restore database when the rollback failed', async () => {

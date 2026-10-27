@@ -63,6 +63,16 @@ function deadlineMessage(timeoutMs: number): string {
   return `Restore exceeded the time limit of ${formatDuration(timeoutMs)} (RESTORE_TIMEOUT_MS)`;
 }
 
+/** The AWS SDK and Node streams reject an aborted signal with an AbortError, the strategies with the cancel message. */
+function isAbortShaped(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === 'AbortError' ||
+    (error as NodeJS.ErrnoException).code === 'ABORT_ERR' ||
+    error.message === CANCELLED_MESSAGE
+  );
+}
+
 @Injectable()
 export class RestoreService implements OnApplicationBootstrap {
   private readonly logger = new Logger(RestoreService.name);
@@ -536,8 +546,9 @@ export class RestoreService implements OnApplicationBootstrap {
   }
 
   /**
-   * The message a failed restore is stored and reported with. An abort says why
-   * it happened (a deadline, a cancel) whatever the step it interrupted threw.
+   * The message a failed restore is stored and reported with. An error the abort
+   * produced says why (a deadline, a cancel) whatever the step threw; any other
+   * error, even one arriving after the abort, keeps its own message.
    * The exception is a failed rollback: its message tells where the original
    * data is, and the person who has to recover it needs that more than the cause.
    */
@@ -545,11 +556,8 @@ export class RestoreService implements OnApplicationBootstrap {
     if (error instanceof RestoreRollbackError) {
       return error.message;
     }
-    if (reason?.kind === 'timeout') {
-      return deadlineMessage(reason.timeoutMs);
-    }
-    if (reason?.kind === 'cancelled') {
-      return CANCELLED_MESSAGE;
+    if (reason && isAbortShaped(error)) {
+      return reason.kind === 'timeout' ? deadlineMessage(reason.timeoutMs) : CANCELLED_MESSAGE;
     }
     return error instanceof Error ? error.message : 'Error desconocido en restore';
   }

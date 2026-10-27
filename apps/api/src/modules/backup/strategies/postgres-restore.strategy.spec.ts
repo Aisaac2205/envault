@@ -365,7 +365,7 @@ describe('PostgresRestoreStrategy', () => {
       expect(state.error?.message).toBe('Operación cancelada por el usuario');
     });
 
-    it('stops waiting for a pg_restore that cannot be killed', async () => {
+    it('keeps waiting for a pg_restore that survives SIGKILL, and rejects only once it exited', async () => {
       const controller = new AbortController();
       const { result, restoreProc } = await startRestore(listing('17.11', '17.11'), undefined, {
         abortSignal: controller.signal,
@@ -375,8 +375,11 @@ describe('PostgresRestoreStrategy', () => {
       controller.abort();
       await jest.advanceTimersByTimeAsync(5_000);
       expect(restoreProc.kill).toHaveBeenCalledWith('SIGKILL');
-      await jest.advanceTimersByTimeAsync(5_000);
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+      expect(state.settled).toBe(false);
 
+      exit(restoreProc);
+      await jest.advanceTimersByTimeAsync(0);
       expect(state.error?.message).toBe('Operación cancelada por el usuario');
     });
 

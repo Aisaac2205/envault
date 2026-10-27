@@ -262,7 +262,7 @@ describe('MySQLRestoreStrategy', () => {
       expect(state.error?.message).toBe('Operación cancelada por el usuario');
     });
 
-    it('kills a mysql CLI that ignores SIGTERM, and stops waiting for one that cannot be killed', async () => {
+    it('kills a mysql CLI that ignores SIGTERM, and keeps waiting for one that survives SIGKILL', async () => {
       const hung = hangOn(2);
       const controller = new AbortController();
       const state = outcome(run(controller.signal));
@@ -273,7 +273,11 @@ describe('MySQLRestoreStrategy', () => {
       expect(hung[0].kill).toHaveBeenCalledWith('SIGKILL');
       expect(state.settled).toBe(false);
 
-      await jest.advanceTimersByTimeAsync(5_000);
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+      await turns();
+      expect(state.settled).toBe(false);
+
+      exit(hung[0]);
       await turns();
       expect(state.error?.message).toBe('Operación cancelada por el usuario');
     });
