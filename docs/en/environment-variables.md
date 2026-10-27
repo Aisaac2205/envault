@@ -47,6 +47,13 @@ R2_PUBLIC_BASE_URL=
 # ── Restore and Backup (optional) ──────────────────────────────
 # Timeout in milliseconds for database restore operations (default: 1800000 = 30 min).
 RESTORE_TIMEOUT_MS=1800000
+# MySQL restores end by swapping the restored data into the target. Time in
+# milliseconds that each step of that swap waits for a lock another session holds
+# on the target's tables (default: 30000 = 30 s, applied in whole seconds). It
+# applies per lock attempt, not to the whole swap, and while the swap waits the
+# target application's own queries on those tables wait behind it. When it runs
+# out the restore fails and the target is left unchanged.
+RESTORE_LOCK_WAIT_TIMEOUT_MS=30000
 # Timeout in milliseconds for database dump operations (default: 1800000 = 30 min).
 BACKUP_TIMEOUT_MS=1800000
 # Directory with one subdirectory per installed PostgreSQL client major

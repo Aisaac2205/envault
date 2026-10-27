@@ -53,6 +53,13 @@ export const envValidationSchema = Joi.object({
     .default(60_000),
   // Command timeout for pg_restore / mysql CLI in ms (dimensioned for up to 5 GB dumps).
   RESTORE_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
+  // How long the MySQL restore swap waits for each lock held by another session
+  // on the target (ms), applied as lock_wait_timeout in whole seconds (1 s to 1 year).
+  RESTORE_LOCK_WAIT_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(1_000)
+    .max(31_536_000_000)
+    .default(30_000),
   // Command timeout for pg_dump / mysqldump CLI in ms (dimensioned for massive dumps).
   BACKUP_TIMEOUT_MS: Joi.number().integer().min(10_000).default(1_800_000),
   // Directory with one subdirectory per installed PostgreSQL client major

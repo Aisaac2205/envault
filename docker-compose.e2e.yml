@@ -69,6 +69,9 @@ services:
       # Backup and restore pipeline.
       BACKUP_TIMEOUT_MS: ${BACKUP_TIMEOUT_MS:-1800000}
       RESTORE_TIMEOUT_MS: ${RESTORE_TIMEOUT_MS:-1800000}
+      # Short on purpose: the restore spec that holds a lock on the target waits
+      # this long before the swap gives up (the product default is 30000).
+      RESTORE_LOCK_WAIT_TIMEOUT_MS: ${RESTORE_LOCK_WAIT_TIMEOUT_MS:-5000}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required (see .env.e2e.example)}
