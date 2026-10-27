@@ -326,13 +326,21 @@ describe('PostgresRestoreStrategy', () => {
         query: jest.fn(async (sql: string, values: unknown[]) => {
           if (sql.includes('pg_cancel_backend')) {
             cancelled.push(values[0] as number);
-            return { rows: [{ pg_cancel_backend: true }] };
+            return { rows: [{ cancelled: true }] };
           }
           return { rows: sessions };
         }),
       };
       MockClient.mockImplementation(() => watcher);
     });
+    /** The server answers the next cancels with these (pg_cancel_backend returns false when it did not apply). */
+    const cancelAnswers = (...answers: boolean[]) => {
+      watcher.query.mockImplementation(async (sql: string, values: unknown[]) => {
+        if (!sql.includes('pg_cancel_backend')) return { rows: sessions };
+        cancelled.push(values[0] as number);
+        return { rows: [{ cancelled: answers.shift() }] };
+      });
+    };
     afterEach(() => {
       jest.useRealTimers();
     });
@@ -387,6 +395,39 @@ describe('PostgresRestoreStrategy', () => {
         'Timed out after 5 s waiting for a lock on the target database; ' +
           'another session is using the target tables. The target was left unchanged.',
       );
+    });
+
+    it('keeps bounding the wait when the cancel does not apply, and cancels it on the next bound', async () => {
+      strategy = buildWith(5_000);
+      cancelAnswers(false, true);
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'));
+      const failure = result.catch((error: unknown) => error);
+      sessions = [{ pid: 4242, statement_start: 'a' }];
+
+      await jest.advanceTimersByTimeAsync(6_000);
+      expect(cancelled).toEqual([4242]);
+      expect(onLog).toHaveBeenCalledWith(expect.stringContaining('cancel did not apply'));
+      await jest.advanceTimersByTimeAsync(6_000);
+      expect(cancelled).toEqual([4242, 4242]);
+
+      restoreProc.emit('close', 1);
+      expect((await failure as Error).message).toContain('Timed out after 5 s waiting for a lock');
+    });
+
+    it('does not blame a lock wait for a failure that follows a cancel that did not apply', async () => {
+      strategy = buildWith(5_000);
+      cancelAnswers(false);
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'));
+      const failure = result.catch((error: unknown) => error);
+      sessions = [{ pid: 4242, statement_start: 'a' }];
+
+      await jest.advanceTimersByTimeAsync(6_000);
+      restoreProc.stderr.emit('data', Buffer.from('pg_restore: error: could not execute query: ERROR:  deadlock detected'));
+      restoreProc.emit('close', 1);
+
+      const message = (await failure as Error).message;
+      expect(message).toContain('pg_restore exited with code 1');
+      expect(message).not.toContain('Timed out');
     });
 
     it('uses the default 30 s when RESTORE_LOCK_WAIT_TIMEOUT_MS is not set', async () => {

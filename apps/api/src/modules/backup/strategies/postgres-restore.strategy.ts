@@ -348,7 +348,7 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
    * running without the bound and the job log says so.
    *
    * @param onExceeded called with true just before the cancel is sent, and with
-   *   false if the cancel could not be sent.
+   *   false if the cancel could not be sent or the server did not apply it.
    * @returns a function that stops the watch and closes its connection; calling
    *   it again is harmless.
    */
@@ -428,14 +428,24 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
         }
         if (Date.now() - waiting.since < this.lockWaitMs) return;
 
-        halt();
         onExceeded(true);
         onLog(
           `pg_restore waited ${this.lockWaitSeconds()} s for a lock held by another session; ` +
             'cancelling the restore, the target is left unchanged.',
         );
         try {
-          await client.query('SELECT pg_cancel_backend($1)', [session.pid]);
+          const { rows: cancel } = await client.query<{ cancelled: boolean }>(
+            'SELECT pg_cancel_backend($1) AS cancelled',
+            [session.pid],
+          );
+          if (cancel[0]?.cancelled === true) {
+            halt();
+          } else {
+            // The statement had left its wait, or the server did not apply the cancel: keep watching.
+            onExceeded(false);
+            waiting = null;
+            onLog('The cancel did not apply; the lock wait is still being watched.');
+          }
         } catch (error) {
           onExceeded(false);
           giveUp(error);
