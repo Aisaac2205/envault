@@ -74,6 +74,17 @@ This is **the most critical rule**. Restoring over PROD would destroy live data.
 - **SSE**: cookies are sent natively by `EventSource` — no query-param token hack required.
 - **Admin seed**: on first boot, a default admin user is created from `BETTER_AUTH_ADMIN_EMAIL` / `BETTER_AUTH_ADMIN_PASSWORD` env vars.
 
+### Password policy
+
+Every flow that sets a new password applies the same policy on the server (`apps/api/src/auth/password-policy/`, wired as the Better Auth `hooks.before` in `auth.config.ts`): sign-up (closed over HTTP, used by the admin seed), admin create-user, admin set-user-password, change-password, reset-password and set-password. It follows NIST SP 800-63B: length and a refusal of what attackers try first, with no composition rules (no forced upper case, digit or symbol). A password is refused when it:
+
+- is shorter than 12 or longer than 128 characters;
+- is a common password: a curated list of base words (`password`, `welcome`, `qwerty`, ...) matched through case, simple leetspeak, separators and digits or symbols around the word, so `Welcome12345!` is refused and a passphrase of several words is not;
+- is a trivial pattern: one repeated character, a repeated block, an ascending or descending run (`123456789012`, `abcdefghijkl`), a keyboard walk (`qwertyuiopas`) or fewer than 5 distinct characters;
+- contains the part of the account's email before the `@`, or the account's display name (4 or more characters in either case), when the request or the session carries them.
+
+A refusal answers HTTP 400 with the code `PASSWORD_TOO_WEAK` and a message that names the rule. The policy applies to new or changed passwords only: checking an existing password (sign-in, `verify-password`, the PROD delete confirmation) is untouched, and existing passwords keep working with no forced reset. The admin seed goes through the same policy: a refused `BETTER_AUTH_ADMIN_PASSWORD` is logged and no admin is created.
+
 ### Session data used by the API
 
 | Field | Use |

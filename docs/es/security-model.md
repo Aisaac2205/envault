@@ -74,6 +74,17 @@ Esta es **la regla más crítica**. Restaurar sobre PROD destruiría datos en vi
 - **SSE**: las cookies las manda `EventSource` nativamente — no se necesita el hack de token por query param.
 - **Seed de admin**: al primer boot, se crea un usuario admin por defecto desde `BETTER_AUTH_ADMIN_EMAIL` / `BETTER_AUTH_ADMIN_PASSWORD`.
 
+### Política de contraseñas
+
+Todo flujo que define una contraseña nueva aplica la misma política en el servidor (`apps/api/src/auth/password-policy/`, conectada como `hooks.before` de Better Auth en `auth.config.ts`): sign-up (cerrado por HTTP, lo usa el seed de admin), creación de usuario por un admin, asignación de contraseña a un usuario por un admin, change-password, reset-password y set-password. Sigue NIST SP 800-63B: longitud y rechazo de lo primero que prueba un atacante, sin reglas de composición (no se exige mayúscula, dígito ni símbolo). Una contraseña se rechaza cuando:
+
+- tiene menos de 12 o más de 128 caracteres;
+- es una contraseña común: una lista curada de palabras base (`password`, `welcome`, `qwerty`, ...) que se compara sin distinguir mayúsculas, con el leetspeak simple deshecho y sin los separadores ni los dígitos o símbolos que rodean la palabra, de modo que `Welcome12345!` se rechaza y una frase de varias palabras no;
+- es un patrón trivial: un solo carácter repetido, un bloque repetido, una secuencia ascendente o descendente (`123456789012`, `abcdefghijkl`), un recorrido del teclado (`qwertyuiopas`) o menos de 5 caracteres distintos;
+- contiene la parte del correo de la cuenta anterior a la `@`, o el nombre visible de la cuenta (4 o más caracteres en ambos casos), cuando la request o la sesión los incluyen.
+
+El rechazo responde HTTP 400 con el código `PASSWORD_TOO_WEAK` y un mensaje que nombra la regla. La política se aplica solo a contraseñas nuevas o modificadas: la verificación de una contraseña existente (inicio de sesión, `verify-password`, la confirmación de borrado de PROD) no cambia, y las contraseñas existentes siguen funcionando sin un reseteo forzado. El seed de admin pasa por la misma política: un `BETTER_AUTH_ADMIN_PASSWORD` rechazado se registra en el log y no se crea ningún admin.
+
 ### Datos de sesión usados por la API
 
 | Campo | Uso |

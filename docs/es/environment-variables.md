@@ -25,6 +25,8 @@ CORS_ORIGIN=http://localhost:5173        # required en production
 BETTER_AUTH_SECRET=<string-hex-de-64-chars>
 BETTER_AUTH_URL=http://localhost:3000   # URL pública base de la API
 BETTER_AUTH_ADMIN_EMAIL=admin@example.com
+# Solo se usa para crear el primer admin. De 12 a 128 caracteres y la política
+# de contraseñas: ver la nota debajo de este bloque.
 BETTER_AUTH_ADMIN_PASSWORD=<password-fuerte>
 
 # ── Cifrado (required) ─────────────────────────────────────────
@@ -81,6 +83,8 @@ DB_PASSWORD=changeme
 > `REDIS_HOST` es obligatorio cuando `NODE_ENV=production`, salvo que se defina `REDIS_URL`; fuera de producción su valor por defecto es `localhost`. Si no se define ninguna de las dos, la API no arranca en lugar de conectarse silenciosamente a `localhost`. Mantenga Redis en una red privada (la red de Docker Compose o la red privada de Railway); si debe atravesar una red pública, use una `REDIS_URL` con `rediss://` o `REDIS_TLS=true`.
 >
 > `CORS_ORIGIN` la sigue exigiendo la validación de env aunque las topologías same-origin de Docker Compose / Railway de más abajo hagan que el browser nunca llegue a la API cross-origin — ver la nota al lado, ahí abajo.
+>
+> `BETTER_AUTH_ADMIN_PASSWORD` solo se usa para crear el primer admin y debe cumplir la [política de contraseñas](security-model.md#política-de-contraseñas): de 12 a 128 caracteres; que no sea una contraseña común ni un patrón (`password1234`, `123456789012`, `qwertyuiop`); y que no contenga la parte de `BETTER_AUTH_ADMIN_EMAIL` anterior a la `@` ni el nombre `Admin`, que usa la cuenta sembrada. Si la contraseña se rechaza, la API arranca igual, registra un error que nombra la regla incumplida y no crea ningún admin: se define una contraseña más fuerte y se reinicia. Mientras exista un usuario con `BETTER_AUTH_ADMIN_EMAIL` la variable no se lee, de modo que un admin existente no se vuelve a validar y los despliegues que ya tienen uno no se ven afectados. La validación de env (`env.validation.ts`) sigue exigiendo solo 8 caracteres; la política se aplica al crear el admin.
 
 ---
 
@@ -138,6 +142,8 @@ BETTER_AUTH_SECRET=<string-hex-de-64-chars>
 # rompe todas las rutas de auth en silencio.
 BETTER_AUTH_URL=https://app.miempresa.com
 BETTER_AUTH_ADMIN_EMAIL=admin@miempresa.com
+# De 12 a 128 caracteres y la política de contraseñas (ver la sección de la API
+# más arriba).
 BETTER_AUTH_ADMIN_PASSWORD=<password-fuerte>
 
 # ── Cloudflare R2 (vacíos OK en development) ───────────────────
