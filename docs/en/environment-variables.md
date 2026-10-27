@@ -45,7 +45,12 @@ R2_PUBLIC_BASE_URL=
 # R2_ENDPOINT=http://minio:9000
 
 # ── Restore and Backup (optional) ──────────────────────────────
-# Timeout in milliseconds for database restore operations (default: 1800000 = 30 min).
+# Time limit in milliseconds for a whole restore, counted from when it starts
+# running: the download from object storage and the pg_restore / mysql CLI
+# together (default: 1800000 = 30 min). A restore that goes past it fails and
+# the queue moves on. The final swap of a MySQL restore is never cut in half: it
+# finishes or rolls back, and a swap that finishes late still counts as a
+# completed restore.
 RESTORE_TIMEOUT_MS=1800000
 # Time in milliseconds a restore waits for a lock another session holds on the
 # target's tables (default: 30000 = 30 s). PostgreSQL: a statement of pg_restore

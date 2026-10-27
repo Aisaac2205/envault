@@ -95,7 +95,7 @@ Full reference in [environment-variables.md](environment-variables.md). The tabl
 | `R2_SECRET_ACCESS_KEY` | yes in production | Generated from Cloudflare R2 API Tokens |
 | `R2_BUCKET_NAME` | yes in production | Cloudflare R2 bucket designated for backups |
 | `BACKUP_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for database dump execution (30 minutes) |
-| `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Maximum timeout in milliseconds for restore executions |
+| `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Time limit in milliseconds for a whole restore, counted from when it starts running: the download from object storage and the `pg_restore` / `mysql` CLI together. A restore that goes past it fails and the queue moves on. The final swap of a MySQL restore is never cut in half: it finishes or rolls back, and a swap that finishes late still counts as a completed restore. Raise it if your restores legitimately take longer |
 | `RESTORE_LOCK_WAIT_TIMEOUT_MS` | no (default `30000`) | Milliseconds a restore waits for each lock another session holds on the target's tables before failing and leaving the target unchanged: a PostgreSQL restore cancels the `pg_restore` statement that has waited this long, which rolls the restore back, and a MySQL restore applies it to each step of the final swap. It applies per lock attempt, and the target application's queries on those tables wait meanwhile |
 
 > **Redis network**: keep Redis on a private network (the Docker network, or Railway private networking). If it must cross a public network, connect with a `rediss://` `REDIS_URL` or set `REDIS_TLS=true`.

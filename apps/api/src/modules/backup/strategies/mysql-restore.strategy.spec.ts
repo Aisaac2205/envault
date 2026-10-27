@@ -33,14 +33,14 @@ const connection = {
 /** Every `mysql ... -e <sql>` the strategy ran, so drops can be asserted. */
 let cliStatements: string[];
 
-function fakeMysqlProcess(exitCode: number): EventEmitter {
+function fakeMysqlProcess(exitCode: number | null): EventEmitter & { kill: jest.Mock } {
   const child = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),
     kill: jest.fn(),
   });
-  setImmediate(() => child.emit('close', exitCode));
+  if (exitCode !== null) setImmediate(() => child.emit('close', exitCode));
   return child;
 }
 
@@ -171,6 +171,162 @@ describe('MySQLRestoreStrategy', () => {
       expect(conn.end).toHaveBeenCalledTimes(1);
       expect(swapMock).not.toHaveBeenCalled();
       expect(drops().some((s) => s.includes('_shadow_'))).toBe(true);
+    });
+  });
+
+  // A restore that is cancelled or out of time must not report back while a
+  // mysql CLI is still running: the caller releases the target's advisory lock
+  // and lease as soon as it hears.
+  describe('stopping the mysql CLI', () => {
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const outcome = (promise: Promise<unknown>) => {
+      const state: { settled: boolean; error?: Error } = { settled: false };
+      promise.then(
+        () => {
+          state.settled = true;
+        },
+        (error: Error) => {
+          state.settled = true;
+          state.error = error;
+        },
+      );
+      return state;
+    };
+    /** The Nth spawned `mysql` stays alive until the test lets it exit. */
+    const hangOn = (nth: number) => {
+      const hung: ReturnType<typeof fakeMysqlProcess>[] = [];
+      let spawned = 0;
+      spawnMock.mockImplementation((_cmd: string, args: string[]) => {
+        spawned += 1;
+        const e = args.indexOf('-e');
+        if (e >= 0) cliStatements.push(args[e + 1]);
+        if (spawned !== nth) return fakeMysqlProcess(0);
+        const child = fakeMysqlProcess(null);
+        hung.push(child);
+        return child;
+      });
+      return hung;
+    };
+    /** The fake CLIs close on a real setImmediate, so let the event loop turn as well as the fake clock. */
+    const turns = async (count = 5) => {
+      for (let i = 0; i < count; i += 1) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await jest.advanceTimersByTimeAsync(0);
+      }
+    };
+    const exit = (child: EventEmitter) => {
+      child.emit('exit', null, 'SIGTERM');
+      child.emit('close', null);
+    };
+
+    it('waits for the CREATE DATABASE of the shadow to exit after a cancel, and rejects with the cancel', async () => {
+      const creating = hangOn(1);
+      const controller = new AbortController();
+      const state = outcome(run(controller.signal));
+      await turns();
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(1_000);
+
+      expect(creating[0].kill).toHaveBeenCalledWith('SIGTERM');
+      expect(state.settled).toBe(false);
+
+      exit(creating[0]);
+      await turns();
+
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+      // The cleanup still runs: the shadow database is dropped.
+      expect(drops().some((s) => s.includes('_shadow_'))).toBe(true);
+    });
+
+    it('waits for the shadow load to exit after a cancel', async () => {
+      const hung = hangOn(2);
+      const controller = new AbortController();
+      const state = outcome(run(controller.signal));
+      await turns();
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(1_000);
+
+      expect(hung[0].kill).toHaveBeenCalledWith('SIGTERM');
+      expect(state.settled).toBe(false);
+
+      exit(hung[0]);
+      await turns();
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+    });
+
+    it('kills a mysql CLI that ignores SIGTERM, and keeps waiting for one that survives SIGKILL', async () => {
+      const hung = hangOn(2);
+      const controller = new AbortController();
+      const state = outcome(run(controller.signal));
+      await turns();
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(hung[0].kill).toHaveBeenCalledWith('SIGKILL');
+      expect(state.settled).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+      await turns();
+      expect(state.settled).toBe(false);
+
+      exit(hung[0]);
+      await turns();
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+    });
+
+    it('waits for the exit when the per-step timeout fires, for the load and for a statement', async () => {
+      const config = {
+        get: (key: string) => (key === 'RESTORE_TIMEOUT_MS' ? 10_000 : undefined),
+      } as ConfigService;
+      const hung = hangOn(2);
+      const state = outcome(new MySQLRestoreStrategy(config).execute(connection, '/tmp/dump.sql', jest.fn()));
+      await turns();
+
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(hung[0].kill).toHaveBeenCalledWith('SIGTERM');
+      expect(state.settled).toBe(false);
+
+      exit(hung[0]);
+      await turns();
+      expect(state.error?.message).toBe('mysql restore exceeded 10000ms timeout');
+
+      const statement = hangOn(1);
+      const second = outcome(new MySQLRestoreStrategy(config).execute(connection, '/tmp/dump.sql', jest.fn()));
+      await turns();
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(statement[0].kill).toHaveBeenCalledWith('SIGTERM');
+      expect(second.settled).toBe(false);
+
+      exit(statement[0]);
+      await turns();
+      expect(second.error?.message).toBe('mysql execute exceeded 10000ms timeout');
+    });
+
+    it('hands the signal to the CREATE DATABASE of the pre-restore database', async () => {
+      // 1: shadow create, 2: shadow load, 3: pre-restore create.
+      const hung = hangOn(3);
+      const controller = new AbortController();
+      const state = outcome(run(controller.signal));
+      await turns(8);
+      expect(hung).toHaveLength(1);
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(1_000);
+
+      expect(hung[0].kill).toHaveBeenCalledWith('SIGTERM');
+      expect(state.settled).toBe(false);
+      exit(hung[0]);
+      await turns();
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+      expect(swapMock).not.toHaveBeenCalled();
     });
   });
 

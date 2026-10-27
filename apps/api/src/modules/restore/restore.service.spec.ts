@@ -1,10 +1,12 @@
 import { BadRequestException, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Readable } from 'stream';
 import { BackupService } from '../backup/backup.service';
 import { R2Service } from '../backup/r2.service';
 import { RestoreStrategy } from '../backup/interfaces/restore-strategy.interface';
+import { RestoreRollbackError } from '../backup/strategies/mysql-schema-objects';
 import { ConnectionsService } from '../connections/connections.service';
 import { Environment } from '../../database/enums/environment.enum';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
@@ -813,3 +815,437 @@ describe('RestoreService queue and cancelRestore', () => {
   });
 });
 
+
+describe('RestoreService deadline of the whole restore', () => {
+  const targetConnectionId = '00000000-0000-0000-0000-000000000001';
+  const jobId = '00000000-0000-0000-0000-000000000002';
+  const leaseToken = '00000000-0000-0000-0000-000000000003';
+  const testUser: AuthUser = {
+    id: 'user-1',
+    email: 'admin@envault.local',
+    name: 'Admin',
+    role: 'admin',
+  };
+  const DEADLINE_MS = 120_000;
+  const DEADLINE_MESSAGE = 'Restore exceeded the time limit of 2 min (RESTORE_TIMEOUT_MS)';
+  const CANCEL_MESSAGE = 'Operación cancelada por el usuario';
+  const dto = { targetConnectionId, sourceBackupId: 'backup-1', isDryRun: false };
+
+  const target = {
+    id: targetConnectionId,
+    name: 'Test Target',
+    dbType: DbTypeEnum.POSTGRES,
+    environment: Environment.DEV,
+  };
+
+  /** Settles when the signal fires, the way an aborted R2 request or CLI does. */
+  const hangsUntilAborted =
+    (message: string) =>
+    (...args: unknown[]) => {
+      const options = args[args.length - 1] as { abortSignal?: AbortSignal } | undefined;
+      return new Promise<never>((_resolve, reject) => {
+        options?.abortSignal?.addEventListener('abort', () =>
+          reject(Object.assign(new Error(message), { name: 'AbortError' })),
+        );
+      });
+    };
+
+  async function build(
+    options: {
+      timeoutMs?: number;
+      download?: jest.Mock;
+      getObjectSize?: jest.Mock;
+      execute?: jest.Mock;
+      backup?: Record<string, unknown>;
+      startIfLeaseActive?: jest.Mock;
+    } = {},
+  ) {
+    const restoreRepository = {
+      startIfLeaseActive: options.startIfLeaseActive ?? jest.fn().mockResolvedValue(true),
+      failPendingIfLeaseInactive: jest.fn().mockResolvedValue(undefined),
+      updateStatus: jest.fn().mockResolvedValue(undefined),
+      findById: jest
+        .fn()
+        .mockResolvedValue({ id: jobId, status: JobStatus.RUNNING, targetConnectionId }),
+    };
+    const leaseRepository = {
+      renew: jest.fn().mockResolvedValue(true),
+      release: jest.fn().mockResolvedValue(true),
+      releaseByJobId: jest.fn().mockResolvedValue(true),
+    };
+    const ownership = {
+      tryAcquire: jest.fn().mockResolvedValue({ targetConnectionId }),
+      release: jest.fn().mockResolvedValue(undefined),
+      findActiveTarget: jest.fn().mockResolvedValue(target),
+      hasActiveLease: jest.fn().mockResolvedValue(true),
+    };
+    const staging = {
+      create: jest.fn().mockResolvedValue({ directoryPath: 'staging', dumpFilePath: 'staging/dump' }),
+      writeDump: jest.fn().mockResolvedValue({ sha256: 'a'.repeat(64), bytes: 100 }),
+      cleanup: jest.fn().mockResolvedValue(undefined),
+      checkAvailableDiskSpace: jest.fn().mockResolvedValue({ availableBytes: 1, requiredBytes: 1 }),
+    };
+    const r2 = {
+      getObjectSize: options.getObjectSize ?? jest.fn().mockResolvedValue(1024),
+      download: options.download ?? jest.fn().mockResolvedValue(Readable.from('dump')),
+      downloadJson: jest.fn().mockResolvedValue(null),
+    };
+    const sse = { register: jest.fn(), emit: jest.fn(), complete: jest.fn() };
+    const execute = options.execute ?? jest.fn().mockResolvedValue(undefined);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        RestoreService,
+        { provide: RestoreRepository, useValue: restoreRepository },
+        { provide: RestoreLeaseRepository, useValue: leaseRepository },
+        { provide: RestoreExecutionOwnershipService, useValue: ownership },
+        { provide: RestoreStagingService, useValue: staging },
+        { provide: R2Service, useValue: r2 },
+        {
+          provide: BackupService,
+          useValue: {
+            getBackupById: jest.fn().mockResolvedValue({
+              id: 'backup-1',
+              fileKey: 'backups/test.dump',
+              dbType: DbTypeEnum.POSTGRES,
+              status: JobStatus.COMPLETED,
+              ...options.backup,
+            }),
+          },
+        },
+        { provide: ConnectionsService, useValue: { findById: jest.fn().mockResolvedValue(target) } },
+        { provide: SseService, useValue: sse },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) =>
+              key === 'RESTORE_TIMEOUT_MS' ? (options.timeoutMs ?? DEADLINE_MS) : undefined,
+          },
+        },
+        {
+          provide: 'RESTORE_STRATEGIES',
+          useValue: new Map<DbTypeEnum, RestoreStrategy>([[DbTypeEnum.POSTGRES, { execute }]]),
+        },
+      ],
+    }).compile();
+
+    const service = module.get(RestoreService);
+    return {
+      service,
+      restoreRepository,
+      leaseRepository,
+      ownership,
+      staging,
+      r2,
+      sse,
+      execute,
+      run: () => service.executeRestoreAsync(jobId, dto, testUser, leaseToken),
+    };
+  }
+
+  /** The mocks resolve on microtasks; a few turns of the fake clock drain them. */
+  const settled = async () => {
+    for (let i = 0; i < 5; i += 1) await jest.advanceTimersByTimeAsync(0);
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('ends a restore stuck in the download at RESTORE_TIMEOUT_MS, with the deadline message, and cleans up', async () => {
+    const t = await build({ download: jest.fn(hangsUntilAborted('Request aborted')) });
+
+    const finished = t.run();
+    await settled();
+    expect(t.restoreRepository.updateStatus).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(DEADLINE_MS - 1);
+    expect(t.restoreRepository.updateStatus).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1);
+    await finished;
+
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledTimes(1);
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.FAILED,
+      expect.objectContaining({ errorMessage: DEADLINE_MESSAGE, completedAt: expect.any(Date) }),
+    );
+    expect(t.sse.emit).toHaveBeenCalledWith(jobId, {
+      type: 'failed',
+      payload: { jobId, error: DEADLINE_MESSAGE },
+    });
+    expect(t.staging.cleanup).toHaveBeenCalledTimes(1);
+    expect(t.ownership.release).toHaveBeenCalledTimes(1);
+    expect(t.leaseRepository.release).toHaveBeenCalledWith(targetConnectionId, jobId, leaseToken);
+    expect(t.sse.complete).toHaveBeenCalledWith(jobId);
+    expect(t.execute).not.toHaveBeenCalled();
+    // Nothing keeps running: neither the lease renewal nor the deadline.
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('puts the deadline into every R2 step and into the download of the dump', async () => {
+    const t = await build({ backup: { sha256: undefined } });
+
+    await t.run();
+
+    const signalOf = (call: unknown[]) =>
+      (call[call.length - 1] as { abortSignal: AbortSignal }).abortSignal;
+    expect(t.r2.getObjectSize).toHaveBeenCalledWith('backups/test.dump', {
+      abortSignal: expect.any(AbortSignal),
+    });
+    expect(t.r2.download).toHaveBeenCalledWith('backups/test.dump', {
+      abortSignal: expect.any(AbortSignal),
+    });
+    expect(t.r2.downloadJson).toHaveBeenCalledWith('backups/test.manifest.json', {
+      abortSignal: expect.any(AbortSignal),
+    });
+    expect(t.staging.writeDump).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      signal: expect.any(AbortSignal),
+    });
+    // One signal for the whole run, the one the strategy gets.
+    const strategySignal = (t.execute.mock.calls[0][3] as { abortSignal: AbortSignal }).abortSignal;
+    expect(signalOf(t.r2.getObjectSize.mock.calls[0])).toBe(strategySignal);
+    expect(signalOf(t.r2.download.mock.calls[0])).toBe(strategySignal);
+    expect(signalOf(t.r2.downloadJson.mock.calls[0])).toBe(strategySignal);
+  });
+
+  it('disarms the deadline when the restore finishes in time', async () => {
+    const t = await build();
+
+    await t.run();
+    await jest.advanceTimersByTimeAsync(10 * DEADLINE_MS);
+
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledTimes(1);
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.COMPLETED,
+      expect.anything(),
+    );
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('classifies by the reason of the abort, never by the message of the error', async () => {
+    // Every strategy rejects an aborted signal with the cancel text, whatever fired it.
+    const t = await build({ download: jest.fn(hangsUntilAborted(CANCEL_MESSAGE)) });
+
+    const finished = t.run();
+    await settled();
+    await jest.advanceTimersByTimeAsync(DEADLINE_MS);
+    await finished;
+
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.FAILED,
+      expect.objectContaining({ errorMessage: DEADLINE_MESSAGE }),
+    );
+  });
+
+  it('keeps the cancel message for a user cancel, whatever the aborted step says', async () => {
+    const t = await build({ download: jest.fn(hangsUntilAborted('Request aborted')) });
+
+    const finished = t.run();
+    await settled();
+    await expect(t.service.cancelRestore(jobId, testUser)).resolves.toMatchObject({
+      status: JobStatus.FAILED,
+    });
+    await finished;
+
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledTimes(1);
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.FAILED,
+      expect.objectContaining({ errorMessage: CANCEL_MESSAGE }),
+    );
+    expect(t.sse.emit).toHaveBeenCalledWith(jobId, {
+      type: 'failed',
+      payload: { jobId, error: CANCEL_MESSAGE },
+    });
+    // The deadline was disarmed with the run.
+    await jest.advanceTimersByTimeAsync(10 * DEADLINE_MS);
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledTimes(1);
+  });
+
+  describe('when the deadline fires while the MySQL swap is running', () => {
+    /** A strategy that ignores the signal until the test lets it end, as the swap does. */
+    function swap() {
+      let finish: () => void = () => undefined;
+      let fail: (error: Error) => void = () => undefined;
+      let signal: AbortSignal | undefined;
+      const execute = jest.fn(
+        (_connection: unknown, _path: string, _log: unknown, options: { abortSignal: AbortSignal }) => {
+          signal = options.abortSignal;
+          return new Promise<void>((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          });
+        },
+      );
+      return {
+        execute,
+        finish: () => finish(),
+        fail: (error: Error) => fail(error),
+        signal: () => signal,
+      };
+    }
+
+    it('lets it finish and reports COMPLETED, because the target changed', async () => {
+      const s = swap();
+      const t = await build({ execute: s.execute });
+
+      const finished = t.run();
+      await settled();
+      await jest.advanceTimersByTimeAsync(DEADLINE_MS);
+      expect(s.signal()?.aborted).toBe(true);
+      expect(t.restoreRepository.updateStatus).not.toHaveBeenCalled();
+
+      s.finish();
+      await finished;
+
+      expect(t.restoreRepository.updateStatus).toHaveBeenCalledTimes(1);
+      expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+        jobId,
+        JobStatus.COMPLETED,
+        expect.objectContaining({ completedAt: expect.any(Date) }),
+      );
+      expect(t.sse.emit).toHaveBeenCalledWith(jobId, expect.objectContaining({ type: 'completed' }));
+      expect(t.sse.emit).not.toHaveBeenCalledWith(jobId, expect.objectContaining({ type: 'failed' }));
+      // The log says why the job lasted longer than the limit.
+      expect(t.sse.emit).toHaveBeenCalledWith(jobId, {
+        type: 'log',
+        payload: {
+          message: expect.stringContaining('time limit'),
+          timestamp: expect.any(Date),
+        },
+      });
+    });
+
+    it('keeps the lease renewing and the target protected until the swap ends', async () => {
+      const s = swap();
+      const t = await build({ execute: s.execute });
+
+      const finished = t.run();
+      await settled();
+      await jest.advanceTimersByTimeAsync(DEADLINE_MS);
+      const renewalsAtDeadline = t.leaseRepository.renew.mock.calls.length;
+
+      await jest.advanceTimersByTimeAsync(180_000);
+
+      expect(t.leaseRepository.renew.mock.calls.length).toBe(renewalsAtDeadline + 3);
+      expect(t.leaseRepository.release).not.toHaveBeenCalled();
+      expect(t.ownership.release).not.toHaveBeenCalled();
+
+      s.finish();
+      await finished;
+      expect(t.leaseRepository.release).toHaveBeenCalledTimes(1);
+      expect(t.ownership.release).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails with the deadline message when the swap rolled back cleanly', async () => {
+      const s = swap();
+      const t = await build({ execute: s.execute });
+
+      const finished = t.run();
+      await settled();
+      await jest.advanceTimersByTimeAsync(DEADLINE_MS);
+      s.fail(new Error(CANCEL_MESSAGE));
+      await finished;
+
+      expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+        jobId,
+        JobStatus.FAILED,
+        expect.objectContaining({ errorMessage: DEADLINE_MESSAGE }),
+      );
+    });
+
+    it.each([
+      ['the deadline', () => jest.advanceTimersByTimeAsync(DEADLINE_MS), DEADLINE_MESSAGE],
+      ['a cancel', (t: Awaited<ReturnType<typeof build>>) => t.service.cancelRestore(jobId, testUser), CANCEL_MESSAGE],
+    ])('after %s, keeps the error of an unrelated failure and gives an abort error the reason', async (_abort, abort, reasonMessage) => {
+      const unrelated = new Error('EACCES: permission denied');
+      const abortShaped = Object.assign(new Error('The operation was aborted'), { code: 'ABORT_ERR' });
+      for (const [failure, expected] of [[unrelated, unrelated.message], [abortShaped, reasonMessage]] as const) {
+        const s = swap();
+        const t = await build({ execute: s.execute });
+
+        const finished = t.run();
+        await settled();
+        await abort(t);
+        s.fail(failure);
+        await finished;
+
+        expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+          jobId,
+          JobStatus.FAILED,
+          expect.objectContaining({ errorMessage: expected }),
+        );
+      }
+    });
+
+    it('keeps the message that names the pre-restore database when the rollback failed', async () => {
+      const s = swap();
+      const t = await build({ execute: s.execute });
+
+      const finished = t.run();
+      await settled();
+      await jest.advanceTimersByTimeAsync(DEADLINE_MS);
+      s.fail(
+        new RestoreRollbackError('app_pre_restore_1', new Error('swap'), new Error('rollback'), {
+          renamed: true,
+        }),
+      );
+      await finished;
+
+      const [, status, details] = t.restoreRepository.updateStatus.mock.calls[0];
+      expect(status).toBe(JobStatus.FAILED);
+      expect(details.errorMessage).toContain('app_pre_restore_1');
+      expect(details.errorMessage).not.toBe(DEADLINE_MESSAGE);
+    });
+  });
+
+  it('starts counting when the restore starts running, not when it was admitted', async () => {
+    let start: (started: boolean) => void = () => undefined;
+    const startIfLeaseActive = jest.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          start = resolve;
+        }),
+    );
+    const t = await build({ startIfLeaseActive });
+
+    const finished = t.run();
+    await settled();
+    // Waiting for its turn for longer than the limit.
+    await jest.advanceTimersByTimeAsync(3 * DEADLINE_MS);
+    start(true);
+    await finished;
+
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.COMPLETED,
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    [1_800_000, '30 min'],
+    [90_000, '1.5 min'],
+    [10_000, '10 s'],
+  ])('words a limit of %p ms as %p', async (timeoutMs, wording) => {
+    const t = await build({ timeoutMs, download: jest.fn(hangsUntilAborted('Request aborted')) });
+
+    const finished = t.run();
+    await settled();
+    await jest.advanceTimersByTimeAsync(timeoutMs);
+    await finished;
+
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.FAILED,
+      expect.objectContaining({
+        errorMessage: `Restore exceeded the time limit of ${wording} (RESTORE_TIMEOUT_MS)`,
+      }),
+    );
+  });
+});

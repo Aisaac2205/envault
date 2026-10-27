@@ -78,12 +78,16 @@ describe('PostgresRestoreStrategy', () => {
   };
 
   /** Starts a restore whose preflight prints `output`; returns the pg_restore process it spawns. */
-  async function startRestore(output: string, filePath = '/tmp/valid.dump') {
+  async function startRestore(
+    output: string,
+    filePath = '/tmp/valid.dump',
+    options?: { abortSignal?: AbortSignal },
+  ) {
     const preflightProc = mockProcess();
     const restoreProc = mockProcess();
     spawn.mockReturnValueOnce(preflightProc).mockReturnValueOnce(restoreProc);
 
-    const result = strategy.execute(mockConnection, filePath, onLog);
+    const result = strategy.execute(mockConnection, filePath, onLog, options);
     preflightProc.stdout.emit('data', Buffer.from(output));
     preflightProc.emit('close', 0);
     await flush();
@@ -289,6 +293,159 @@ describe('PostgresRestoreStrategy', () => {
     restoreProc.emit('close', 1);
 
     expect((await failure as Error).message).toContain('pg_restore exited with code 1');
+  });
+
+  // A restore that is cancelled or out of time must not report back while its
+  // CLI is still running: the caller releases the target's advisory lock and
+  // lease as soon as it hears, and a live pg_restore would then be loading into
+  // a target another restore may already own.
+  describe('stopping pg_restore', () => {
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const outcome = (promise: Promise<unknown>) => {
+      const state: { settled: boolean; error?: Error } = { settled: false };
+      promise.then(
+        () => {
+          state.settled = true;
+        },
+        (error: Error) => {
+          state.settled = true;
+          state.error = error;
+        },
+      );
+      return state;
+    };
+    const exit = (proc: MockChildProcess) => {
+      proc.emit('exit', null, 'SIGTERM');
+      proc.emit('close', null);
+    };
+
+    it('asks pg_restore to stop on cancel and rejects only after it exited', async () => {
+      const controller = new AbortController();
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'), undefined, {
+        abortSignal: controller.signal,
+      });
+      const state = outcome(result);
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(1_000);
+
+      expect(restoreProc.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(restoreProc.kill).toHaveBeenCalledTimes(1);
+      expect(state.settled).toBe(false);
+
+      exit(restoreProc);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+    });
+
+    it('kills pg_restore when it ignores the request to stop', async () => {
+      const controller = new AbortController();
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'), undefined, {
+        abortSignal: controller.signal,
+      });
+      const state = outcome(result);
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(4_999);
+      expect(restoreProc.kill).not.toHaveBeenCalledWith('SIGKILL');
+
+      await jest.advanceTimersByTimeAsync(1);
+      expect(restoreProc.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(state.settled).toBe(false);
+
+      exit(restoreProc);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+    });
+
+    it('keeps waiting for a pg_restore that survives SIGKILL, and rejects only once it exited', async () => {
+      const controller = new AbortController();
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'), undefined, {
+        abortSignal: controller.signal,
+      });
+      const state = outcome(result);
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(restoreProc.kill).toHaveBeenCalledWith('SIGKILL');
+      await jest.advanceTimersByTimeAsync(10 * 60_000);
+      expect(state.settled).toBe(false);
+
+      exit(restoreProc);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+    });
+
+    it('keeps the abort error when the exit arrives as a failed close', async () => {
+      const controller = new AbortController();
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'), undefined, {
+        abortSignal: controller.signal,
+      });
+      const state = outcome(result);
+
+      controller.abort();
+      restoreProc.emit('close', 143);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+    });
+
+    it('waits for the exit when the per-step timeout fires, too', async () => {
+      strategy = new PostgresRestoreStrategy(
+        { get: (key: string) => (key === 'RESTORE_TIMEOUT_MS' ? 10_000 : undefined) } as unknown as ConfigService,
+        { resolver: () => installed([17, 18]), readServerMajor } as unknown as PgToolchain,
+      );
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'));
+      const state = outcome(result);
+
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(restoreProc.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(state.settled).toBe(false);
+
+      exit(restoreProc);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(state.error?.message).toBe('pg_restore exceeded 10000ms timeout');
+    });
+
+    it('waits for the exit of the preflight listing, too', async () => {
+      const controller = new AbortController();
+      const preflightProc = mockProcess();
+      spawn.mockReturnValueOnce(preflightProc);
+      const result = strategy.execute(mockConnection, '/tmp/valid.dump', onLog, {
+        abortSignal: controller.signal,
+      });
+      const state = outcome(result);
+
+      controller.abort();
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(preflightProc.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(state.settled).toBe(false);
+
+      exit(preflightProc);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(state.error?.message).toBe('Operación cancelada por el usuario');
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not wait for a pg_restore that already finished', async () => {
+      const controller = new AbortController();
+      const { result, restoreProc } = await startRestore(listing('17.11', '17.11'), undefined, {
+        abortSignal: controller.signal,
+      });
+      restoreProc.emit('close', 0);
+      await result;
+
+      controller.abort();
+
+      expect(restoreProc.kill).not.toHaveBeenCalled();
+    });
   });
 
   // pg_restore opens every session with `SET lock_timeout = 0`, so a server-side

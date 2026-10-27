@@ -42,15 +42,44 @@ import {
   RestoreIncompatibleError,
   RestoreStrategy,
 } from '../backup/interfaces/restore-strategy.interface';
+import { RestoreRollbackError } from '../backup/strategies/mysql-schema-objects';
 import { Client } from 'pg';
 import { createConnection as createMysqlConnection, RowDataPacket } from 'mysql2/promise';
 
 const SNAPSHOT_TIMEOUT_MS = 10_000;
+const DEFAULT_RESTORE_TIMEOUT_MS = 1_800_000;
+const CANCELLED_MESSAGE = 'Operación cancelada por el usuario';
+
+/** Why the signal of a restore fired; the message of the job is chosen from it. */
+type RestoreAbortReason = { kind: 'cancelled' } | { kind: 'timeout'; timeoutMs: number };
+
+/** 1800000 -> "30 min", 90000 -> "1.5 min", 10000 -> "10 s". */
+function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 100) / 10} s`;
+  return `${Math.round(ms / 6_000) / 10} min`;
+}
+
+function deadlineMessage(timeoutMs: number): string {
+  return `Restore exceeded the time limit of ${formatDuration(timeoutMs)} (RESTORE_TIMEOUT_MS)`;
+}
+
+/** The AWS SDK and Node streams reject an aborted signal with an AbortError, the strategies with the cancel message. */
+function isAbortShaped(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === 'AbortError' ||
+    (error as NodeJS.ErrnoException).code === 'ABORT_ERR' ||
+    error.message === CANCELLED_MESSAGE
+  );
+}
 
 @Injectable()
 export class RestoreService implements OnApplicationBootstrap {
   private readonly logger = new Logger(RestoreService.name);
-  private readonly activeRestores = new Map<string, AbortController>();
+  private readonly activeRestores = new Map<
+    string,
+    { controller: AbortController; abort: (reason: RestoreAbortReason) => void }
+  >();
 
   constructor(
     private readonly restoreRepository: RestoreRepository,
@@ -70,10 +99,13 @@ export class RestoreService implements OnApplicationBootstrap {
     private readonly configService?: ConfigService,
   ) {}
 
+  /** Limit for the whole restore, from the moment it starts running. */
+  private get restoreTimeoutMs(): number {
+    return this.configService?.get<number>('RESTORE_TIMEOUT_MS') ?? DEFAULT_RESTORE_TIMEOUT_MS;
+  }
+
   private get restoreLeaseDurationMs(): number {
-    const timeout =
-      this.configService?.get<number>('RESTORE_TIMEOUT_MS') ?? 1_800_000;
-    return timeout + 5 * 60_000;
+    return this.restoreTimeoutMs + 5 * 60_000;
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -238,12 +270,24 @@ export class RestoreService implements OnApplicationBootstrap {
     let staging: RestoreStaging | null = null;
     let ownership: RestoreExecutionOwnership | null = null;
     let leaseRenewalTimer: NodeJS.Timeout | null = null;
+    let deadlineTimer: NodeJS.Timeout | null = null;
     const abortController = new AbortController();
-    this.activeRestores.set(jobId, abortController);
+    // Why the signal fired. The message of the job comes from this, never from
+    // the error that reached the catch: every step rejects an aborted signal in
+    // its own words (the CLIs say "cancelled by user" even for a timeout, the
+    // S3 client says "Request aborted").
+    const abortState: { reason: RestoreAbortReason | null } = { reason: null };
+    const abort = (reason: RestoreAbortReason): void => {
+      if (abortController.signal.aborted) return;
+      abortState.reason = reason;
+      abortController.abort();
+    };
+    this.activeRestores.set(jobId, { controller: abortController, abort });
+    const signal = abortController.signal;
 
     try {
-      if (abortController.signal.aborted) {
-        throw new Error('Operación cancelada por el usuario');
+      if (signal.aborted) {
+        throw new Error(CANCELLED_MESSAGE);
       }
 
       const started = await this.restoreRepository.startIfLeaseActive(
@@ -262,6 +306,12 @@ export class RestoreService implements OnApplicationBootstrap {
         );
         return;
       }
+
+      // The whole restore gets one limit, counted from here and not from when
+      // it was admitted: time spent waiting for its turn is not the restore's.
+      const timeoutMs = this.restoreTimeoutMs;
+      deadlineTimer = setTimeout(() => abort({ kind: 'timeout', timeoutMs }), timeoutMs);
+      deadlineTimer.unref?.();
 
       const renewalIntervalMs = Math.min(
         60_000,
@@ -303,8 +353,8 @@ export class RestoreService implements OnApplicationBootstrap {
       );
       const fileKey = await this.resolveSourceFileKey(dto, initialTarget);
 
-      if (abortController.signal.aborted) {
-        throw new Error('Operación cancelada por el usuario');
+      if (signal.aborted) {
+        throw new Error(CANCELLED_MESSAGE);
       }
 
       let expectedBytes: number | null = null;
@@ -322,7 +372,7 @@ export class RestoreService implements OnApplicationBootstrap {
       }
 
       if (!expectedBytes && typeof this.r2Service.getObjectSize === 'function') {
-        expectedBytes = (await this.r2Service.getObjectSize(fileKey)) ?? null;
+        expectedBytes = (await this.r2Service.getObjectSize(fileKey, { abortSignal: signal })) ?? null;
       }
 
       if (typeof this.restoreStagingService.checkAvailableDiskSpace === 'function') {
@@ -342,9 +392,10 @@ export class RestoreService implements OnApplicationBootstrap {
       staging = await this.restoreStagingService.create(jobId, dto.targetConnectionId);
       const dumpStats = await this.restoreStagingService.writeDump(
         staging,
-        await this.r2Service.download(fileKey),
+        await this.r2Service.download(fileKey, { abortSignal: signal }),
+        { signal },
       );
-      await this.verifyDumpIntegrity(dto, fileKey, dumpStats.sha256);
+      await this.verifyDumpIntegrity(dto, fileKey, dumpStats.sha256, signal);
 
       this.sseService.emit(jobId, {
         type: 'progress',
@@ -380,8 +431,8 @@ export class RestoreService implements OnApplicationBootstrap {
         );
       }
 
-      if (abortController.signal.aborted) {
-        throw new Error('Operación cancelada por el usuario');
+      if (signal.aborted) {
+        throw new Error(CANCELLED_MESSAGE);
       }
 
       await strategy.execute(
@@ -393,8 +444,27 @@ export class RestoreService implements OnApplicationBootstrap {
             payload: { message, timestamp: new Date() },
           });
         },
-        { abortSignal: abortController.signal },
+        { abortSignal: signal },
       );
+
+      // A strategy may refuse to stop once it is past the point of no return (the
+      // MySQL swap finishes or rolls back, it is never cut in half). If it
+      // finished, the target changed: this is a completed restore, however late.
+      if (abortState.reason) {
+        this.logger.warn(
+          `Restore job ${jobId} finished after it was asked to stop (${abortState.reason.kind})`,
+        );
+        this.sseService.emit(jobId, {
+          type: 'log',
+          payload: {
+            message:
+              abortState.reason.kind === 'timeout'
+                ? `The restore went past the time limit of ${formatDuration(abortState.reason.timeoutMs)} while its last step was running. That step cannot be interrupted, it finished and the target was restored.`
+                : 'The restore was cancelled while its last step was running. That step cannot be interrupted, it finished and the target was restored.',
+            timestamp: new Date(),
+          },
+        });
+      }
 
       this.sseService.emit(jobId, {
         type: 'progress',
@@ -412,8 +482,7 @@ export class RestoreService implements OnApplicationBootstrap {
       });
     } catch (error) {
       const completedAt = new Date();
-      const rawMessage =
-        error instanceof Error ? error.message : 'Error desconocido en restore';
+      const rawMessage = this.failureMessage(error, abortState.reason);
       const errorMessage = sanitizeMessage(rawMessage);
 
       this.logger.error(`Restore job ${jobId} failed: ${rawMessage}`);
@@ -433,6 +502,9 @@ export class RestoreService implements OnApplicationBootstrap {
       });
     } finally {
       this.activeRestores.delete(jobId);
+      if (deadlineTimer) {
+        clearTimeout(deadlineTimer);
+      }
       if (leaseRenewalTimer) {
         clearInterval(leaseRenewalTimer);
       }
@@ -471,6 +543,23 @@ export class RestoreService implements OnApplicationBootstrap {
         );
       }
     }
+  }
+
+  /**
+   * The message a failed restore is stored and reported with. An error the abort
+   * produced says why (a deadline, a cancel) whatever the step threw; any other
+   * error, even one arriving after the abort, keeps its own message.
+   * The exception is a failed rollback: its message tells where the original
+   * data is, and the person who has to recover it needs that more than the cause.
+   */
+  private failureMessage(error: unknown, reason: RestoreAbortReason | null): string {
+    if (error instanceof RestoreRollbackError) {
+      return error.message;
+    }
+    if (reason && isAbortShaped(error)) {
+      return reason.kind === 'timeout' ? deadlineMessage(reason.timeoutMs) : CANCELLED_MESSAGE;
+    }
+    return error instanceof Error ? error.message : 'Error desconocido en restore';
   }
 
   private async dryRun(
@@ -760,6 +849,7 @@ export class RestoreService implements OnApplicationBootstrap {
     dto: CreateRestoreDto,
     fileKey: string,
     actualSha256: string,
+    signal: AbortSignal,
   ): Promise<void> {
     let expectedSha256: string | null = null;
 
@@ -777,9 +867,14 @@ export class RestoreService implements OnApplicationBootstrap {
 
     if (!expectedSha256) {
       const manifestKey = fileKey.replace(/\.dump$/, '.manifest.json');
+      // A missing manifest only means there is nothing to compare with. A
+      // deadline or a cancel is not that: it must stop the restore, not skip the check.
       const manifest = await this.r2Service
-        .downloadJson<DumpManifest>(manifestKey)
-        .catch(() => null);
+        .downloadJson<DumpManifest>(manifestKey, { abortSignal: signal })
+        .catch((error: unknown) => {
+          if (signal.aborted) throw error;
+          return null;
+        });
 
       if (manifest && 'sha256' in manifest && manifest.sha256) {
         expectedSha256 = manifest.sha256;
@@ -843,7 +938,7 @@ export class RestoreService implements OnApplicationBootstrap {
     }
 
     const completedAt = new Date();
-    const errorMessage = 'Operación cancelada por el usuario';
+    const errorMessage = CANCELLED_MESSAGE;
 
     if (job.status === JobStatus.PENDING) {
       if (this.restoreQueue) {
@@ -886,9 +981,9 @@ export class RestoreService implements OnApplicationBootstrap {
       };
     }
 
-    const controller = this.activeRestores.get(job.id);
-    if (controller) {
-      controller.abort();
+    const active = this.activeRestores.get(job.id);
+    if (active) {
+      active.abort({ kind: 'cancelled' });
     } else {
       await this.restoreLeaseRepository.releaseByJobId(job.id).catch(() => {});
       await this.restoreRepository.updateStatus(job.id, JobStatus.FAILED, {

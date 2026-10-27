@@ -2,6 +2,8 @@
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { createServer as createHttpServer } from 'http';
+import type { AddressInfo } from 'net';
 import { Readable } from 'stream';
 import { R2Service } from './r2.service';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -87,6 +89,94 @@ describe('R2Service', () => {
     await expect(service.upload('failed.dump', stream)).rejects.toThrow('Network error');
 
     expect(mockAbort).toHaveBeenCalled();
+  });
+
+  describe('abort signal', () => {
+    const sendOf = (target: R2Service) =>
+      jest.spyOn((target as unknown as { client: { send: jest.Mock } }).client, 'send');
+
+    it('hands the signal of a download to the S3 request', async () => {
+      const send = sendOf(service).mockResolvedValue({ Body: Readable.from(['dump']) } as never);
+      const controller = new AbortController();
+
+      await service.download('dumps/a.dump', { abortSignal: controller.signal });
+
+      expect(send).toHaveBeenCalledWith(expect.anything(), { abortSignal: controller.signal });
+    });
+
+    it('hands the signal of a size lookup to the S3 request', async () => {
+      const send = sendOf(service).mockResolvedValue({ ContentLength: 42 } as never);
+      const controller = new AbortController();
+
+      await expect(
+        service.getObjectSize('dumps/a.dump', { abortSignal: controller.signal }),
+      ).resolves.toBe(42);
+
+      expect(send).toHaveBeenCalledWith(expect.anything(), { abortSignal: controller.signal });
+    });
+
+    it('hands the signal of a JSON download to the S3 request', async () => {
+      const send = sendOf(service).mockResolvedValue({
+        Body: Readable.from([Buffer.from('{"a":1}')]),
+      } as never);
+      const controller = new AbortController();
+
+      await expect(
+        service.downloadJson('dumps/a.manifest.json', { abortSignal: controller.signal }),
+      ).resolves.toEqual({ a: 1 });
+
+      expect(send).toHaveBeenCalledWith(expect.anything(), { abortSignal: controller.signal });
+    });
+
+    it('still serves callers that pass no signal', async () => {
+      const send = sendOf(service).mockResolvedValue({ Body: Readable.from(['dump']) } as never);
+
+      await service.download('dumps/a.dump');
+
+      expect(send).toHaveBeenCalledWith(expect.anything(), { abortSignal: undefined });
+    });
+
+    it('keeps a size lookup best effort: a failure is a missing size', async () => {
+      sendOf(service).mockRejectedValue(new Error('503'));
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      await expect(service.getObjectSize('dumps/a.dump')).resolves.toBeUndefined();
+
+      warn.mockRestore();
+    });
+
+    it('does not turn an aborted size lookup into a missing size', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      sendOf(service).mockRejectedValue(new Error('Request aborted'));
+
+      await expect(
+        service.getObjectSize('dumps/a.dump', { abortSignal: controller.signal }),
+      ).rejects.toThrow('Request aborted');
+    });
+
+    it('ends a request the storage never answers when the signal fires', async () => {
+      // A real socket: this is the case the deadline exists for, a server that
+      // accepts the connection and then says nothing.
+      const silent = createHttpServer(() => undefined);
+      await new Promise<void>((resolve) => silent.listen(0, '127.0.0.1', resolve));
+      const { port } = silent.address() as AddressInfo;
+      const hung = createService({
+        'r2.endpoint': `http://127.0.0.1:${port}`,
+        'r2.forcePathStyle': true,
+      });
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 100);
+
+      try {
+        await expect(
+          hung.download('dumps/a.dump', { abortSignal: controller.signal }),
+        ).rejects.toMatchObject({ name: 'AbortError' });
+      } finally {
+        silent.closeAllConnections();
+        await new Promise((resolve) => silent.close(resolve));
+      }
+    });
   });
 
   describe('addressing style', () => {
