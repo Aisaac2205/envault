@@ -44,9 +44,11 @@ export const auth = betterAuth({
     }),
   },
   session: {
+    // No cookie cache: every request checks the session against the database,
+    // so a ban or a revoked session takes effect on the next request instead
+    // of up to maxAge later (Better Auth documents this trade-off).
     cookieCache: {
-      enabled: true,
-      maxAge: 300,
+      enabled: false,
     },
   },
   advanced: {

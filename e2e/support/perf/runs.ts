@@ -1,5 +1,5 @@
 import type { APIRequestContext } from '@playwright/test';
-import { assertOk } from '../api';
+import { assertOk, deleteConnection } from '../api';
 import type { TestDatabase } from '../pipeline-fixtures';
 import type { Connection } from '../fixtures';
 import { manifestKey, type BackupJob, type JobRunner, type RestoreJob, type RestoreRequest } from '../jobs';
@@ -63,6 +63,6 @@ export async function discardTarget(
   api: APIRequestContext,
   target: { database: TestDatabase; connection: Connection },
 ): Promise<void> {
-  await assertOk(await api.delete(`connections/${target.connection.id}`), `Deleting connection ${target.connection.name}`);
+  await assertOk(await deleteConnection(api, target.connection), `Deleting connection ${target.connection.name}`);
   await target.database.engine.drop(target.database.name);
 }

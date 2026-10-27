@@ -67,6 +67,15 @@ export class ConnectionsService {
     return connection;
   }
 
+  /** Like findById, without loading (and so decrypting) the password. */
+  async findByIdSafe(id: string) {
+    const connection = await this.repository.findByIdSafe(id);
+    if (!connection) {
+      throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);
+    }
+    return connection;
+  }
+
   async findBySlug(slug: string) {
     const connection = await this.repository.findBySlug(slug);
     if (!connection) {
@@ -90,7 +99,33 @@ export class ConnectionsService {
     return resolveUniqueSlug(base, reserved);
   }
 
+  /**
+   * Security model invariant 1.1 (docs/en/security-model.md): a PROD
+   * connection is never updated through the API, and no connection can be
+   * reclassified as PROD by an update (it must be created as PROD). Without
+   * it, an admin could flip PROD to QA and restore over production. Deleting
+   * a PROD connection needs a confirmation instead (ConnectionDeletionService).
+   */
+  private async assertNotProd(id: string, dto: UpdateConnectionDto): Promise<void> {
+    // The environment is all this needs: no reason to decrypt the password.
+    const existing = await this.repository.findByIdSafe(id);
+    if (!existing) {
+      throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);
+    }
+    if (existing.environment === Environment.PROD) {
+      throw new ForbiddenException(
+        `Las conexiones de producción son inmutables. Conexión "${existing.name}" es "prod".`,
+      );
+    }
+    if (dto.environment === Environment.PROD) {
+      throw new ForbiddenException(
+        'No se puede reclasificar una conexión como producción. Cree una conexión nueva.',
+      );
+    }
+  }
+
   async update(id: string, dto: UpdateConnectionDto) {
+    await this.assertNotProd(id, dto);
     const result = await this.repository.update(id, dto);
     if (result === 'missing') {
       throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);
@@ -101,18 +136,6 @@ export class ConnectionsService {
       );
     }
     return result;
-  }
-
-  async delete(id: string) {
-    const result = await this.repository.softDelete(id);
-    if (result === 'missing') {
-      throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);
-    }
-    if (result === 'leased') {
-      throw new ForbiddenException(
-        'No se puede eliminar una conexión con una restauración activa.',
-      );
-    }
   }
 
   async testByConnectionId(id: string): Promise<ConnectionTestResult> {

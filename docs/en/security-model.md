@@ -10,7 +10,7 @@ This document captures the **security invariants** of the system. They are not s
 
 ### 1.1 PROD connections are immutable from the API
 
-**Where:** `apps/api/src/modules/connections/connections.service.ts`
+**Where:** `apps/api/src/modules/connections/connections.service.ts` (edit) and `apps/api/src/modules/connections/connection-deletion.service.ts` (delete)
 
 ```typescript
 if (existing.environment === Environment.PROD) {
@@ -18,7 +18,20 @@ if (existing.environment === Environment.PROD) {
 }
 ```
 
-Applies to `update()` and `delete()`. The reason: a PROD connection is the source of truth. Modifying it from the app opens the door for a user with API permissions to point the backup job at a rogue host and exfiltrate dumps.
+| Operation | Rule |
+|-----------|------|
+| Edit a PROD connection (`PATCH`) | Always `403`, including moving `environment` away from `prod` |
+| Reclassify a non-PROD connection as PROD | Always `403`: a PROD connection must be created as PROD |
+| Delete a PROD connection (`DELETE`) | Admin only, with a step-up confirmation (below) |
+| Delete a non-PROD connection | Admin only, no confirmation |
+
+The reason: a PROD connection is the source of truth. Modifying it from the app opens the door for a user with API permissions to point the backup job at a rogue host and exfiltrate dumps, or to flip it to QA and restore over production.
+
+**Step-up delete.** The `DELETE /connections/:id` body must carry the exact connection name (`confirmName`, compared as-is: case and spaces count) and the admin's current password (`password`). Better Auth's `verifyPassword` checks the password server-side against the session that sent the request, so a body cannot name another account. A missing field or a wrong name answers `403` without checking the password; a wrong password answers `403`. The web app asks for both in a confirmation dialog and shows no Edit action on PROD rows. Refused and accepted deletes are audited under `prod`, with the password redacted.
+
+**Failed-attempt limit.** 5 wrong passwords per admin in 15 minutes answer `429` with `Retry-After`, without checking the password again. Correct passwords are not counted, and one admin's checks run one at a time, so parallel requests cannot run more than 5 checks. The counter lives in the API process memory: a restart resets it, and each API instance keeps its own (the supported deployment runs one replica).
+
+**What a delete does.** It is a soft delete (`isActive = false`) of EnVault's own record: it removes the connection's metadata and access from the app and never connects to or changes the production database itself. Dumps already in R2 under the connection's slug stay in the bucket, but the app can no longer restore them: a restore looks up the dump's source by slug among active connections and refuses with `403`. A new connection never reuses the slug of a deleted one.
 
 ### 1.2 Backups can only originate from PROD
 
@@ -55,7 +68,7 @@ This is **the most critical rule**. Restoring over PROD would destroy live data.
 - **Library**: Better Auth (email/password + admin plugin) — runs inside the NestJS API process. No external IdP.
 - **Integration**: manual catch-all handler at `/api/auth/*` in `apps/api/src/auth/auth.controller.ts`
 - **Session**: cookie-based (`httpOnly`), managed entirely by Better Auth via a pg adapter
-- **Session validation**: `auth.api.getSession()` called per request by `BetterAuthGuard`. Sessions are cached with a 5-minute TTL to reduce DB round-trips.
+- **Session validation**: `auth.api.getSession()` called per request by `BetterAuthGuard`. The session cookie cache is disabled (`session.cookieCache.enabled: false` in `auth.config.ts`), so every request checks the session against the database: a ban, a revoked session or a role change applies on the next request.
 - **Database tables**: Better Auth manages its own schema (`user`, `session`, `account`, `verification`) via the pg adapter.
 - **Frontend**: `better-auth/react` client with `useSession()` hook; cookies are sent automatically by the browser.
 - **SSE**: cookies are sent natively by `EventSource` — no query-param token hack required.
@@ -165,7 +178,7 @@ The auth hook writes through the `pg` pool Better Auth already owns (`authPool`)
 
 2. **Cronjobs are not audited in `audit_logs`.** They run in-process, not over HTTP, so the interceptor doesn't see them. Their traceability lives in `backup_jobs.triggeredBy = 'system-cronjob'`. If you need unified auditing, you must invoke the log manually from `CronjobsService.executeCronjob`.
 
-3. **Logs are append-only at the DB level.** A trigger (`audit_logs_immutable`) raises an exception on any `UPDATE` or `DELETE` attempt on the `audit_logs` table. This prevents tampering even by users with direct DB access. For cryptographic non-repudiation, records should additionally be signed or shipped to a WORM system.
+3. **Logs are append-only at the DB level.** A row-level trigger (`audit_logs_immutable`) raises an exception on any `UPDATE` or `DELETE`, and a statement-level trigger (`audit_logs_no_truncate`) does the same for `TRUNCATE`, which never fires row-level triggers. The table owner can still disable or drop a trigger, so in production `audit_logs` should belong to a role that cannot log in, with the API's role granted only `SELECT` and `INSERT` on it. For cryptographic non-repudiation, records should additionally be signed or shipped to a WORM system.
 
 ---
 
@@ -230,7 +243,8 @@ Combined with `class-validator` on each DTO (`@IsString`, `@IsUUID`, `@IsEnum`, 
 
 | Threat | Mitigation |
 |--------|------------|
-| User with a valid session deletes a PROD DB by mistake | Blocked: `update`/`delete` throw 403 if environment=PROD |
+| User with a valid session deletes a PROD DB by mistake | Blocked: deleting a connection never touches the database it points to; it is a soft delete of EnVault's record, and for PROD it needs an admin's step-up confirmation (exact name + current password). Edits of a PROD connection and reclassification to PROD throw 403. See §1.1 |
+| Stolen admin session used to delete a PROD connection | Mitigated: the delete needs the admin's current password, checked server-side; 5 wrong passwords per admin in 15 minutes answer 429 (in-process counter, reset on restart). See §1.1 |
 | User maliciously restores an old dump on top of PROD | Blocked: `restore` throws 403 if target environment=PROD |
 | Dump exfiltrated via R2 URL | Mitigated: private bucket, access via R2 credentials (not public) |
 | Session cookie stolen via XSS | Mitigated: `httpOnly` flag prevents JavaScript access to the cookie; strict CORS in prod limits the origin |

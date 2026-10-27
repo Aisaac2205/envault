@@ -48,9 +48,10 @@ RUN chmod +x /docker-entrypoint.d/10-security-config.envsh
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 ENV NGINX_ENVSUBST_FILTER=^(NGINX_LOCAL_RESOLVERS|API_UPSTREAM|CSP_HEADER_NAME|CLIENT_IP_SOURCE)$
 ENV API_UPSTREAM=api:3000
-# Start in report-only mode. Set this to Content-Security-Policy after checking
-# the browser console for violations in the deployed SPA.
-ENV CSP_HEADER_NAME=Content-Security-Policy-Report-Only
+# Enforced by default. script-src allows the inline theme script in index.html
+# by its sha256 hash (deployment-security.spec.ts keeps the two in sync). Set
+# Content-Security-Policy-Report-Only only to debug a violation.
+ENV CSP_HEADER_NAME=Content-Security-Policy
 ENV CLIENT_IP_MODE=auto
 
 EXPOSE 80

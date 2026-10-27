@@ -1,5 +1,5 @@
 import { test as base, expect, type APIRequestContext, type APIResponse } from '@playwright/test';
-import { assertOk, newApiContext, signInOnDirectApi } from './api';
+import { assertOk, deleteConnection, newApiContext, signInOnDirectApi } from './api';
 import { AUTH_STATE_FILE } from './auth-state';
 import { routeAuthToOwnRateLimitBucket } from './browser';
 import { POSTGRES_SOURCE, type SourceDatabase } from './sources';
@@ -56,6 +56,13 @@ interface ApiFixtures {
    * the new connection's id.
    */
   deleteConnectionAfterTest: (name: string) => void;
+  /**
+   * A client signed in as a second admin, created for the test and removed
+   * after it. For sending wrong passwords to a PROD delete: the API counts
+   * failed confirmations per admin (5 per 15 minutes), and the seeded admin,
+   * whom every run and every teardown share, must never collect them.
+   */
+  throwawayAdmin: APIRequestContext;
 }
 
 interface ApiWorkerFixtures {
@@ -88,7 +95,7 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
   },
 
   createConnection: async ({ adminApi }, use) => {
-    const createdIds: string[] = [];
+    const created: Connection[] = [];
 
     await use(async (overrides = {}) => {
       const input: ConnectionInput = {
@@ -101,16 +108,16 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
       await assertOk(response, `Creating connection "${input.name}"`);
 
       const { data: connection } = await response.json();
-      createdIds.push(connection.id);
+      created.push(connection);
       return { input, connection, response };
     });
 
     // A test may delete its connection itself, so a 404 here is fine; anything
     // else means a connection was left behind and the test must say so.
-    for (const id of createdIds.reverse()) {
-      const response = await adminApi.delete(`connections/${id}`);
+    for (const connection of created.reverse()) {
+      const response = await deleteConnection(adminApi, connection);
       if (response.status() !== 404) {
-        await assertOk(response, `Cleaning up connection ${id}`);
+        await assertOk(response, `Cleaning up connection ${connection.id}`);
       }
     }
   },
@@ -142,12 +149,37 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
     // the connections that come after it.
     const failures: string[] = [];
     for (const connection of data.filter(({ name }) => names.has(name))) {
-      const response = await adminApi.delete(`connections/${connection.id}`);
+      const response = await deleteConnection(adminApi, connection);
       if (!response.ok()) {
         failures.push(`${connection.name} (HTTP ${response.status()})`);
       }
     }
     expect(failures, 'Connections left behind by the test').toEqual([]);
+  },
+
+  throwawayAdmin: async ({ playwright }, use) => {
+    const admin = await newApiContext(playwright, AUTH_STATE_FILE);
+    const credentials = { email: uniqueEmail('admin'), password: `Pw-${uniqueId()}-e2e` };
+
+    const created = await admin.post('auth/admin/create-user', {
+      data: { ...credentials, name: 'E2E throwaway admin', role: 'admin' },
+    });
+    await assertOk(created, 'Creating the throwaway admin');
+    const { user } = await created.json();
+
+    const context = await newApiContext(playwright);
+    try {
+      await assertOk(
+        await signInOnDirectApi(context, credentials),
+        'Signing in as the throwaway admin',
+      );
+      await use(context);
+    } finally {
+      await context.dispose();
+      const removed = await admin.post('auth/admin/remove-user', { data: { userId: user.id } });
+      await admin.dispose();
+      await assertOk(removed, `Removing the throwaway admin ${credentials.email}`);
+    }
   },
 
   nonAdmin: [

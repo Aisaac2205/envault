@@ -39,7 +39,7 @@ GET    /connections             List every active connection
 GET    /connections/:id         Get a specific connection
 POST   /connections             Create a connection (any environment)
 PATCH  /connections/:id         Update a connection (BLOCKED if PROD)
-DELETE /connections/:id         Delete a connection (BLOCKED if PROD)
+DELETE /connections/:id         Delete a connection (PROD: admin step-up, see below)
 POST   /connections/test        Test a connection by ID in the body
 POST   /connections/:id/test    Test a connection by ID in the URL
 POST   /connections/test-raw    Test credentials without saving a connection
@@ -60,26 +60,25 @@ Every endpoint requires a valid session (Better Auth).
 
 ## PROD rules (security invariants)
 
-A connection with `environment === 'prod'` is **immutable** from the API:
+A connection with `environment === 'prod'` is **immutable** from the API: it cannot be edited or reclassified, and an admin can only delete it with a step-up confirmation:
 
 | Action | PROD | DEV / SQA |
 |--------|------|-----------|
 | Create (`POST`) | ✅ | ✅ |
 | Read (`GET`) | ✅ | ✅ |
 | Test connection | ✅ | ✅ |
-| Edit (`PATCH`) | ❌ `403 Forbidden` | ✅ |
-| Delete (`DELETE`) | ❌ `403 Forbidden` | ✅ |
+| Edit (`PATCH`) | ❌ `403 Forbidden` | ✅ (setting `environment` to `prod`: ❌ `403 Forbidden`) |
+| Delete (`DELETE`) | 🔐 exact name + admin password ([security-model §1.1](security-model.md#11-prod-connections-are-immutable-from-the-api)) | ✅ |
 | Back up from it | ✅ | ❌ `400 BadRequest` |
 | Restore into it | ❌ `403 Forbidden` | ✅ |
 
 **Why:** PROD is the source of truth. Modifications to a PROD connection happen via **infrastructure/DBA** directly, not via the application. This prevents a user with API permissions from pointing the backup job at a rogue host.
 
-### What if I legitimately need to disable a PROD connection?
+### What if I legitimately need to remove or replace a PROD connection?
 
-There is no endpoint. By design. The legitimate options are:
+An admin deletes it from the app with a step-up confirmation: the `DELETE` body carries the exact connection name (`confirmName`) and the admin's current password (`password`), and the web app asks for both in a confirmation dialog. 5 wrong passwords in 15 minutes answer `429`. The delete is a soft delete that never touches the production database, and it is audited like any other mutation.
 
-1. **Recreate the setup**: register the new correct PROD connection and leave the old one in place — backups point at the new `connectionId`.
-2. **Direct DB maintenance**: `UPDATE connections SET is_active = false WHERE id = '...'` executed by a DBA with physical access to the control DB. This path lives outside the app's audit log — that's intentional, it's infrastructure maintenance.
+Since editing stays blocked, new credentials or a corrected host mean a new PROD connection: see [devops-runbook §3.2](devops-runbook.md#32-rotate-credentials-or-fix-the-host-of-a-connection). Once the old connection is deleted, the app can no longer restore the dumps stored under its slug.
 
 ---
 
@@ -141,7 +140,7 @@ The test uses the engine's native client (`pg.Client` for Postgres, `mysql2/prom
      │ Backup only │  │ Backup ❌    │  │ Verifies │
      │ Read only   │  │ Restore ✅   │  │ creds    │
      │ + test      │  │ Edit ✅      │  └──────────┘
-     │             │  │ Delete ✅    │
+     │ Delete 🔐    │  │ Delete ✅    │
      └─────────────┘  └─────────────┘
               │              │
               ▼              ▼
@@ -182,7 +181,7 @@ If the connection was deleted (soft delete), `connectionName` returns `"(deleted
 
 ## Operational notes
 
-- **Soft delete**: when `DELETE` is applied to a non-PROD connection, it is not physically removed — it's marked `isActive: false`. Historical backups/restores referencing it remain queryable.
+- **Soft delete**: when `DELETE` is applied to a connection (to a PROD one only with step-up confirmation), it is not physically removed — it's marked `isActive: false`. Historical backups/restores referencing it remain queryable, but its dumps can no longer be restored through the app.
 - **Listing**: `GET /connections` only returns `isActive: true`. There is no endpoint to list soft-deleted ones.
 - **Audit**: every `POST`, `PATCH`, `DELETE` is recorded in `audit_logs` with `userId`, `userEmail`, `action`, `metadata` (the full body) and `environment`.
 - **Streams**: the dump is uploaded to R2 via multipart upload (`@aws-sdk/lib-storage`) directly from the process's stdout — no disk writes.

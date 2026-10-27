@@ -1,3 +1,5 @@
+import { deleteConnection } from '../../support/api';
+import { adminCredentials } from '../../support/env';
 import { expectErrorEnvelope, expectSuccessEnvelope } from '../../support/envelope';
 import { expect, test, type Connection, type ConnectionInput } from '../../support/fixtures';
 import { MYSQL_SOURCE, POSTGRES_SOURCE, type SourceDatabase } from '../../support/sources';
@@ -278,6 +280,57 @@ test.describe('delete', () => {
 
   test('answers 404 for an unknown id', async ({ request }) => {
     await expectErrorEnvelope(await request.delete(`connections/${UNKNOWN_ID}`), 404);
+  });
+
+  // Deleting a PROD connection is a soft delete like any other, but it needs a
+  // step-up confirmation: the exact connection name and the admin's password.
+  test.describe('a PROD connection', () => {
+    test('is refused with 403 without the confirmation, and kept', async ({ request, createConnection }) => {
+      const { connection } = await createConnection({ environment: 'prod' });
+
+      await expectErrorEnvelope(await request.delete(`connections/${connection.id}`), 403);
+
+      await expectSuccessEnvelope(await request.get(`connections/${connection.id}`));
+    });
+
+    test('is refused with 403 when the name does not match, and kept', async ({ request, createConnection }) => {
+      const { connection } = await createConnection({ environment: 'prod' });
+
+      await expectErrorEnvelope(
+        await request.delete(`connections/${connection.id}`, {
+          data: { confirmName: connection.name.toUpperCase(), password: adminCredentials().password },
+        }),
+        403,
+      );
+
+      await expectSuccessEnvelope(await request.get(`connections/${connection.id}`));
+    });
+
+    test('is refused with 403 when the password is wrong, and kept', async ({
+      request,
+      createConnection,
+      throwawayAdmin,
+    }) => {
+      const { connection } = await createConnection({ environment: 'prod' });
+
+      await expectErrorEnvelope(
+        await throwawayAdmin.delete(`connections/${connection.id}`, {
+          data: { confirmName: connection.name, password: `not-the-password-${uniqueId()}` },
+        }),
+        403,
+      );
+
+      await expectSuccessEnvelope(await request.get(`connections/${connection.id}`));
+    });
+
+    test('is deleted with its exact name and the admin password', async ({ request, createConnection }) => {
+      const { connection } = await createConnection({ environment: 'prod' });
+
+      const removed = await deleteConnection(request, connection);
+      expect(removed.status(), await removed.text()).toBe(200);
+
+      await expectErrorEnvelope(await request.get(`connections/${connection.id}`), 404);
+    });
   });
 });
 

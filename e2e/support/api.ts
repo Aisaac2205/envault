@@ -1,6 +1,6 @@
 import type { APIRequestContext, APIResponse, PlaywrightWorkerArgs } from '@playwright/test';
 import { SIGNED_OUT } from './auth-state';
-import { API_URL, BASE_URL, DIRECT_API_URL, type Credentials } from './env';
+import { adminCredentials, API_URL, BASE_URL, DIRECT_API_URL, type Credentials } from './env';
 import { uniqueClientIp } from './unique';
 
 /** The `playwright` worker fixture; the package does not export its type by name. */
@@ -47,4 +47,20 @@ export async function assertOk(response: APIResponse, what: string): Promise<voi
   if (!response.ok()) {
     throw new Error(`${what} failed: HTTP ${response.status()} ${await response.text()}`);
   }
+}
+
+/**
+ * Deletes a connection as the seeded admin. A PROD connection takes the
+ * step-up confirmation the API asks for (its exact name and the admin's
+ * password); any other connection is deleted without a body.
+ */
+export function deleteConnection(
+  api: APIRequestContext,
+  connection: { id: string; name: string; environment: string },
+): Promise<APIResponse> {
+  const confirmation =
+    connection.environment === 'prod'
+      ? { data: { confirmName: connection.name, password: adminCredentials().password } }
+      : undefined;
+  return api.delete(`connections/${connection.id}`, confirmation);
 }

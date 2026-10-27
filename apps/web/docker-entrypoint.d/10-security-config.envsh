@@ -1,6 +1,6 @@
 set -eu
 
-CSP_HEADER_NAME="${CSP_HEADER_NAME:-Content-Security-Policy-Report-Only}"
+CSP_HEADER_NAME="${CSP_HEADER_NAME:-Content-Security-Policy}"
 case "$CSP_HEADER_NAME" in
   Content-Security-Policy|Content-Security-Policy-Report-Only)
     export CSP_HEADER_NAME

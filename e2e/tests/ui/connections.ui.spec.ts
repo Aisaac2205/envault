@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expectSuccessEnvelope } from '../../support/envelope';
+import { adminCredentials } from '../../support/env';
 import { expect, test } from '../../support/fixtures';
 import { mockApiGet } from '../../support/mock-api';
 import { ConnectionsPage, type ConnectionFormValues } from '../../support/pages/connections-page';
@@ -14,6 +15,7 @@ import { uniqueId, uniqueName } from '../../support/unique';
 // through the API or the form, and leaves none behind: `createConnection` and
 // `deleteConnectionAfterTest` delete by name even when the test fails.
 
+/** The browser's own confirmation, which only non-PROD connections still use. */
 const CONFIRM_DELETE = 'Are you sure you want to permanently delete this connection?';
 
 /** What the form needs for a valid connection, as a person would type it. */
@@ -293,6 +295,8 @@ test.describe('existing connections', () => {
     await expect(form.username).toHaveValue(input.username);
     await expect(form.password).toHaveValue('');
     await expect(form.password).toHaveAttribute('placeholder', 'Leave blank to keep current');
+    // The API refuses to move a connection to PROD, so editing never offers it.
+    await expect(form.environment.locator('option[value="prod"]')).toHaveCount(0);
 
     const renamed = uniqueName('ui-renamed');
     await form.fill({ name: renamed, environment: 'qa' });
@@ -362,6 +366,122 @@ test.describe('existing connections', () => {
     expect(await asked).toBe(CONFIRM_DELETE);
     await expect(row).toBeVisible();
     await expect(page.getByText('Connection deleted', { exact: true })).toBeHidden();
+    expect(await findConnection(input.name)).toBeDefined();
+  });
+});
+
+// A PROD connection cannot be edited, and deleting one takes its exact name and
+// the admin's password instead of the browser's confirmation.
+test.describe('production connections', () => {
+  /** Records (and dismisses) any browser confirmation, to show that none was asked. */
+  function recordNativeConfirms(page: Page): string[] {
+    const asked: string[] = [];
+    page.on('dialog', async (dialog) => {
+      asked.push(dialog.message());
+      await dialog.dismiss();
+    });
+    return asked;
+  }
+
+  test('offers no Edit for a production connection', async ({ page, createConnection }) => {
+    const { input } = await createConnection({ environment: 'prod' });
+    const connections = new ConnectionsPage(page);
+    await connections.goto();
+    const row = connections.row(input.name);
+
+    await expect(row.getByRole('button', { name: 'Delete' })).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+  });
+
+  test('deletes a production connection once its name and the password are given', async ({
+    page,
+    createConnection,
+    findConnection,
+  }) => {
+    const { input, connection } = await createConnection({ environment: 'prod' });
+    const asked = recordNativeConfirms(page);
+    const connections = new ConnectionsPage(page);
+    await connections.goto();
+    const row = connections.row(input.name);
+
+    await row.getByRole('button', { name: 'Delete' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Delete production connection' });
+    const confirm = dialog.getByRole('button', { name: 'Delete connection' });
+    await expect(dialog).toBeVisible();
+    await expect(confirm).toBeDisabled();
+    await dialog.getByLabel(`Type ${input.name} to confirm`).fill(input.name);
+    await expect(confirm).toBeDisabled();
+    const password = dialog.getByLabel('Your password');
+    await expect(password).toHaveAttribute('type', 'password');
+    await password.fill(adminCredentials().password);
+    await expect(confirm).toBeEnabled();
+
+    const sent = page.waitForRequest(
+      (request) =>
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === `/api/connections/${connection.id}`,
+    );
+    await confirm.click();
+
+    expect((await sent).postDataJSON()).toEqual({
+      confirmName: input.name,
+      password: adminCredentials().password,
+    });
+    await expect(page.getByText('Connection deleted', { exact: true })).toBeVisible();
+    await expect(dialog).toBeHidden();
+    await expect(row).toHaveCount(0);
+    expect(await findConnection(input.name)).toBeUndefined();
+    expect(asked).toEqual([]);
+  });
+
+  test('keeps the dialog open and shows why when the API refuses', async ({
+    page,
+    createConnection,
+    findConnection,
+  }) => {
+    const { input, connection } = await createConnection({ environment: 'prod' });
+    // The refusal is canned: the API counts failed password confirmations per
+    // admin, and the seeded admin that this browser signs in as is shared by
+    // every run and every teardown, so it must never collect them.
+    const path = `/api/connections/${connection.id}`;
+    const message = 'La confirmación de contraseña falló.';
+    await page.route(
+      (url) => url.pathname === path,
+      (route) => {
+        if (route.request().method() !== 'DELETE') {
+          return route.fallback();
+        }
+        return route.fulfill({
+          status: 403,
+          json: {
+            error: { code: 'ForbiddenException', message, statusCode: 403 },
+            timestamp: new Date().toISOString(),
+            path,
+          },
+        });
+      },
+    );
+    const connections = new ConnectionsPage(page);
+    await connections.goto();
+    const row = connections.row(input.name);
+
+    await row.getByRole('button', { name: 'Delete' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Delete production connection' });
+    await dialog.getByLabel(`Type ${input.name} to confirm`).fill(input.name);
+    await dialog.getByLabel('Your password').fill(`wrong-${uniqueId()}`);
+    await dialog.getByRole('button', { name: 'Delete connection' }).click();
+
+    await expect(dialog.getByRole('alert')).toHaveText(message);
+    await expect(dialog).toBeVisible();
+    await expect(page.getByText(/Request failed with status code/)).toHaveCount(0);
+
+    // Closing forgets what was typed and leaves the connection in place.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await expect(dialog.getByLabel('Your password')).toHaveValue('');
     expect(await findConnection(input.name)).toBeDefined();
   });
 });

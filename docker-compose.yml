@@ -41,7 +41,7 @@ services:
       # Sigue el PORT real de la API en vez de asumir 3000 si alguien
       # lo cambia en .env — ver Dockerfile ENV API_UPSTREAM default.
       API_UPSTREAM: api:${PORT:-3000}
-      CSP_HEADER_NAME: ${CSP_HEADER_NAME:-Content-Security-Policy-Report-Only}
+      CSP_HEADER_NAME: ${CSP_HEADER_NAME:-Content-Security-Policy}
     ports:
       - "5173:80"
     depends_on:

@@ -10,7 +10,7 @@ Este documento captura los **invariantes de seguridad** del sistema. No son suge
 
 ### 1.1 Las conexiones PROD son inmutables desde la API
 
-**Dónde:** `apps/api/src/modules/connections/connections.service.ts`
+**Dónde:** `apps/api/src/modules/connections/connections.service.ts` (edición) y `apps/api/src/modules/connections/connection-deletion.service.ts` (eliminación)
 
 ```typescript
 if (existing.environment === Environment.PROD) {
@@ -18,7 +18,20 @@ if (existing.environment === Environment.PROD) {
 }
 ```
 
-Aplica a `update()` y `delete()`. La razón: una conexión PROD es la fuente de verdad. Modificarla desde la app abre la puerta a que un usuario con permisos pueda apuntar el job de backup hacia un host falso y exfiltrar dumps.
+| Operación | Regla |
+|-----------|-------|
+| Editar una conexión PROD (`PATCH`) | Siempre `403`, incluido cambiar `environment` de `prod` a otro valor |
+| Reclasificar como PROD una conexión que no lo es | Siempre `403`: una conexión PROD debe crearse como PROD |
+| Eliminar una conexión PROD (`DELETE`) | Solo un admin, con confirmación reforzada (ver abajo) |
+| Eliminar una conexión que no es PROD | Solo un admin, sin confirmación |
+
+La razón: una conexión PROD es la fuente de verdad. Modificarla desde la app abre la puerta a que un usuario con permisos pueda apuntar el job de backup hacia un host falso y exfiltrar dumps, o reclasificarla como QA y restaurar sobre producción.
+
+**Eliminación con confirmación reforzada.** El body de `DELETE /connections/:id` debe incluir el nombre exacto de la conexión (`confirmName`, comparado tal cual: cuentan mayúsculas y espacios) y la contraseña actual del admin (`password`). El `verifyPassword` de Better Auth comprueba la contraseña en el servidor contra la sesión que envió la petición, por lo que el body no puede indicar otra cuenta. Si falta un campo o el nombre no coincide, la respuesta es `403` sin comprobar la contraseña; una contraseña incorrecta responde `403`. La web pide ambos datos en un diálogo de confirmación y no ofrece la acción Editar en las filas PROD. Las eliminaciones rechazadas y las aceptadas se auditan con entorno `prod` y la contraseña redactada.
+
+**Límite de intentos fallidos.** 5 contraseñas incorrectas por admin en 15 minutos responden `429` con `Retry-After`, sin volver a comprobar la contraseña. Las contraseñas correctas no cuentan, y las comprobaciones de un mismo admin se ejecutan de una en una, así que las peticiones en paralelo no pueden ejecutar más de 5 comprobaciones. El contador vive en la memoria del proceso de la API: se reinicia al reiniciar la API, y cada instancia lleva el suyo (el despliegue soportado usa una sola réplica).
+
+**Qué hace una eliminación.** Es un soft delete (`isActive = false`) del registro propio de EnVault: quita los metadatos y el acceso de la conexión en la app, y nunca se conecta a la base de datos de producción ni la modifica. Los dumps que ya están en R2 bajo el slug de la conexión siguen en el bucket, pero la app ya no puede restaurarlos: un restore busca el origen del dump por slug entre las conexiones activas y lo rechaza con `403`. Una conexión nueva nunca reutiliza el slug de una eliminada.
 
 ### 1.2 Los backups solo pueden originarse en PROD
 
@@ -55,7 +68,7 @@ Esta es **la regla más crítica**. Restaurar sobre PROD destruiría datos en vi
 - **Librería**: Better Auth (email/password + plugin admin) — corre dentro del proceso NestJS. Sin IdP externo.
 - **Integración**: handler catch-all manual en `/api/auth/*` en `apps/api/src/auth/auth.controller.ts`
 - **Sesión**: basada en cookies (`httpOnly`), gestionada completamente por Better Auth vía un adaptador pg
-- **Validación de sesión**: `auth.api.getSession()` llamado por request por `BetterAuthGuard`. Las sesiones se cachean con TTL de 5 minutos para reducir round-trips a la DB.
+- **Validación de sesión**: `auth.api.getSession()` llamado por request por `BetterAuthGuard`. La caché de sesión en cookie está desactivada (`session.cookieCache.enabled: false` en `auth.config.ts`), así que cada request valida la sesión contra la base de datos: un baneo, una sesión revocada o un cambio de rol se aplican en el siguiente request.
 - **Tablas de DB**: Better Auth gestiona su propio schema (`user`, `session`, `account`, `verification`) vía el adaptador pg.
 - **Frontend**: cliente `better-auth/react` con hook `useSession()`; las cookies las envía el browser automáticamente.
 - **SSE**: las cookies las manda `EventSource` nativamente — no se necesita el hack de token por query param.
@@ -165,7 +178,7 @@ El hook escribe a través del pool de `pg` (`authPool`) que Better Auth ya posee
 
 2. **Los cronjobs no se auditan en `audit_logs`.** Corren in-process, no por HTTP, así que el interceptor no los ve. Su trazabilidad vive en `backup_jobs.triggeredBy = 'system-cronjob'`. Si se requiere auditoría unificada, debe invocarse el log manualmente desde `CronjobsService.executeCronjob`.
 
-3. **Los logs son append-only a nivel DB.** Un trigger (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE` en la tabla `audit_logs`. Esto previene adulteración incluso por usuarios con acceso directo a la DB. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
+3. **Los logs son append-only a nivel DB.** Un trigger de fila (`audit_logs_immutable`) lanza una excepción ante cualquier `UPDATE` o `DELETE`, y un trigger de sentencia (`audit_logs_no_truncate`) hace lo mismo con `TRUNCATE`, que nunca dispara triggers de fila. El dueño de la tabla todavía puede desactivar o borrar un trigger, así que en producción conviene que `audit_logs` pertenezca a un rol sin inicio de sesión y que el rol de la API solo tenga `SELECT` e `INSERT` sobre ella. Para non-repudiation criptográfico, los registros deberían además firmarse o exportarse a un sistema WORM.
 
 ---
 
@@ -230,7 +243,8 @@ Combinado con `class-validator` en cada DTO (`@IsString`, `@IsUUID`, `@IsEnum`, 
 
 | Amenaza | Mitigación |
 |---------|------------|
-| Usuario con sesión válida borra una DB de PROD por error | Bloqueado: `update`/`delete` lanzan 403 si environment=PROD |
+| Usuario con sesión válida borra una DB de PROD por error | Bloqueado: eliminar una conexión nunca toca la base de datos a la que apunta; es un soft delete del registro de EnVault y, para PROD, requiere la confirmación reforzada de un admin (nombre exacto + contraseña actual). Editar una conexión PROD o reclasificar una conexión como PROD lanza 403. Ver §1.1 |
+| Sesión de admin robada usada para eliminar una conexión PROD | Mitigado: la eliminación requiere la contraseña actual del admin, comprobada en el servidor; 5 contraseñas incorrectas por admin en 15 minutos responden 429 (contador en memoria del proceso, se reinicia al reiniciar). Ver §1.1 |
 | Usuario maliciosamente restaura un dump viejo sobre PROD | Bloqueado: `restore` lanza 403 si target environment=PROD |
 | Dump exfiltrado vía URL de R2 | Mitigado: bucket privado, acceso vía credenciales R2 (no público) |
 | Cookie de sesión robada vía XSS | Mitigado: el flag `httpOnly` impide el acceso de JavaScript a la cookie; CORS strict en prod limita origen |
