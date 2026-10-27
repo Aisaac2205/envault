@@ -113,7 +113,7 @@ export function CreateUserDialog() {
                 id="cu-pass"
                 type={showPassword ? "text" : "password"}
                 required
-                minLength={8}
+                minLength={12}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
@@ -137,7 +137,7 @@ export function CreateUserDialog() {
               </button>
             </div>
             <p id="cu-pass-hint" className="text-xs text-muted-foreground">
-              {t("createUser.hint.minLength")}
+              {t("createUser.hint.policy")}
             </p>
           </div>
           <div className="space-y-1.5">

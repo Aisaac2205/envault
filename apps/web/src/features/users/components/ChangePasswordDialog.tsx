@@ -84,7 +84,7 @@ export function ChangePasswordDialog({
                 id="cp-pass"
                 type={showPassword ? "text" : "password"}
                 required
-                minLength={8}
+                minLength={12}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
@@ -108,7 +108,7 @@ export function ChangePasswordDialog({
               </button>
             </div>
             <p id="cp-pass-hint" className="text-xs text-muted-foreground">
-              {t("changePassword.hint.minLength")}
+              {t("changePassword.hint.policy")}
             </p>
           </div>
           <DialogFooter>
