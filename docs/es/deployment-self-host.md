@@ -96,7 +96,7 @@ Referencia completa en [environment-variables.md](environment-variables.md). La 
 | `R2_BUCKET_NAME` | sí en producción | Nombre del bucket R2 destinado a los respaldos |
 | `BACKUP_TIMEOUT_MS` | no (default `1800000`) | Límite máximo en milisegundos para operaciones de dump (30 minutos) |
 | `RESTORE_TIMEOUT_MS` | no (default `1800000`) | Límite máximo en milisegundos para operaciones de restauración |
-| `RESTORE_LOCK_WAIT_TIMEOUT_MS` | no (default `30000`) | Restauraciones de MySQL: milisegundos que el intercambio final espera cada bloqueo que otra sesión mantiene sobre las tablas del destino antes de fallar y dejar el destino sin cambios. Rige por cada intento de bloqueo, y mientras tanto las consultas de la aplicación del destino sobre esas tablas esperan |
+| `RESTORE_LOCK_WAIT_TIMEOUT_MS` | no (default `30000`) | Milisegundos que una restauración espera cada bloqueo que otra sesión mantiene sobre las tablas del destino antes de fallar y dejar el destino sin cambios: una restauración de PostgreSQL cancela la sentencia de `pg_restore` que lleva esperando tanto tiempo, lo que revierte la restauración, y una de MySQL lo aplica a cada paso del intercambio final. Rige por cada intento de bloqueo, y mientras tanto las consultas de la aplicación del destino sobre esas tablas esperan |
 
 > **Red de Redis**: mantenga Redis en una red privada (la red de Docker o la red privada de Railway). Si debe atravesar una red pública, conéctese con una `REDIS_URL` con `rediss://` o defina `REDIS_TLS=true`.
 

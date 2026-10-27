@@ -1,6 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
+import { Client } from 'pg';
 import {
   RestoreIncompatibleError,
   RestoreSourceInfo,
@@ -17,6 +19,10 @@ import {
 import { PgToolchain } from './pg-toolchain';
 
 const DEFAULT_RESTORE_TIMEOUT_MS = 1_800_000;
+const DEFAULT_RESTORE_LOCK_WAIT_TIMEOUT_MS = 30_000;
+
+/** The lock watch is a side channel: it gives up on an unreachable target instead of holding the restore. */
+const LOCK_WATCH_TIMEOUT_MS = 10_000;
 
 /**
  * Bound for the request-time version probe (connect and query each). The check
@@ -32,6 +38,7 @@ const ARCHIVE_HEADER_MAX_CHARS = 64 * 1024;
 export class PostgresRestoreStrategy implements RestoreStrategy {
   private readonly logger = new Logger(PostgresRestoreStrategy.name);
   private readonly timeoutMs: number;
+  private readonly lockWaitMs: number;
   private readonly toolchain: PgToolchain;
 
   constructor(
@@ -41,6 +48,9 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
     this.timeoutMs =
       configService?.get<number>('RESTORE_TIMEOUT_MS') ??
       DEFAULT_RESTORE_TIMEOUT_MS;
+    this.lockWaitMs =
+      configService?.get<number>('RESTORE_LOCK_WAIT_TIMEOUT_MS') ??
+      DEFAULT_RESTORE_LOCK_WAIT_TIMEOUT_MS;
     this.toolchain = toolchain ?? new PgToolchain(configService);
   }
 
@@ -214,10 +224,13 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
+      let stopWatching: () => void = () => undefined;
+      let lockWaitExceeded = false;
       const settle = (fn: typeof resolve | typeof reject, value?: unknown) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        stopWatching();
         (fn as (v?: unknown) => void)(value);
       };
 
@@ -238,8 +251,14 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
         filePath,
       ];
 
+      // The name tells the lock watcher which session is this restore's.
+      const applicationName = `envault-restore-${randomUUID()}`;
       const pgRestore = spawn(pgRestoreBinary, args, {
-        env: { ...process.env, PGPASSWORD: connection.password },
+        env: {
+          ...process.env,
+          PGPASSWORD: connection.password,
+          PGAPPNAME: applicationName,
+        },
       });
 
       if (abortSignal) {
@@ -266,6 +285,10 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
         );
       }, this.timeoutMs);
 
+      stopWatching = this.watchLockWait(connection, applicationName, onLog, (exceeded) => {
+        lockWaitExceeded = exceeded;
+      });
+
       let stderrOutput = '';
 
       pgRestore.stderr.on('data', (chunk: Buffer) => {
@@ -287,6 +310,16 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
       pgRestore.on('close', (code: number | null) => {
         if (code === 0) {
           settle(resolve);
+        } else if (lockWaitExceeded) {
+          // The cancelled statement aborts the single transaction, which rolls
+          // everything back, so the target is as it was.
+          settle(
+            reject,
+            new Error(
+              `Timed out after ${this.lockWaitSeconds()} s waiting for a lock on the target database; ` +
+                'another session is using the target tables. The target was left unchanged.',
+            ),
+          );
         } else {
           const errorDetail =
             sanitizeMessage(stderrOutput.trim()) || `exit code ${code ?? 'unknown'}`;
@@ -297,5 +330,140 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
         }
       });
     });
+  }
+
+  /**
+   * Bounds how long the restore waits for a lock another session holds on the
+   * target (RESTORE_LOCK_WAIT_TIMEOUT_MS), so it fails instead of waiting for as
+   * long as that session keeps the lock.
+   *
+   * A server-side lock_timeout cannot do it: pg_restore starts every session with
+   * `SET lock_timeout = 0`, which overrides PGOPTIONS and any role or database
+   * setting. So a second connection watches the session (found by the
+   * application name given to pg_restore) and cancels its statement once it has
+   * waited on a lock for the whole bound. The restore runs in one transaction,
+   * so the cancel rolls all of it back.
+   *
+   * Best effort: if the watcher cannot connect or a poll fails, the restore keeps
+   * running without the bound and the job log says so.
+   *
+   * @param onExceeded called with true just before the cancel is sent, and with
+   *   false if the cancel could not be sent.
+   * @returns a function that stops the watch and closes its connection; calling
+   *   it again is harmless.
+   */
+  private watchLockWait(
+    connection: ConnectionEntity,
+    applicationName: string,
+    onLog: (message: string) => void,
+    onExceeded: (exceeded: boolean) => void,
+  ): () => void {
+    const intervalMs = Math.min(1_000, Math.max(100, Math.floor(this.lockWaitMs / 10)));
+    const client = new Client({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      user: connection.username,
+      password: connection.password,
+      connectionTimeoutMillis: LOCK_WATCH_TIMEOUT_MS,
+      query_timeout: LOCK_WATCH_TIMEOUT_MS,
+    });
+    // A socket reset after the connection is up is emitted as 'error'; without a
+    // listener it would become an uncaughtException.
+    client.on('error', (error: Error) => {
+      this.logger.warn(`Lock watch connection error: ${sanitizeMessage(error.message)}`);
+    });
+
+    let halted = false;
+    let polling = false;
+    let timer: NodeJS.Timeout | undefined;
+    let closing: Promise<void> | undefined;
+    // The wait being timed: the same statement of the same session, found on a lock at every poll.
+    let waiting: { pid: number; statement: string; since: number } | null = null;
+
+    const halt = () => {
+      halted = true;
+      if (timer) clearInterval(timer);
+    };
+    const connected = client.connect();
+    const close = () => {
+      closing ??= connected.then(() => client.end()).catch(() => undefined);
+    };
+    const giveUp = (error: unknown) => {
+      halt();
+      close();
+      onLog(
+        `The lock wait is not being watched (${sanitizeMessage(error instanceof Error ? error.message : String(error))}): ` +
+          'RESTORE_LOCK_WAIT_TIMEOUT_MS does not apply to this restore.',
+      );
+    };
+
+    const poll = async () => {
+      if (halted || polling) return;
+      polling = true;
+      try {
+        const { rows } = await client.query<{ pid: number; statement_start: string }>(
+          `SELECT pid, query_start::text AS statement_start
+             FROM pg_stat_activity
+            WHERE application_name = $1
+              AND datname = current_database()
+              AND wait_event_type = 'Lock'
+            LIMIT 1`,
+          [applicationName],
+        );
+        if (halted) return;
+
+        const session = rows[0];
+        if (!session) {
+          waiting = null;
+          return;
+        }
+        if (
+          !waiting ||
+          waiting.pid !== session.pid ||
+          waiting.statement !== session.statement_start
+        ) {
+          waiting = { pid: session.pid, statement: session.statement_start, since: Date.now() };
+          return;
+        }
+        if (Date.now() - waiting.since < this.lockWaitMs) return;
+
+        halt();
+        onExceeded(true);
+        onLog(
+          `pg_restore waited ${this.lockWaitSeconds()} s for a lock held by another session; ` +
+            'cancelling the restore, the target is left unchanged.',
+        );
+        try {
+          await client.query('SELECT pg_cancel_backend($1)', [session.pid]);
+        } catch (error) {
+          onExceeded(false);
+          giveUp(error);
+        }
+      } catch (error) {
+        if (!halted) giveUp(error);
+      } finally {
+        polling = false;
+      }
+    };
+
+    connected.then(
+      () => {
+        if (halted) return;
+        timer = setInterval(() => void poll(), intervalMs);
+        timer.unref?.();
+      },
+      giveUp,
+    );
+
+    return () => {
+      halt();
+      close();
+    };
+  }
+
+  /** The lock wait in seconds, with one decimal at most (1500 ms is "1.5"). */
+  private lockWaitSeconds(): number {
+    return Math.round(this.lockWaitMs / 100) / 10;
   }
 }
