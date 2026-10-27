@@ -2,11 +2,19 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { createReadStream } from 'fs';
+import { createConnection as createMysqlConnection } from 'mysql2/promise';
 import { RestoreStrategy } from '../interfaces/restore-strategy.interface';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
 import { sanitizeMessage } from '../../../common/sanitization/sanitize-message';
+import {
+  RestoreRollbackError,
+  listBaseTables,
+  swapSchemaObjects,
+  type MysqlSession,
+} from './mysql-schema-objects';
 
 const DEFAULT_RESTORE_TIMEOUT_MS = 1_800_000;
+const CONNECT_TIMEOUT_MS = 10_000;
 
 @Injectable()
 export class MySQLRestoreStrategy implements RestoreStrategy {
@@ -39,114 +47,67 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
       await this.createDatabase(connection, shadowDb);
       await this.runMysqlRestore(connection, filePath, onLog, shadowDb, options?.abortSignal);
 
-      // Phase 2: validate shadow has tables
-      const shadowTables = await this.getTableNames(connection, shadowDb, options?.abortSignal);
-      if (shadowTables.length === 0) {
-        throw new Error('Restore produced no tables. Dump may be empty or corrupt');
-      }
-      onLog(`Shadow restore validated: ${shadowTables.length} tables`);
+      await this.withSession(connection, async (session) => {
+        // Phase 2: validate shadow has base tables (views are not tables)
+        const shadowTables = await listBaseTables(session, shadowDb);
+        if (shadowTables.length === 0) {
+          throw new Error('Restore produced no tables. Dump may be empty or corrupt');
+        }
+        onLog(`Shadow restore validated: ${shadowTables.length} tables`);
 
-      // Phase 3: atomic swap: original->backup, shadow->original
-      const originalTables = await this.getTableNames(connection, undefined, options?.abortSignal);
-      await this.createDatabase(connection, backupDb);
-      await this.atomicTableSwap(
-        connection, shadowDb, backupDb, originalTables, shadowTables, onLog, options?.abortSignal,
-      );
+        // Phase 3: swap base tables atomically and recreate views, triggers,
+        // routines and events around it (rolls back on failure)
+        await this.createDatabase(connection, backupDb);
+        await swapSchemaObjects(session, {
+          database: connection.database,
+          shadowDb,
+          backupDb,
+          onLog,
+          abortSignal: options?.abortSignal,
+        });
+      });
 
       // Phase 4: cleanup
       await this.safeDropDatabase(connection, backupDb);
       await this.safeDropDatabase(connection, shadowDb);
       onLog('Restore completed successfully');
     } catch (error) {
-      // Original database is untouched, clean up temp databases
+      // The target is untouched or already rolled back, so the temp databases
+      // can go. If the rollback itself failed, the pre-restore database holds
+      // the original data and must survive.
       await this.safeDropDatabase(connection, shadowDb);
-      await this.safeDropDatabase(connection, backupDb);
+      if (error instanceof RestoreRollbackError) {
+        this.logger.error(
+          `Rollback failed; original data preserved in database ${backupDb}`,
+        );
+      } else {
+        await this.safeDropDatabase(connection, backupDb);
+      }
       throw error;
     }
   }
 
-  private getTableNames(
+  private async withSession<T>(
     connection: ConnectionEntity,
-    database?: string,
-    abortSignal?: AbortSignal,
-  ): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const settle = (fn: typeof resolve | typeof reject, value: unknown) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        (fn as (v: unknown) => void)(value);
-      };
-
-      const args = [
-        '-h',
-        connection.host,
-        '-P',
-        String(connection.port),
-        '-u',
-        connection.username,
-        '-N',
-        '-B',
-        '-e',
-        'SHOW TABLES',
-        database ?? connection.database,
-      ];
-
-      // MYSQL_PWD keeps the password out of argv (not visible in ps aux / /proc).
-      const child = spawn('mysql', args, {
-        env: { ...process.env, MYSQL_PWD: connection.password },
-      });
-
-      if (abortSignal) {
-        if (abortSignal.aborted) {
-          child.kill();
-          settle(reject, new Error('Operación cancelada por el usuario'));
-          return;
-        }
-        abortSignal.addEventListener(
-          'abort',
-          () => {
-            child.kill();
-            settle(reject, new Error('Operación cancelada por el usuario'));
-          },
-          { once: true },
-        );
-      }
-
-      const timeout = setTimeout(() => {
-        child.kill();
-        settle(reject, new Error(`mysql SHOW TABLES exceeded ${this.timeoutMs}ms timeout`));
-      }, this.timeoutMs);
-
-      let stdout = '';
-
-      child.stdout.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString();
-      });
-
-      child.stderr.on('data', (chunk: Buffer) => {
-        this.logger.warn(`mysql SHOW TABLES stderr: ${chunk.toString().trim()}`);
-      });
-
-      child.on('error', (error: Error) => {
-        settle(reject, new Error(`mysql SHOW TABLES failed to start: ${error.message}`));
-      });
-
-      child.on('close', (code: number | null) => {
-        if (code !== 0) {
-          settle(reject, new Error(`mysql SHOW TABLES exited with code ${code ?? 'unknown'}`));
-          return;
-        }
-
-        const tables = stdout
-          .split('\n')
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0);
-
-        settle(resolve, tables);
-      });
+    work: (session: MysqlSession) => Promise<T>,
+  ): Promise<T> {
+    const conn = await createMysqlConnection({
+      host: connection.host,
+      port: connection.port,
+      database: connection.database,
+      user: connection.username,
+      password: connection.password,
+      connectTimeout: CONNECT_TIMEOUT_MS,
     });
+    // An error on the idle connection must not reach the process as an uncaughtException.
+    conn.on('error', (error: Error) => {
+      this.logger.warn(`Restore session error: ${sanitizeMessage(error.message)}`);
+    });
+    try {
+      return await work({ query: (sql, values) => conn.query(sql, values) });
+    } finally {
+      await conn.end().catch(() => undefined);
+    }
   }
 
   private executeSql(
@@ -344,51 +305,6 @@ export class MySQLRestoreStrategy implements RestoreStrategy {
         `Failed to drop database ${dbName}: ${(err as Error).message}`,
       );
     }
-  }
-
-  private async atomicTableSwap(
-    connection: ConnectionEntity,
-    shadowDb: string,
-    backupDb: string,
-    originalTables: string[],
-    shadowTables: string[],
-    onLog: (message: string) => void,
-    abortSignal?: AbortSignal,
-  ): Promise<void> {
-    const esc = (id: string) => this.escapeId(id);
-    const origDb = connection.database;
-    const renames: string[] = [];
-
-    // Move original tables -> backup (preserves data for rollback)
-    for (const t of originalTables) {
-      renames.push(
-        `\`${esc(origDb)}\`.\`${esc(t)}\` TO \`${esc(backupDb)}\`.\`${esc(t)}\``,
-      );
-    }
-
-    // Move shadow tables -> original (the new data)
-    for (const t of shadowTables) {
-      renames.push(
-        `\`${esc(shadowDb)}\`.\`${esc(t)}\` TO \`${esc(origDb)}\`.\`${esc(t)}\``,
-      );
-    }
-
-    if (renames.length === 0) {
-      onLog('No tables to swap');
-      return;
-    }
-
-    // RENAME TABLE is atomic: all renames succeed or none do.
-    const sql = [
-      'SET FOREIGN_KEY_CHECKS = 0;',
-      `RENAME TABLE ${renames.join(', ')};`,
-      'SET FOREIGN_KEY_CHECKS = 1;',
-    ].join('\n');
-
-    await this.executeSql(connection, sql, undefined, abortSignal);
-    onLog(
-      `Swapped ${originalTables.length} original -> backup, ${shadowTables.length} shadow -> original`,
-    );
   }
 
   private escapeId(identifier: string): string {

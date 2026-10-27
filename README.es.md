@@ -37,7 +37,7 @@ EnVault Management implementa invariantes estrictos de integridad de datos para 
 3. **Preflight Estructural (`pg_restore -l`)**
    Se valida la tabla de contenidos (TOC) y cabecera antes de abrir conexiones con el motor destino. Volcados truncados o corruptos abortan de inmediato.
 4. **Restauraciones Transaccionales Atómicas**
-   En PostgreSQL se aplica `--single-transaction` para rollback total ante cualquier fallo. En MySQL se utiliza una restauración en 4 fases sobre base de datos sombra (*shadow swap*).
+   En PostgreSQL se aplica `--single-transaction` para rollback total ante cualquier fallo. En MySQL se utiliza una restauración en 4 fases sobre base de datos sombra (*shadow swap*). También se restauran vistas, triggers, rutinas almacenadas y eventos, que se recrean justo después del intercambio, por lo que existe una breve ventana en la que las tablas intercambiadas no tienen triggers ni vistas. Si el intercambio falla, se devuelven las tablas y los objetos anteriores.
 5. **Recuperación ante Desastres en Frío**
    Runbook oficial de reconstrucción desde cero y simulacros periódicos en sandbox. Consulte [docs/es/disaster-recovery.md](docs/es/disaster-recovery.md).
 6. **Depuración Coordinada en Dos Etapas**

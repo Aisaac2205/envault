@@ -37,7 +37,7 @@ EnVault Management enforces strict data integrity invariants to eliminate silent
 3. **Structural Preflight Check (`pg_restore -l`)**
    The table of contents (TOC) is validated prior to opening connections to the target database. Truncated or malformed dumps abort before modifying destination state.
 4. **All-or-Nothing Transactions**
-   PostgreSQL restores execute with `--single-transaction`, guaranteeing clean rollback on error. MySQL restores execute via a 4-phase isolated shadow database with atomic table swap.
+   PostgreSQL restores execute with `--single-transaction`, guaranteeing clean rollback on error. MySQL restores execute via a 4-phase isolated shadow database with atomic table swap. Views, triggers, stored routines and events are restored too; they are recreated right after the swap, so there is a short window in which the swapped tables have no triggers or views. If the swap fails, the previous tables and objects are put back.
 5. **Cold Disaster Recovery**
    Complete bare-metal runbook and operational sandbox drill scripts ensure platform recoverability from zero. Read [docs/en/disaster-recovery.md](docs/en/disaster-recovery.md).
 6. **Two-Stage Coordinated Purge**

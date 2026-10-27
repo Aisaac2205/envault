@@ -178,6 +178,8 @@ const postgres: Engine = {
 export async function withMysql<T>(
   database: string | undefined,
   run: (connection: Connection) => Promise<T>,
+  /** mysql2 charset (a collation name) the client really encodes with; the server default if omitted. */
+  charset?: string,
 ): Promise<T> {
   let connection: Connection;
   try {
@@ -187,6 +189,7 @@ export async function withMysql<T>(
       user: MYSQL_ADMIN.username,
       password: MYSQL_ADMIN.password,
       database,
+      charset,
     });
   } catch (error) {
     throw unreachable(`the source MySQL (localhost:${MYSQL_HOST_PORT})`, error);
