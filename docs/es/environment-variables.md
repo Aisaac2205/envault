@@ -47,11 +47,12 @@ R2_PUBLIC_BASE_URL=
 # ── Restore y Backup (opcional) ────────────────────────────────
 # Timeout en milisegundos para restauraciones (default: 1800000 = 30 min).
 RESTORE_TIMEOUT_MS=1800000
-# Las restauraciones de MySQL terminan intercambiando los datos restaurados con los
-# del destino. Tiempo en milisegundos que cada paso de ese intercambio espera un
-# bloqueo que otra sesión mantiene sobre las tablas del destino (default: 30000 =
-# 30 s, se aplica en segundos enteros). Rige por cada intento de bloqueo, no para
-# todo el intercambio, y mientras espera, las consultas de la propia aplicación del
+# Tiempo en milisegundos que una restauración espera un bloqueo que otra sesión
+# mantiene sobre las tablas del destino (default: 30000 = 30 s). PostgreSQL: una
+# sentencia de pg_restore que lleva esperando tanto tiempo un bloqueo se cancela, y
+# eso revierte la restauración. MySQL: el intercambio final con el destino lo aplica
+# en cada paso, en segundos enteros. Rige por cada intento de bloqueo, no para toda
+# la restauración, y mientras espera, las consultas de la propia aplicación del
 # destino sobre esas tablas esperan detrás. Al agotarse, la restauración falla y el
 # destino queda sin cambios.
 RESTORE_LOCK_WAIT_TIMEOUT_MS=30000
