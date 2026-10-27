@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import i18n from "@/i18n";
 import type { Schedule } from "../../types";
 import {
+  changeScheduleKind,
   DEFAULT_SCHEDULE,
   SCHEDULE_PRESETS,
   describeSchedule,
@@ -228,5 +229,46 @@ describe("scheduleEquals", () => {
     expect(scheduleEquals(null, null)).toBe(true);
     expect(scheduleEquals(null, everySixHours)).toBe(false);
     expect(scheduleEquals(everySixHours, null)).toBe(false);
+  });
+});
+
+describe("changeScheduleKind", () => {
+  it("starts every-few-hours at a sensible interval", () => {
+    expect(changeScheduleKind({ kind: "daily", time: "07:30" }, "every_hours")).toEqual(
+      { kind: "every_hours", everyHours: 6 },
+    );
+  });
+
+  it("carries the time over to the kinds that have one", () => {
+    const daily: Schedule = { kind: "daily", time: "07:30" };
+
+    expect(changeScheduleKind(daily, "weekly")).toEqual({
+      kind: "weekly",
+      time: "07:30",
+      daysOfWeek: [1],
+    });
+    expect(changeScheduleKind(daily, "monthly")).toEqual({
+      kind: "monthly",
+      time: "07:30",
+      dayOfMonth: 1,
+    });
+  });
+
+  it("falls back to the default time when the schedule had none", () => {
+    expect(changeScheduleKind(everySixHours, "daily")).toEqual({
+      kind: "daily",
+      time: "02:00",
+    });
+    expect(changeScheduleKind(null, "monthly")).toEqual({
+      kind: "monthly",
+      time: "02:00",
+      dayOfMonth: 1,
+    });
+  });
+
+  it("keeps the schedule when the kind does not change", () => {
+    expect(changeScheduleKind(mondayWednesdayFriday, "weekly")).toBe(
+      mondayWednesdayFriday,
+    );
   });
 });

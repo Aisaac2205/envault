@@ -76,15 +76,14 @@ export interface Cronjob extends RetentionFields {
 export interface CreateCronjobDto extends RetentionFields {
   name: string;
   connectionId: string;
-  cronExpression: string;
-  frequency: CronFrequency;
+  schedule: Schedule;
 }
 
 export interface UpdateCronjobDto extends RetentionFields {
   name?: string;
   connectionId?: string;
-  cronExpression?: string;
-  frequency?: CronFrequency;
+  /** Left out to keep the current schedule untouched. */
+  schedule?: Schedule;
   isActive?: boolean;
 }
 
