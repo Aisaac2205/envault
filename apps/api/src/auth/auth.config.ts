@@ -4,6 +4,8 @@ import { admin } from 'better-auth/plugins';
 import { Pool } from 'pg';
 import { createAuthAuditHook } from './audit/auth-audit-hook';
 import { toJsonRecord } from './audit/to-json-record';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './password-policy/password-policy';
+import { createPasswordPolicyHook } from './password-policy/password-policy-hook';
 
 export const authPool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -28,9 +30,20 @@ export const auth = betterAuth({
     : [],
   emailAndPassword: {
     enabled: true,
+    // Better Auth enforces these on sign-up, change-password, reset-password
+    // and admin set-user-password, but NOT on admin create-user (1.7.10 only
+    // checks the maximum there). The hook below applies the whole policy,
+    // length included, to every flow, so that a rejection always carries the
+    // same PASSWORD_TOO_WEAK code; these settings keep Better Auth's own
+    // limits in step as a second line.
+    minPasswordLength: PASSWORD_MIN_LENGTH,
+    maxPasswordLength: PASSWORD_MAX_LENGTH,
   },
   plugins: [admin()],
   hooks: {
+    // Refuses a weak NEW password before any endpoint that sets one runs.
+    // Verifying an existing password (sign-in, verify-password) is untouched.
+    before: createPasswordPolicyHook(),
     after: createAuthMiddleware(async (ctx) => {
       await auditAuthEvent({
         path: ctx.path,
