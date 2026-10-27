@@ -1,5 +1,17 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { auth, authPool } from '../auth.config';
+import { PASSWORD_POLICY_ERROR_CODE } from '../password-policy/password-policy';
+
+// The seeded account is always created with this name, and the password
+// policy refuses a password that contains it.
+const ADMIN_NAME = 'Admin';
+
+function isPasswordPolicyRejection(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (error as { body?: { code?: unknown } }).body?.code === PASSWORD_POLICY_ERROR_CODE
+  );
+}
 
 @Injectable()
 export class AdminSeedService implements OnApplicationBootstrap {
@@ -39,7 +51,7 @@ export class AdminSeedService implements OnApplicationBootstrap {
 
       // Create user via public signup (no admin session needed)
       const result = await auth.api.signUpEmail({
-        body: { email, password, name: 'Admin' },
+        body: { email, password, name: ADMIN_NAME },
       });
 
       // Set role directly in DB — auth.api.setRole requires an admin
@@ -51,6 +63,17 @@ export class AdminSeedService implements OnApplicationBootstrap {
 
       this.logger.log('Default admin user created');
     } catch (error) {
+      // Checked before the duplicate-user test below, which reads the message:
+      // a weak password is never "the admin already exists".
+      if (isPasswordPolicyRejection(error)) {
+        this.logger.error(
+          `Failed to seed admin user: BETTER_AUTH_ADMIN_PASSWORD does not meet the password policy (${PASSWORD_POLICY_ERROR_CODE}). ${error.message} ` +
+            `The admin account is named "${ADMIN_NAME}" and uses the email in BETTER_AUTH_ADMIN_EMAIL. ` +
+            'No admin user was created: set a stronger password and restart.',
+        );
+        return;
+      }
+
       const message =
         error instanceof Error ? error.message : JSON.stringify(error);
 
