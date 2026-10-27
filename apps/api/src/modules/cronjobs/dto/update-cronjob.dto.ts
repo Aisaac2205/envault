@@ -16,7 +16,9 @@ class CronjobSwitchesDto {
 // skip validation only for a missing field; its default, @IsOptional(), also
 // skips it for null, which then failed in the database with a 500. The
 // retention limits keep the @IsOptional() of the create DTO on purpose: they
-// are nullable columns, and null is how a limit is removed.
+// are nullable columns, and null is how a limit is removed. `schedule` skips
+// validation only when missing as well (see IsScheduleInput), so a null
+// schedule is a 400.
 export class UpdateCronjobDto extends PartialType(
   IntersectionType(OmitType(CreateCronjobDto, ['retentionEnabled'] as const), CronjobSwitchesDto),
   { skipNullProperties: false },

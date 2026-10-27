@@ -21,6 +21,17 @@ import { AuthUser } from '../../auth/decorators/current-user.decorator';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { CronFrequency } from '../../database/enums/cron-frequency.enum';
 import { BackupCategory } from '../../database/enums/backup-category.enum';
+import {
+  Schedule,
+  buildCronExpression,
+  deriveFrequency,
+  parseCronExpression,
+} from './schedule';
+
+type CronjobResponse = CronjobEntity & {
+  connectionName: string | null;
+  schedule: Schedule | null;
+};
 
 const FREQUENCY_TO_CATEGORY: Record<CronFrequency, BackupCategory> = {
   [CronFrequency.HOURLY]: BackupCategory.HOURLY,
@@ -62,23 +73,27 @@ export class CronjobsService implements OnApplicationBootstrap {
     private readonly dataSource: DataSource,
   ) {}
 
-  private async enrichWithConnectionName(
-    cronjob: CronjobEntity,
-  ): Promise<CronjobEntity & { connectionName: string | null }> {
+  // The one place that adds `schedule` to a response: read back from the stored
+  // expression, so it is null for anything the schedule builder cannot emit.
+  private withSchedule(cronjob: CronjobEntity): CronjobEntity & { schedule: Schedule | null } {
+    return Object.assign(cronjob, { schedule: parseCronExpression(cronjob.cronExpression) });
+  }
+
+  private async enrichWithConnectionName(cronjob: CronjobEntity): Promise<CronjobResponse> {
     const nameMap = await this.connectionsService.findByIds([cronjob.connectionId]);
-    return Object.assign(cronjob, {
+    return Object.assign(this.withSchedule(cronjob), {
       connectionName: nameMap.get(cronjob.connectionId) ?? null,
     });
   }
 
   private async enrichManyWithConnectionName(
     cronjobs: CronjobEntity[],
-  ): Promise<(CronjobEntity & { connectionName: string | null })[]> {
+  ): Promise<CronjobResponse[]> {
     if (cronjobs.length === 0) return [];
     const ids = [...new Set(cronjobs.map((c) => c.connectionId))];
     const nameMap = await this.connectionsService.findByIds(ids);
     return cronjobs.map((c) =>
-      Object.assign(c, { connectionName: nameMap.get(c.connectionId) ?? null }),
+      Object.assign(this.withSchedule(c), { connectionName: nameMap.get(c.connectionId) ?? null }),
     );
   }
 
@@ -122,8 +137,14 @@ export class CronjobsService implements OnApplicationBootstrap {
   }
 
   async create(dto: CreateCronjobDto) {
-    this.validateCronExpression(dto.cronExpression);
-    const cronjob = await this.repository.create(dto);
+    const data = this.resolveSchedule(dto);
+    if (data.cronExpression === undefined || data.frequency === undefined) {
+      throw new BadRequestException(
+        'Provide either "schedule" or both "cronExpression" and "frequency"',
+      );
+    }
+    this.validateCronExpression(data.cronExpression);
+    const cronjob = await this.repository.create(data);
     if (cronjob.isActive) {
       this.registerCronJob(cronjob);
     }
@@ -136,10 +157,11 @@ export class CronjobsService implements OnApplicationBootstrap {
     if (!existing) {
       throw new NotFoundException(`Cronjob con ID "${id}" no encontrado`);
     }
-    if (dto.cronExpression !== undefined) {
-      this.validateCronExpression(dto.cronExpression);
+    const data = this.resolveSchedule(dto);
+    if (data.cronExpression !== undefined) {
+      this.validateCronExpression(data.cronExpression);
     }
-    const updated = await this.repository.update(id, dto);
+    const updated = await this.repository.update(id, data);
     if (!updated) {
       throw new NotFoundException(`Cronjob con ID "${id}" no encontrado`);
     }
@@ -183,7 +205,7 @@ export class CronjobsService implements OnApplicationBootstrap {
     cronExpression: string,
     name: string,
     frequency: CronFrequency,
-  ): Promise<CronjobEntity> {
+  ): Promise<CronjobEntity & { schedule: Schedule | null }> {
     this.validateCronExpression(cronExpression);
     const entity = await this.repository.upsertForConnection(connectionId, {
       name,
@@ -194,7 +216,26 @@ export class CronjobsService implements OnApplicationBootstrap {
     this.unregisterCronJob(entity.id);
     this.registerCronJob(entity);
     await this.syncNextRunAt(entity);
-    return entity;
+    return this.withSchedule(entity);
+  }
+
+  // The single point where a request's schedule becomes what is stored. A
+  // schedule stands for cronExpression and frequency, so sending it next to
+  // either one is ambiguous and answers 400. Without a schedule the legacy
+  // fields pass through untouched.
+  private resolveSchedule(dto: CreateCronjobDto | UpdateCronjobDto): Partial<CronjobEntity> {
+    const { schedule, ...rest } = dto;
+    if (schedule === undefined) return rest;
+    if (rest.cronExpression !== undefined || rest.frequency !== undefined) {
+      throw new BadRequestException(
+        'Provide either "schedule" or "cronExpression"/"frequency", not both',
+      );
+    }
+    return {
+      ...rest,
+      cronExpression: buildCronExpression(schedule),
+      frequency: deriveFrequency(schedule),
+    };
   }
 
   // Keeps DB nextRunAt in sync with the live scheduler so the UI can show the
