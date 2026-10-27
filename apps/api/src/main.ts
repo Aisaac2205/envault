@@ -8,11 +8,16 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import express from 'express';
-import { AppModule } from './app.module';
+// AppModule is deliberately NOT imported here. It pulls in auth.config.ts, and
+// Better Auth validates the database schema as soon as that file is evaluated,
+// caching any mismatch for the life of the process. bootstrap() therefore runs
+// the pending migrations first and loads the app afterwards (see
+// boot-order.spec.ts, which guards this).
 import { createAuthRateLimitMiddleware } from './common/middleware/auth-rate-limit.middleware';
 import { createApiSecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { registerFatalRuntimePolicy } from './common/runtime/fatal-runtime-policy';
 import { resolveLogLevels } from './config/logger.config';
+import { runPendingMigrations } from './database/run-migrations';
 
 // Safety net global: cualquier promise no atrapada (cronjobs, R2, pg_dump,
 // etc.) se loguea pero NO mata el proceso. Sin esto, Node 22 trata
@@ -25,6 +30,15 @@ process.on('unhandledRejection', (reason) => {
 });
 
 async function bootstrap(): Promise<void> {
+  // The schema must be correct before Better Auth is evaluated (it checks it
+  // on import), and TypeOrmModule's migrationsRun only fires after that. A
+  // failed migration rejects here and stops the boot. migrationsRun stays on
+  // in database.config.ts as a no-op safety net.
+  await runPendingMigrations();
+
+  // Loaded only now so that auth.config.ts sees the migrated schema.
+  const { AppModule } = await import('./app.module');
+
   // bodyParser: false → Better Auth catch-all needs the raw body stream.
   // JSON parsing is re-applied below for all non-auth routes.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
