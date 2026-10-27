@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ANALYTICS_WINDOWS, AnalyticsWindow } from '../jobs-analytics.types';
 
@@ -8,4 +8,8 @@ export class AnalyticsWindowQueryDto {
   @IsInt()
   @IsIn(ANALYTICS_WINDOWS)
   window?: AnalyticsWindow;
+
+  @IsOptional()
+  @IsUUID()
+  connectionId?: string;
 }

@@ -42,6 +42,7 @@ describe('parseDailyRow', () => {
       failed: '1',
       p50: 25.449,
       p95: 38.51,
+      max: 41.26,
       totalSizeMb: 120.005,
     });
 
@@ -51,22 +52,25 @@ describe('parseDailyRow', () => {
       failed: 1,
       p50DurationSeconds: 25.4,
       p95DurationSeconds: 38.5,
+      maxDurationSeconds: 41.3,
       totalSizeMb: 120.01,
     });
   });
 
-  it('keeps null percentiles null when no completed job has duration data', () => {
+  it('keeps null durations null when no completed job has duration data', () => {
     const parsed = parseDailyRow({
       date: '2026-03-11',
       completed: '0',
       failed: '2',
       p50: null,
       p95: null,
+      max: null,
       totalSizeMb: 0,
     });
 
     expect(parsed.p50DurationSeconds).toBeNull();
     expect(parsed.p95DurationSeconds).toBeNull();
+    expect(parsed.maxDurationSeconds).toBeNull();
   });
 });
 
@@ -81,6 +85,7 @@ describe('zeroFillDailySeries', () => {
         failed: 0,
         p50DurationSeconds: 12.5,
         p95DurationSeconds: 20.1,
+        maxDurationSeconds: 22.4,
         totalSizeMb: 50,
       },
     ];
@@ -89,8 +94,24 @@ describe('zeroFillDailySeries', () => {
 
     expect(series).toEqual([
       rows[0],
-      { date: '2026-03-11', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-      { date: '2026-03-12', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
+      {
+        date: '2026-03-11',
+        completed: 0,
+        failed: 0,
+        p50DurationSeconds: null,
+        p95DurationSeconds: null,
+        maxDurationSeconds: null,
+        totalSizeMb: 0,
+      },
+      {
+        date: '2026-03-12',
+        completed: 0,
+        failed: 0,
+        p50DurationSeconds: null,
+        p95DurationSeconds: null,
+        maxDurationSeconds: null,
+        totalSizeMb: 0,
+      },
     ]);
   });
 
@@ -102,6 +123,7 @@ describe('zeroFillDailySeries', () => {
         failed: 99,
         p50DurationSeconds: 1,
         p95DurationSeconds: 1,
+        maxDurationSeconds: 1,
         totalSizeMb: 1,
       },
     ];

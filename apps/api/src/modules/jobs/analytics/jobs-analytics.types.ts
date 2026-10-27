@@ -7,6 +7,7 @@ export interface DailyBackupPoint {
   failed: number;
   p50DurationSeconds: number | null;
   p95DurationSeconds: number | null;
+  maxDurationSeconds: number | null;
   totalSizeMb: number;
 }
 
@@ -15,6 +16,8 @@ export interface DailyBackupSeries {
   from: string;
   to: string;
   timezone: 'UTC';
+  /** The connection the series is scoped to, or null when it covers every connection. */
+  connectionId: string | null;
   days: DailyBackupPoint[];
 }
 
@@ -47,5 +50,6 @@ export interface DailyBackupRawRow {
   failed: string;
   p50: number | null;
   p95: number | null;
+  max: number | null;
   totalSizeMb: number;
 }

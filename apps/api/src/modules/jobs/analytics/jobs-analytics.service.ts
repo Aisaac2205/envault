@@ -17,12 +17,17 @@ export class JobsAnalyticsService {
     private readonly connectionRepository: Repository<ConnectionEntity>,
   ) {}
 
-  async getDailySeries(window: AnalyticsWindow = DEFAULT_ANALYTICS_WINDOW): Promise<DailyBackupSeries> {
+  /** Omitting `connectionId` aggregates every connection; the series echoes it as null. */
+  async getDailySeries(
+    window: AnalyticsWindow = DEFAULT_ANALYTICS_WINDOW,
+    connectionId?: string,
+  ): Promise<DailyBackupSeries> {
     const days = buildUtcDayRange(new Date(), window);
     const from = days[0];
     const toExclusive = nextUtcDay(days[days.length - 1]);
+    const scopedConnectionId = connectionId ?? null;
 
-    const rawRows = await this.repository.getDailyBackupRows({ from, toExclusive });
+    const rawRows = await this.repository.getDailyBackupRows({ from, toExclusive, connectionId: scopedConnectionId });
     const parsedRows = rawRows.map(parseDailyRow);
 
     return {
@@ -30,6 +35,7 @@ export class JobsAnalyticsService {
       from,
       to: days[days.length - 1],
       timezone: 'UTC',
+      connectionId: scopedConnectionId,
       days: zeroFillDailySeries(days, parsedRows),
     };
   }

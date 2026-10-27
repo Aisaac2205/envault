@@ -9,6 +9,8 @@ import { DailyBackupRawRow, ConnectionStorageRawRow } from './jobs-analytics.typ
 export interface DailyRowsQuery {
   from: string;
   toExclusive: string;
+  /** Restricts the rows to one connection; null or omitted aggregates every connection. */
+  connectionId?: string | null;
 }
 
 @Injectable()
@@ -20,8 +22,8 @@ export class JobsAnalyticsRepository {
     private readonly restoreJobRepository: Repository<RestoreJobEntity>,
   ) {}
 
-  getDailyBackupRows({ from, toExclusive }: DailyRowsQuery): Promise<DailyBackupRawRow[]> {
-    return this.backupJobRepository
+  getDailyBackupRows({ from, toExclusive, connectionId }: DailyRowsQuery): Promise<DailyBackupRawRow[]> {
+    const query = this.backupJobRepository
       .createQueryBuilder('j')
       .select(`to_char(DATE(j."createdAt"), 'YYYY-MM-DD')`, 'date')
       .addSelect('COUNT(*) FILTER (WHERE j.status = :completed)', 'completed')
@@ -36,9 +38,20 @@ export class JobsAnalyticsRepository {
           `FILTER (WHERE j.status = :completed AND j."startedAt" IS NOT NULL AND j."completedAt" IS NOT NULL))::float8`,
         'p95',
       )
+      .addSelect(
+        `(MAX(EXTRACT(EPOCH FROM (j."completedAt" - j."startedAt"))) ` +
+          `FILTER (WHERE j.status = :completed AND j."startedAt" IS NOT NULL AND j."completedAt" IS NOT NULL))::float8`,
+        'max',
+      )
       .addSelect(`COALESCE(SUM(j."fileSizeMb") FILTER (WHERE j.status = :completed), 0)::float8`, 'totalSizeMb')
       .where('j."createdAt" >= CAST(:from AS date)', { from })
-      .andWhere('j."createdAt" < CAST(:toExclusive AS date)', { toExclusive })
+      .andWhere('j."createdAt" < CAST(:toExclusive AS date)', { toExclusive });
+
+    if (connectionId) {
+      query.andWhere('j."connectionId" = :connectionId', { connectionId });
+    }
+
+    return query
       .setParameters({ completed: JobStatus.COMPLETED, failed: JobStatus.FAILED })
       .groupBy('DATE(j."createdAt")')
       .orderBy('DATE(j."createdAt")', 'ASC')

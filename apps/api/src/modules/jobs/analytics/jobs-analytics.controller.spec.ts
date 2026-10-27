@@ -40,13 +40,21 @@ describe('JobsAnalyticsController', () => {
     const result = await controller.getDailySeries({ window: 7 });
 
     expect(result).toEqual({ window: 30, days: [] });
-    expect(service.getDailySeries).toHaveBeenCalledWith(7);
+    expect(service.getDailySeries).toHaveBeenCalledWith(7, undefined);
   });
 
-  it('delegates the daily route with undefined window when omitted', async () => {
+  it('delegates the daily route with undefined window and connectionId when omitted', async () => {
     await controller.getDailySeries({});
 
-    expect(service.getDailySeries).toHaveBeenCalledWith(undefined);
+    expect(service.getDailySeries).toHaveBeenCalledWith(undefined, undefined);
+  });
+
+  it('passes the connectionId query through to service.getDailySeries', async () => {
+    const connectionId = '6c1f2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+
+    await controller.getDailySeries({ window: 90, connectionId });
+
+    expect(service.getDailySeries).toHaveBeenCalledWith(90, connectionId);
   });
 
   it('belongs to the dashboard feature via class-level @RequirePermission metadata', () => {
