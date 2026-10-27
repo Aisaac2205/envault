@@ -143,6 +143,41 @@ describe('RestoreStagingService', () => {
     }, 2_000);
   });
 
+  describe('writeDump with a signal', () => {
+    it('stops a download that is still flowing when the signal fires, and closes the dump file', async () => {
+      const staging = await service.create(
+        '00000000-0000-0000-0000-000000000035',
+        '00000000-0000-0000-0000-000000000036',
+      );
+      const handle = staging.dumpFileHandle;
+      const source = new Readable({ read() {} });
+      source.push(Buffer.from('partial'));
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 50);
+
+      await expect(
+        service.writeDump(staging, source, { signal: controller.signal }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+
+      expect(source.destroyed).toBe(true);
+      expect(handle?.fd).toBe(-1);
+      expect(staging.dumpFileHandle).toBeNull();
+    }, 2_000);
+
+    it('does not touch a signal that never fires', async () => {
+      const staging = await service.create(
+        '00000000-0000-0000-0000-000000000037',
+        '00000000-0000-0000-0000-000000000038',
+      );
+
+      const stats = await service.writeDump(staging, Readable.from([Buffer.from('abc')]), {
+        signal: new AbortController().signal,
+      });
+
+      expect(stats.bytes).toBe(3);
+    });
+  });
+
   it('validates disk space successfully when available space exceeds requirements', async () => {
     const result = await service.checkAvailableDiskSpace(1024);
     expect(result.requiredBytes).toBe(1024);

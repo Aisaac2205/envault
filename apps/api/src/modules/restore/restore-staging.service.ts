@@ -82,9 +82,15 @@ export class RestoreStagingService {
     return { directoryPath, dumpFilePath, metadataPath, dumpFileHandle };
   }
 
+  /**
+   * Streams `source` into the staged dump file, hashing it on the way. Rejects if
+   * the source fails; `options.signal` ends a download that has stalled, which is
+   * how the deadline of the restore reaches this step.
+   */
   async writeDump(
     staging: RestoreStaging,
     source: Readable,
+    options?: { signal?: AbortSignal },
   ): Promise<StagedDumpStats> {
     const handle = staging.dumpFileHandle;
     if (!handle) {
@@ -107,7 +113,7 @@ export class RestoreStagingService {
       // would leave the write pending forever, holding the restore queue.
       // The write stream closes the handle when it ends or is destroyed; the
       // `finally` below only makes sure of it (closing twice is harmless).
-      await pipeline(source, hasher, handle.createWriteStream());
+      await pipeline(source, hasher, handle.createWriteStream(), { signal: options?.signal });
       return {
         sha256: hash.digest('hex'),
         bytes: totalBytes,

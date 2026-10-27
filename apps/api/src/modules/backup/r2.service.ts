@@ -12,6 +12,11 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
 import { R2Object } from './interfaces/r2-object.interface';
 
+export interface R2RequestOptions {
+  /** Ends the request when it fires. */
+  abortSignal?: AbortSignal;
+}
+
 @Injectable()
 export class R2Service {
   private readonly client: S3Client;
@@ -165,21 +170,27 @@ export class R2Service {
     }
   }
 
-  async download(key: string): Promise<Readable> {
+  /**
+   * The client has no request timeout of its own, so a storage that stops
+   * answering would hold the caller forever: callers that have a deadline pass
+   * `abortSignal`, which ends the request and, once the body is flowing, the
+   * stream (it errors).
+   */
+  async download(key: string, options?: R2RequestOptions): Promise<Readable> {
     this.logger.debug(`Downloading from R2: ${key}`);
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
     });
-    const response = await this.client.send(command);
+    const response = await this.client.send(command, { abortSignal: options?.abortSignal });
     if (!response.Body) {
       throw new Error(`No body returned for key: ${key}`);
     }
     return response.Body as Readable;
   }
 
-  async downloadJson<T>(key: string): Promise<T> {
-    const stream = await this.download(key);
+  async downloadJson<T>(key: string, options?: R2RequestOptions): Promise<T> {
+    const stream = await this.download(key, options);
     const chunks: Buffer[] = [];
     for await (const chunk of stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -234,7 +245,7 @@ export class R2Service {
     return getSignedUrl(this.client, command, { expiresIn });
   }
 
-  async getObjectSize(key: string): Promise<number | undefined> {
+  async getObjectSize(key: string, options?: R2RequestOptions): Promise<number | undefined> {
     if (!this.isAvailable()) {
       return undefined;
     }
@@ -243,9 +254,14 @@ export class R2Service {
         Bucket: this.bucket,
         Key: key,
       });
-      const response = await this.client.send(command);
+      const response = await this.client.send(command, { abortSignal: options?.abortSignal });
       return response.ContentLength;
     } catch (error) {
+      // The size is best effort, but a caller that gave up must be told, not
+      // handed a missing size to carry on with.
+      if (options?.abortSignal?.aborted) {
+        throw error;
+      }
       this.logger.warn(
         `Could not determine object size for ${key}: ${error instanceof Error ? error.message : String(error)}`,
       );

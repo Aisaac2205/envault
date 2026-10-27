@@ -7,6 +7,7 @@ import {
   RestoreIncompatibleError,
   RestoreSourceInfo,
   RestoreStrategy,
+  stopChildProcess,
 } from '../interfaces/restore-strategy.interface';
 import { ConnectionEntity } from '../../../database/entities/connection.entity';
 import { sanitizeMessage } from '../../../common/sanitization/sanitize-message';
@@ -20,6 +21,7 @@ import { PgToolchain } from './pg-toolchain';
 
 const DEFAULT_RESTORE_TIMEOUT_MS = 1_800_000;
 const DEFAULT_RESTORE_LOCK_WAIT_TIMEOUT_MS = 30_000;
+const CANCELLED_MESSAGE = 'Operación cancelada por el usuario';
 
 /** The lock watch is a side channel: it gives up on an unreachable target instead of holding the restore. */
 const LOCK_WATCH_TIMEOUT_MS = 10_000;
@@ -161,20 +163,22 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
         (fn as (v?: unknown) => void)(value);
       };
 
+      // Rejects only once the child has exited (see stopChildProcess).
+      let termination: Error | null = null;
+      const terminate = (error: Error) => {
+        if (settled) return;
+        termination ??= error;
+        void stopChildProcess(proc).then(() => settle(reject, termination));
+      };
+
       if (abortSignal) {
         if (abortSignal.aborted) {
-          proc.kill();
-          settle(reject, new Error('Operación cancelada por el usuario'));
+          terminate(new Error(CANCELLED_MESSAGE));
           return;
         }
-        abortSignal.addEventListener(
-          'abort',
-          () => {
-            proc.kill();
-            settle(reject, new Error('Operación cancelada por el usuario'));
-          },
-          { once: true },
-        );
+        abortSignal.addEventListener('abort', () => terminate(new Error(CANCELLED_MESSAGE)), {
+          once: true,
+        });
       }
 
       // The listing must be consumed or a large table of contents fills the
@@ -197,6 +201,10 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
       });
 
       proc.on('close', (code: number | null) => {
+        if (termination) {
+          settle(reject, termination);
+          return;
+        }
         if (code !== 0) {
           const detail = sanitizeMessage(
             stderrOutput.trim() || `exit code ${code ?? 'unknown'}`,
@@ -261,29 +269,29 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
         },
       });
 
+      // Rejects only once pg_restore has exited (see stopChildProcess): the
+      // caller releases the target's lock and lease as soon as it hears.
+      let termination: Error | null = null;
+      const terminate = (error: Error) => {
+        if (settled) return;
+        termination ??= error;
+        void stopChildProcess(pgRestore).then(() => settle(reject, termination));
+      };
+
+      // A backstop with the same value as the deadline of the whole restore.
+      const timeout = setTimeout(() => {
+        terminate(new Error(`pg_restore exceeded ${this.timeoutMs}ms timeout`));
+      }, this.timeoutMs);
+
       if (abortSignal) {
         if (abortSignal.aborted) {
-          pgRestore.kill();
-          settle(reject, new Error('Operación cancelada por el usuario'));
+          terminate(new Error(CANCELLED_MESSAGE));
           return;
         }
-        abortSignal.addEventListener(
-          'abort',
-          () => {
-            pgRestore.kill();
-            settle(reject, new Error('Operación cancelada por el usuario'));
-          },
-          { once: true },
-        );
+        abortSignal.addEventListener('abort', () => terminate(new Error(CANCELLED_MESSAGE)), {
+          once: true,
+        });
       }
-
-      const timeout = setTimeout(() => {
-        pgRestore.kill();
-        settle(
-          reject,
-          new Error(`pg_restore exceeded ${this.timeoutMs}ms timeout`),
-        );
-      }, this.timeoutMs);
 
       stopWatching = this.watchLockWait(connection, applicationName, onLog, (exceeded) => {
         lockWaitExceeded = exceeded;
@@ -308,7 +316,9 @@ export class PostgresRestoreStrategy implements RestoreStrategy {
       });
 
       pgRestore.on('close', (code: number | null) => {
-        if (code === 0) {
+        if (termination) {
+          settle(reject, termination);
+        } else if (code === 0) {
           settle(resolve);
         } else if (lockWaitExceeded) {
           // The cancelled statement aborts the single transaction, which rolls
