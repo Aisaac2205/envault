@@ -414,6 +414,21 @@ describe('mysql-schema-objects', () => {
       expect((error as Error).message).toContain('preserved in database app_pre_restore_1');
     });
 
+    it('refuses an empty shadow database before touching the target', async () => {
+      const dbs = fixtureDbs();
+      dbs.app_shadow.tables = [];
+      const session = new FakeSession(dbs);
+
+      await expect(swapSchemaObjects(session, OPTIONS)).rejects.toThrow(
+        /shadow database app_shadow has no base tables/,
+      );
+
+      // No DROP/RENAME/CREATE ran, so there is nothing to roll back either.
+      const destructive = session.log.filter((s) => /^(DROP|RENAME|CREATE)/.test(s));
+      expect(destructive).toEqual([]);
+      expect(session.dbs.app.tables).toEqual(['old_a']);
+    });
+
     it('honors an abort requested before the critical section', async () => {
       const session = new FakeSession(fixtureDbs());
       const controller = new AbortController();

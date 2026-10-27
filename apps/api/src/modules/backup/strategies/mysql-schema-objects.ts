@@ -450,6 +450,14 @@ export async function swapSchemaObjects(
 
   const originalTables = await listBaseTables(session, database);
   const shadowTables = await listBaseTables(session, shadowDb);
+  // The rollback reads "the shadow has no base tables" as "the rename already
+  // happened", so an empty shadow would make it undo a rename that never ran.
+  // Refused before the `try` so that no rollback is attempted for it.
+  if (shadowTables.length === 0) {
+    throw new Error(
+      `Cannot swap: shadow database ${shadowDb} has no base tables, the target was not touched`,
+    );
+  }
   const original = await captureSchemaObjects(session, database);
   const shadow = await captureSchemaObjects(session, shadowDb);
 
