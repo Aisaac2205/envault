@@ -128,11 +128,14 @@ test.describe('permissions of the signed-in user', () => {
 });
 
 // A well-formed body, so that the refusal can only come from the role check.
-// The request is refused, so no user is created.
+// The request is refused, so no user is created. The password has to satisfy
+// the password policy too, which runs before the endpoint's own checks and
+// would answer 400 instead of 401/403: it is neither a common password nor a
+// pattern, and it contains neither the name nor the email below.
 function validCreateUserBody() {
   return {
     email: uniqueEmail('refused'),
-    password: 'refused-pass-123',
+    password: 'correct-horse-battery-staple',
     name: 'Refused',
     role: 'user',
   };
