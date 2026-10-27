@@ -1,6 +1,8 @@
+import { createHash } from 'crypto';
 import { mkdtemp, lstat, readFile, rm, symlink, utimes, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { Readable } from 'stream';
 import {
   RestoreStagingLock,
   RestoreStagingOwnership,
@@ -103,6 +105,42 @@ describe('RestoreStagingService', () => {
     expect(await readFile(sentinel, 'utf8')).toBe('preserve');
     expect((await lstat(candidate)).isSymbolicLink()).toBe(true);
     await rm(outside, { recursive: true, force: true });
+  });
+
+  describe('writeDump', () => {
+    it('stages the stream and reports its size and checksum', async () => {
+      const staging = await service.create(
+        '00000000-0000-0000-0000-000000000031',
+        '00000000-0000-0000-0000-000000000032',
+      );
+
+      const stats = await service.writeDump(staging, Readable.from([Buffer.from('abc'), Buffer.from('def')]));
+
+      expect(stats).toEqual({
+        sha256: createHash('sha256').update('abcdef').digest('hex'),
+        bytes: 6,
+      });
+      expect(await readFile(staging.dumpFilePath, 'utf8')).toBe('abcdef');
+      expect(staging.dumpFileHandle).toBeNull();
+    });
+
+    it('rejects, closes the dump file and stays settled when the source fails mid-stream', async () => {
+      const staging = await service.create(
+        '00000000-0000-0000-0000-000000000033',
+        '00000000-0000-0000-0000-000000000034',
+      );
+      const handle = staging.dumpFileHandle;
+      const source = new Readable({ read() {} });
+      source.push(Buffer.from('partial'));
+      setImmediate(() => source.destroy(new Error('connection reset by peer')));
+
+      await expect(service.writeDump(staging, source)).rejects.toThrow('connection reset by peer');
+
+      expect(handle?.fd).toBe(-1);
+      expect(staging.dumpFileHandle).toBeNull();
+      await service.cleanup(staging);
+      await expect(lstat(staging.directoryPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    }, 2_000);
   });
 
   it('validates disk space successfully when available space exceeds requirements', async () => {

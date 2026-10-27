@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { createHash } from 'crypto';
 import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 
 export const RESTORE_STAGING_OWNERSHIP = 'RESTORE_STAGING_OWNERSHIP';
 
@@ -100,10 +101,13 @@ export class RestoreStagingService {
       },
     });
 
-    source.pipe(hasher);
-
     try {
-      await writeFile(handle, hasher);
+      // `pipeline` forwards a failure of the source to the sink and settles
+      // with it. `source.pipe()` does not: a download that fails mid-stream
+      // would leave the write pending forever, holding the restore queue.
+      // The write stream closes the handle when it ends or is destroyed; the
+      // `finally` below only makes sure of it (closing twice is harmless).
+      await pipeline(source, hasher, handle.createWriteStream());
       return {
         sha256: hash.digest('hex'),
         bytes: totalBytes,
