@@ -31,6 +31,7 @@ const ADMIN_ONLY: Endpoint[] = [
   { method: 'GET', path: 'jobs/summary' },
   { method: 'GET', path: 'jobs/stats' },
   { method: 'GET', path: 'jobs/analytics/daily' },
+  { method: 'GET', path: 'jobs/analytics/connections-health' },
   { method: 'GET', path: 'audit' },
   { method: 'GET', path: 'cronjobs' },
   { method: 'PUT', path: `backups/settings/${UNKNOWN_ID}` },

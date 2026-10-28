@@ -119,7 +119,7 @@ API spec files:
 | `connections.api.spec.ts` | Connection CRUD (an update keeps the engine unless it names one), validation (an update rejects `null` with 400), no password in responses, `test-raw`, testing a saved connection |
 | `cronjobs.api.spec.ts` | Cronjob create, update and toggle; an update keeps an active cronjob scheduled (non-null `nextRunAt` in the response and on a re-read) and a new expression moves its next run; `null` is rejected with 400 except for the retention limits, which it clears |
 | `error-envelope.api.spec.ts` | The error body for 400, 401, 403 and 404, the success body, ids that are not UUIDs |
-| `read-contracts.api.spec.ts` | Shapes and count invariants (totals add up, counts are whole numbers that are not negative, lists are arrays) of the jobs, analytics, backups, restores and audit endpoints; the job tables are never empty for long because the `pipeline` project fills them |
+| `read-contracts.api.spec.ts` | Shapes and count invariants (totals add up, counts are whole numbers that are not negative, lists are arrays) of the jobs, analytics (the daily series and the per-connection health, `GET /jobs/analytics/connections-health`: success rate between 0 and 1 or null, median not above the 95th percentile, freshness one of `ok`, `late`, `stale`, `unknown`, connections sorted by name, 400 for a bad window), backups, restores and audit endpoints; the job tables are never empty for long because the `pipeline` project fills them |
 
 UI spec files (the page objects are in `e2e/support/pages/`; locators use the English copy of the web app, which is what it shows when the browser has no stored language):
 

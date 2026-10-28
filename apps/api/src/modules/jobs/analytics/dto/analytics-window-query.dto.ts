@@ -1,14 +1,8 @@
-import { IsIn, IsInt, IsOptional, IsUUID } from 'class-validator';
-import { Type } from 'class-transformer';
-import { ANALYTICS_WINDOWS, AnalyticsWindow } from '../jobs-analytics.types';
+import { IsOptional, IsUUID } from 'class-validator';
+import { AnalyticsWindowDto } from './analytics-window.dto';
 
-export class AnalyticsWindowQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @IsIn(ANALYTICS_WINDOWS)
-  window?: AnalyticsWindow;
-
+/** The daily series: the shared window plus an optional connection to scope it to. */
+export class AnalyticsWindowQueryDto extends AnalyticsWindowDto {
   @IsOptional()
   @IsUUID()
   connectionId?: string;
