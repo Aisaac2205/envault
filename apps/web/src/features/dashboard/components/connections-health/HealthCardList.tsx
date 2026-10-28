@@ -29,7 +29,10 @@ export function HealthCardList({ rows, windowDays, labelledBy }: HealthCardListP
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <h3 className="min-w-0 truncate text-sm font-semibold text-text-primary" title={row.connectionName}>
+              <h3
+                className="line-clamp-2 min-w-0 text-sm font-semibold leading-snug text-text-primary [overflow-wrap:anywhere]"
+                title={row.connectionName}
+              >
                 {row.connectionName}
               </h3>
               <EngineChip dbType={row.dbType} />

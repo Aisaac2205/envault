@@ -5,9 +5,11 @@ import { ConnectionLabel } from "@/shared/components/ConnectionLabel";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { shortId, formatDateTimeShort as formatDate } from "@/lib/format";
+import { shortId, formatDateTime } from "@/lib/format";
 import type { BackupJob } from "../types";
 import type { Column } from "@/shared/ui/data-table";
+import { compactDateParts } from "./compact-date";
+import { useDurationLocale } from "./dump-duration/use-duration-locale";
 
 /** Rows shown before "+N more": the dashboard's recent backups are a glance, not a log. */
 const DEFAULT_MAX_ITEMS = 5;
@@ -19,6 +21,7 @@ interface BackupTimelineProps {
 
 export function BackupTimeline({ backups, maxItems = DEFAULT_MAX_ITEMS }: BackupTimelineProps) {
   const { t } = useTranslation('dashboard')
+  const locale = useDurationLocale();
   const visible = maxItems > 0 ? backups.slice(0, maxItems) : backups;
   const remaining = maxItems > 0 ? Math.max(0, backups.length - maxItems) : 0;
   const hasBackups = backups.length > 0;
@@ -28,7 +31,12 @@ export function BackupTimeline({ backups, maxItems = DEFAULT_MAX_ITEMS }: Backup
       header: t('column.connection'),
       accessor: (job) => (
         <div className="flex flex-col gap-1 py-0.5">
-          <ConnectionLabel id={job.connectionId} name={job.connectionName} className="font-medium text-xs text-text-primary leading-tight" />
+          {/* The shared label cuts a name to one line, which keeps the table wider than a half width card (and pushes the date out). Here it wraps to two, and the full name is on hover. */}
+          <ConnectionLabel
+            id={job.connectionId}
+            name={job.connectionName}
+            className="font-medium text-xs text-text-primary leading-tight [&>span]:line-clamp-2 [&>span]:whitespace-normal [&>span]:[overflow-wrap:anywhere]"
+          />
           <span className="text-[10px] text-muted-foreground/70 leading-tight">
             #{shortId(job.id)}
           </span>
@@ -43,12 +51,23 @@ export function BackupTimeline({ backups, maxItems = DEFAULT_MAX_ITEMS }: Backup
     },
     {
       header: t('column.when'),
-      accessor: (job) => (
-        <span className="text-xs whitespace-nowrap text-muted-foreground">
-          {formatDate(job.createdAt)}
-        </span>
-      ),
-      className: "w-24",
+      // A compact date, so the column fits a half width card without scrolling; the full one is on hover.
+      // On a card narrower than 384px the day and the time stack, which hands the width to the connection name.
+      accessor: (job) => {
+        const { date, time } = compactDateParts(job.createdAt, locale);
+        return (
+          <time
+            className="text-xs tabular-nums text-muted-foreground"
+            dateTime={job.createdAt}
+            title={formatDateTime(job.createdAt)}
+          >
+            <span className="block whitespace-nowrap @sm:inline">{date}</span>
+            <span aria-hidden="true" className="hidden @sm:inline">, </span>
+            <span className="block whitespace-nowrap @sm:inline">{time}</span>
+          </time>
+        );
+      },
+      className: "@sm:w-28",
     },
   ];
 
@@ -60,7 +79,7 @@ export function BackupTimeline({ backups, maxItems = DEFAULT_MAX_ITEMS }: Backup
           {t('timeline.backups.title')}
         </h2>
       </CardHeader>
-      <CardContent className="flex min-w-0 flex-1 flex-col justify-between px-4 pb-4 sm:px-6">
+      <CardContent className="@container flex min-w-0 flex-1 flex-col justify-between px-4 pb-4 sm:px-6">
         {hasBackups ? (
           <>
             <DataTable columns={columns} data={visible} compact />

@@ -124,6 +124,49 @@ describe("DumpDurationChart quick ranges", () => {
     expect(summary).toContain("27 de oct de 2026");
   });
 
+  describe("while there is no chart", () => {
+    it("asks for the window of the button pressed while the data is loading", async () => {
+      analytics.useDailyAnalytics.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+      const user = userEvent.setup();
+      render(<DumpDurationChart />);
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(30, undefined);
+
+      await user.click(within(quickRanges()).getByRole("button", { name: "7d" }));
+
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(7, undefined);
+      expect(pressedLabels()).toEqual(["7d"]);
+
+      await user.click(within(quickRanges()).getByRole("button", { name: "90d" }));
+
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(90, undefined);
+      expect(pressedLabels()).toEqual(["90d"]);
+    });
+
+    it("asks for the window of the button pressed after an error, and keeps the error card", async () => {
+      analytics.useDailyAnalytics.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error("boom"),
+        refetch: vi.fn(),
+      });
+      const user = userEvent.setup();
+      render(<DumpDurationChart />);
+
+      await user.click(within(quickRanges()).getByRole("button", { name: "90d" }));
+
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(90, undefined);
+      expect(pressedLabels()).toEqual(["90d"]);
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+  });
+
   it("has no brush to drag any more", () => {
     render(<DumpDurationChart />);
 

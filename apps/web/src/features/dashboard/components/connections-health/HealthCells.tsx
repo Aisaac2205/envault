@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { formatDateTime, formatRelativeTime, formatUpcomingTime } from "@/lib/format";
 import { cn } from "@/shared/lib/cn";
 import type { ConnectionHealth, ConnectionLastBackup, ConnectionSchedule } from "../../types";
-import { formatRate } from "../backups-per-day/backups-per-day-data";
+import { formatRate } from "../backup-stats";
 import { formatDuration } from "../dump-duration/format-duration";
 import { useDurationLocale } from "../dump-duration/use-duration-locale";
 import { describeInterval, engineLabel, tightestSchedule } from "./health-data";
@@ -20,6 +20,16 @@ export function EngineChip({ dbType }: { dbType: string }) {
 }
 
 /** The latest backup: its outcome (icon and label), how long ago it ended and how long it took. */
+/**
+ * What to print as the duration of the latest backup. A failed backup never
+ * produced a dump, and a duration of 0 (or none) is a missing measurement, not an
+ * instant dump: all of those are a dash, never "0 ms".
+ */
+function durationOf(backup: ConnectionLastBackup, locale: string): string {
+  const usable = backup.status === "completed" && backup.durationSeconds !== null && backup.durationSeconds > 0;
+  return usable ? formatDuration(backup.durationSeconds, locale) : MISSING;
+}
+
 export function LastBackupCell({ backup }: { backup: ConnectionLastBackup | null }) {
   const { t } = useTranslation("dashboard");
   const { t: tCommon } = useTranslation("common");
@@ -46,7 +56,9 @@ export function LastBackupCell({ backup }: { backup: ConnectionLastBackup | null
         <time dateTime={ended} title={formatDateTime(ended)}>
           {formatRelativeTime(ended)}
         </time>
-        {backup.durationSeconds !== null && ` · ${formatDuration(backup.durationSeconds, locale)}`}
+        {/* One unit: a narrow column breaks before the dot, never inside "2,2 s". */}
+        {" "}
+        <span className="whitespace-nowrap">· {durationOf(backup, locale)}</span>
       </span>
     </div>
   );

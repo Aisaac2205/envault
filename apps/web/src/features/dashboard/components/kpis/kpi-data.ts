@@ -1,28 +1,17 @@
 import type { AnalyticsWindow, DailyBackupPoint, RestoreJob } from "../../types";
-import { successRate } from "../backups-per-day/backups-per-day-data";
 import { parseDay } from "../dump-duration/dump-duration-data";
 
 /** The window the KPIs summarise, in days. It is the one the charts below open on, so the queries are shared. */
 export const KPI_WINDOW_DAYS: AnalyticsWindow = 30;
+
+/** The longer window the 30 day figures are compared with. */
+export const BASELINE_WINDOW_DAYS: AnalyticsWindow = 90;
 
 /** Days counted by the "Backups" KPI. */
 export const RECENT_BACKUP_DAYS = 7;
 
 /** One day of a KPI sparkline. `null` is a gap: the day has no value, which is not zero. */
 export type DayValue = { date: string; value: number | null };
-
-/** Daily success rate as a 0 to 1 fraction; a day with no finished backup is a gap. */
-export function toSuccessRateSeries(days: DailyBackupPoint[]): DayValue[] {
-  return days.map((day) => ({
-    date: day.date,
-    value: successRate(day.completed, day.failed),
-  }));
-}
-
-/** Daily 95th percentile duration in seconds; a day without a completed backup is a gap. */
-export function toP95Series(days: DailyBackupPoint[]): DayValue[] {
-  return days.map((day) => ({ date: day.date, value: day.p95DurationSeconds }));
-}
 
 const DAY_MS = 86_400_000;
 
@@ -70,4 +59,53 @@ export function pickLastRestore(restores: RestoreJob[]): RestoreJob | null {
 /** `Oct 27` / `27 oct`: a UTC calendar day from the API, kept on the same calendar day. */
 export function formatDayLabel(day: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(parseDay(day));
+}
+
+/** Where a figure stands against its reference. */
+export type Trend = "up" | "down" | "flat";
+
+export interface Change {
+  trend: Trend;
+  /** Signed, already rounded to what the screen shows, so `flat` always reads as zero. */
+  value: number;
+}
+
+/** Rounds half away from zero, so a move up and the same move down read alike. Never returns -0. */
+function roundAway(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  // The epsilon keeps 1.25 * 10 = 12.499999999999998 from rounding down.
+  const rounded = (Math.sign(value) * Math.round(Math.abs(value) * factor + 1e-9)) / factor;
+  return rounded === 0 ? 0 : rounded;
+}
+
+function toChange(value: number): Change {
+  return { trend: value > 0 ? "up" : value < 0 ? "down" : "flat", value };
+}
+
+/** How far a 0 to 1 rate moved, in percentage points to one decimal. `null` when either rate is missing. */
+export function rateChange(
+  current: number | null | undefined,
+  baseline: number | null | undefined,
+): Change | null {
+  if (current == null || baseline == null) return null;
+  return toChange(roundAway((current - baseline) * 100, 1));
+}
+
+/** How much a figure grew or shrank against a baseline, as a 0 to 1 share to whole percents. `null` without a baseline above zero. */
+export function relativeChange(
+  current: number | null | undefined,
+  baseline: number | null | undefined,
+): Change | null {
+  if (current == null || baseline == null || !(baseline > 0)) return null;
+  return toChange(roundAway((current - baseline) / baseline, 2));
+}
+
+/** The signed difference between two counts. A previous count of zero is fine: it is a difference, not a share. */
+export function countChange(current: number, previous: number): Change {
+  return toChange(current - previous);
+}
+
+/** The sum of a run of days; a gap counts as nothing. */
+export function sumValues(series: DayValue[]): number {
+  return series.reduce((total, point) => total + (point.value ?? 0), 0);
 }

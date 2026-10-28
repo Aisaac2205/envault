@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/shared/ui/button";
 import { useDurationLocale } from "../dump-duration/use-duration-locale";
 import { KpiCard } from "./KpiCard";
+import { KpiRetry } from "./KpiRetry";
 import { KpiSparkline } from "./KpiSparkline";
 import { formatDayLabel, hasSeriesData, type DayValue } from "./kpi-data";
 
@@ -13,11 +13,10 @@ interface SeriesKpiProps {
   label: string;
   icon: ReactNode;
   accent: string;
-  kind: "area" | "bar";
   /** The headline figure, already formatted. */
   value: string;
   /** The line under it until the pointer is over the plot. */
-  caption: string;
+  caption: ReactNode;
   /** Status of the headline figure. */
   valueStatus: DataStatus;
   /** The daily series behind the sparkline; `null` while it has none. */
@@ -36,7 +35,6 @@ export function SeriesKpi({
   label,
   icon,
   accent,
-  kind,
   value,
   caption,
   valueStatus,
@@ -60,7 +58,7 @@ export function SeriesKpi({
   if (seriesStatus === "loading") {
     visual = <div aria-hidden="true" className="h-11 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none" />;
   } else if (seriesStatus === "ready" && series && hasSeriesData(series)) {
-    visual = <KpiSparkline color={accent} kind={kind} onHoverChange={setHovered} series={series} />;
+    visual = <KpiSparkline color={accent} onHoverChange={setHovered} series={series} />;
   } else {
     // Nothing to draw: a dashed baseline keeps the card's shape instead of a hole.
     visual = <div aria-hidden="true" className="h-px w-full self-center border-t border-dashed border-border" />;
@@ -70,14 +68,7 @@ export function SeriesKpi({
     return (
       <KpiCard
         accent={accent}
-        caption={
-          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{t("kpi.error")}</span>
-            <Button className="h-7 px-2 pointer-coarse:h-11 pointer-coarse:px-3" onClick={onRetry} size="sm" variant="outline">
-              {t("kpi.retry")}
-            </Button>
-          </span>
-        }
+        caption={<KpiRetry onRetry={onRetry} />}
         icon={icon}
         label={label}
         value="—"

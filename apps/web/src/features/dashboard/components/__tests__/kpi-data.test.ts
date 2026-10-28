@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { DailyBackupPoint, RestoreJob } from "../../types";
 import {
+  countChange,
   formatDayLabel,
   hasSeriesData,
   lastCalendarDays,
   pickLastRestore,
-  toP95Series,
-  toSuccessRateSeries,
+  rateChange,
+  relativeChange,
+  sumValues,
 } from "../kpis/kpi-data";
 
 function day(date: string, over: Partial<DailyBackupPoint> = {}): DailyBackupPoint {
@@ -33,38 +35,6 @@ function restore(id: string, createdAt: string, over: Partial<RestoreJob> = {}):
     ...over,
   };
 }
-
-describe("toSuccessRateSeries", () => {
-  it("is the share of finished backups that completed, as a 0 to 1 fraction", () => {
-    const series = toSuccessRateSeries([day("2026-10-26", { completed: 3, failed: 1 })]);
-
-    expect(series).toEqual([{ date: "2026-10-26", value: 0.75 }]);
-  });
-
-  it("leaves a gap (null) on a day without finished backups: it is neither 0% nor 100%", () => {
-    const series = toSuccessRateSeries([
-      day("2026-10-25", { completed: 2 }),
-      day("2026-10-26"),
-      day("2026-10-27", { failed: 2 }),
-    ]);
-
-    expect(series.map((point) => point.value)).toEqual([1, null, 0]);
-  });
-});
-
-describe("toP95Series", () => {
-  it("keeps the 95th percentile of each day and a gap where no backup completed", () => {
-    const series = toP95Series([
-      day("2026-10-26", { completed: 2, p95DurationSeconds: 12.4 }),
-      day("2026-10-27"),
-    ]);
-
-    expect(series).toEqual([
-      { date: "2026-10-26", value: 12.4 },
-      { date: "2026-10-27", value: null },
-    ]);
-  });
-});
 
 describe("lastCalendarDays", () => {
   const month = Array.from({ length: 30 }, (_, index) =>
@@ -146,5 +116,62 @@ describe("pickLastRestore", () => {
 describe("formatDayLabel", () => {
   it("formats a UTC calendar day without shifting it west of Greenwich", () => {
     expect(formatDayLabel("2026-10-27", "en-US")).toBe("Oct 27");
+  });
+});
+
+describe("rateChange", () => {
+  it("is the distance in percentage points, up or down", () => {
+    expect(rateChange(0.975, 0.9625)).toEqual({ trend: "up", value: 1.3 });
+    expect(rateChange(0.95, 0.9625)).toEqual({ trend: "down", value: -1.3 });
+  });
+
+  it("is flat when the move disappears at one decimal", () => {
+    expect(rateChange(0.9626, 0.9625)).toEqual({ trend: "flat", value: 0 });
+    expect(rateChange(0.9625, 0.9625)).toEqual({ trend: "flat", value: 0 });
+  });
+
+  it("has nothing to compare when either side has no rate", () => {
+    expect(rateChange(null, 0.9)).toBeNull();
+    expect(rateChange(0.9, null)).toBeNull();
+    expect(rateChange(undefined, 0.9)).toBeNull();
+    expect(rateChange(0.9, undefined)).toBeNull();
+  });
+});
+
+describe("relativeChange", () => {
+  it("is the share the figure grew or shrank by against the baseline", () => {
+    expect(relativeChange(12.4, 10)).toEqual({ trend: "up", value: 0.24 });
+    expect(relativeChange(7.5, 10)).toEqual({ trend: "down", value: -0.25 });
+  });
+
+  it("is flat when the move rounds to 0%", () => {
+    expect(relativeChange(10.04, 10)).toEqual({ trend: "flat", value: 0 });
+    expect(relativeChange(10, 10)).toEqual({ trend: "flat", value: 0 });
+  });
+
+  it("has nothing to compare without a baseline above zero", () => {
+    expect(relativeChange(5, 0)).toBeNull();
+    expect(relativeChange(5, null)).toBeNull();
+    expect(relativeChange(null, 5)).toBeNull();
+    expect(relativeChange(undefined, 5)).toBeNull();
+  });
+});
+
+describe("countChange", () => {
+  it("is the signed difference between two counts", () => {
+    expect(countChange(52, 28)).toEqual({ trend: "up", value: 24 });
+    expect(countChange(3, 10)).toEqual({ trend: "down", value: -7 });
+    expect(countChange(5, 5)).toEqual({ trend: "flat", value: 0 });
+  });
+
+  it("compares with a quiet week of zero without dividing by it", () => {
+    expect(countChange(4, 0)).toEqual({ trend: "up", value: 4 });
+  });
+});
+
+describe("sumValues", () => {
+  it("adds the values of a run of days, counting a gap as nothing", () => {
+    expect(sumValues([{ date: "2026-10-26", value: 3 }, { date: "2026-10-27", value: null }, { date: "2026-10-28", value: 4 }])).toBe(7);
+    expect(sumValues([])).toBe(0);
   });
 });

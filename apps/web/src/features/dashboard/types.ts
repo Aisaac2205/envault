@@ -1,13 +1,5 @@
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 
-export interface JobSummary {
-  total: number;
-  completed: number;
-  pending: number;
-  running: number;
-  failed: number;
-}
-
 export interface BackupJob {
   id: string;
   connectionId: string;
@@ -40,17 +32,6 @@ export interface ConnectionEntity {
   isActive: boolean;
 }
 
-export interface AuditLog {
-  id: string;
-  userId: string;
-  userEmail: string;
-  action: string;
-  resourceType: string;
-  resourceId: string;
-  environment: string;
-  createdAt: string;
-}
-
 export type AnalyticsWindow = 7 | 30 | 90;
 
 export interface DailyBackupPoint {
@@ -81,14 +62,6 @@ export interface ConnectionStorage {
   connectionName: string | null;
   totalSizeMb: number;
   backupCount: number;
-}
-
-export interface RestoreStatusCounts {
-  pending: number;
-  running: number;
-  completed: number;
-  failed: number;
-  total: number;
 }
 
 /** How recently a connection last backed up successfully, relative to its schedule. */

@@ -1,10 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { curveMonotoneX } from "@visx/curve";
 import { useReducedMotion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { formatDate } from "@/lib/format";
 import { ChartLegendHoverProvider } from "@/shared/ui/charts/chart-legend-hover";
-import { chartCssVars, useChartHover } from "@/shared/ui/charts/chart-context";
+import { chartCssVars } from "@/shared/ui/charts/chart-context";
 import { Grid } from "@/shared/ui/charts/grid";
 import { Line, LineChart } from "@/shared/ui/charts/line-chart";
 import { ChartTooltip } from "@/shared/ui/charts/tooltip";
@@ -41,37 +41,19 @@ interface DumpDurationPlotProps {
   rows: DurationRow[];
 }
 
-/** Reports the row under the pointer, so the legend can show that day's values. */
-function HoverRowReporter({
-  onChange,
-}: {
-  onChange: (row: DurationRow | null) => void;
-}) {
-  const { tooltipData } = useChartHover();
-  const row = (tooltipData?.point as DurationRow | undefined) ?? null;
-
-  useEffect(() => {
-    onChange(row);
-  }, [row, onChange]);
-
-  return null;
-}
-
 interface DurationLinesProps {
   rows: DurationRow[];
   /** Chart line index (draw order) to emphasize, or `null` for none. */
   emphasizedDrawIndex: number | null;
-  onHoverRowChange: (row: DurationRow | null) => void;
 }
 
 /**
- * The main chart. Memoized: the legend values change with every hovered day,
- * and the chart must not redraw for that.
+ * The main chart. Memoized: the emphasis changes with every legend hover, and
+ * the lines are only restyled, never rebuilt.
  */
 const DurationLines = memo(function DurationLines({
   rows,
   emphasizedDrawIndex,
-  onHoverRowChange,
 }: DurationLinesProps) {
   const locale = useDurationLocale();
   const reducedMotion = useReducedMotion();
@@ -131,22 +113,20 @@ const DurationLines = memo(function DurationLines({
           content={({ point }) => <DumpDurationTooltip point={point} />}
           dateLabels={labels}
         />
-        <HoverRowReporter onChange={onHoverRowChange} />
       </LineChart>
     </ChartLegendHoverProvider>
   );
 });
 
 /**
- * Legend with values and the duration lines. Hovering the chart shows that
- * day's values in the legend; clicking a legend item emphasizes its line.
+ * The compact legend and the duration lines. Hovering the chart shows that day's
+ * values in the tooltip; clicking a legend item emphasizes its line.
  */
 export function DumpDurationPlot({ rows }: DumpDurationPlotProps) {
   const { t } = useTranslation("dashboard");
   const locale = useDurationLocale();
   const canHover = useCanHover();
 
-  const [hoveredRow, setHoveredRow] = useState<DurationRow | null>(null);
   const [pinnedKey, setPinnedKey] = useState<DurationKey | null>(null);
   const [legendHoverIndex, setLegendHoverIndex] = useState<number | null>(null);
 
@@ -164,28 +144,6 @@ export function DumpDurationPlot({ rows }: DumpDurationPlotProps) {
   const highlightedIndex = (canHover ? legendHoverIndex : null) ?? pinnedIndex;
 
   const latest = useMemo(() => findLatestDayWithData(rows), [rows]);
-  const legendRow = hoveredRow ?? latest;
-
-  const caption = useMemo(() => {
-    if (hoveredRow) {
-      return formatDate(hoveredRow.date, {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-    }
-    if (latest) {
-      return t("duration.legend.latest", {
-        date: formatDate(latest.date, {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }),
-      });
-    }
-    return "";
-  }, [hoveredRow, latest, t]);
 
   const summary = useMemo(() => {
     const day = { day: "numeric", month: "short", year: "numeric" } as const;
@@ -207,26 +165,16 @@ export function DumpDurationPlot({ rows }: DumpDurationPlotProps) {
 
   return (
     <div className="min-w-0">
-      <div
-        aria-label={t("duration.legend.label")}
-        // A container query: the legend lays out by the card's width, not the screen's.
-        className="@container mb-3 space-y-1.5"
-        role="group"
-      >
-        <p className="text-xs text-text-secondary">{caption}</p>
-        <DumpDurationLegend
-          highlightedIndex={highlightedIndex}
-          onHoverChange={setLegendHoverIndex}
-          onTogglePinned={togglePinned}
-          pinnedKey={pinnedKey}
-          row={legendRow}
-        />
-      </div>
+      <DumpDurationLegend
+        highlightedIndex={highlightedIndex}
+        onHoverChange={setLegendHoverIndex}
+        onTogglePinned={togglePinned}
+        pinnedKey={pinnedKey}
+      />
 
       <div aria-label={summary} role="img">
         <DurationLines
           emphasizedDrawIndex={drawIndexOf(highlightedIndex)}
-          onHoverRowChange={setHoveredRow}
           rows={rows}
         />
       </div>

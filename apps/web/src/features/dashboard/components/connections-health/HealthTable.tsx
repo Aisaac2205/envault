@@ -24,13 +24,13 @@ export function HealthTable({ rows, windowDays, labelledBy }: HealthTableProps) 
     <div className="hidden @4xl:block">
       <table aria-labelledby={labelledBy} className="w-full table-fixed border-collapse">
         <colgroup>
-          {/* The connection column takes what the fixed ones leave. */}
+          {/* The connection column takes what the fixed ones leave: as much as the other five can spare, since a name is the one thing that cannot be shortened. */}
           <col />
           <col className="w-36" />
-          <col className="w-40" />
-          <col className="w-28" />
-          <col className="w-44" />
           <col className="w-36" />
+          <col className="w-24" />
+          <col className="w-40" />
+          <col className="w-32" />
         </colgroup>
         <thead>
           <tr className="border-b border-border">
@@ -53,7 +53,11 @@ export function HealthTable({ rows, windowDays, labelledBy }: HealthTableProps) 
             >
               <th className={cn(CELL, "text-left font-normal")} scope="row">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-sm font-medium text-text-primary" title={row.connectionName}>
+                  {/* Two lines before it gives up (a name with no spaces breaks anywhere), so a long name is still readable; the full name is on hover. */}
+                  <span
+                    className="line-clamp-2 min-w-0 text-sm font-medium leading-snug text-text-primary [overflow-wrap:anywhere]"
+                    title={row.connectionName}
+                  >
                     {row.connectionName}
                   </span>
                   <EngineChip dbType={row.dbType} />

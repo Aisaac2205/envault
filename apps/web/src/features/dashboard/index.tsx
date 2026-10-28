@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { DashboardHeader } from "./components/DashboardHeader";
 import { KpiGrid } from "./components/KpiGrid";
 import { BackupTimeline } from "./components/BackupTimeline";
-import { BackupsPerDayChart } from "./components/BackupsPerDayChart";
+import { BackupsHeatmapCard } from "./components/BackupsHeatmapCard";
 import { ConnectionsHealthCard } from "./components/ConnectionsHealthCard";
 import { DumpDurationChart } from "./components/DumpDurationChart";
 import { StorageByConnectionChart } from "./components/StorageByConnectionChart";
@@ -87,7 +87,7 @@ export default function Dashboard() {
 
           <DumpDurationChart />
 
-          <BackupsPerDayChart />
+          <BackupsHeatmapCard />
 
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 lg:items-stretch">
             <BackupTimeline backups={recentBackups} />

@@ -1,21 +1,15 @@
 import apiClient from "@/shared/lib/api-client";
 import type {
-  JobSummary,
   BackupJob,
   RestoreJob,
   ConnectionEntity,
-  AuditLog,
   AnalyticsWindow,
   DailyBackupSeries,
   ConnectionStorage,
-  RestoreStatusCounts,
   ConnectionsHealth,
 } from "../types";
 
 export const dashboardApi = {
-  getSummary: () =>
-    apiClient.get<JobSummary>("/jobs/summary").then((r) => r.data),
-
   getRecentBackups: (limit = 5) =>
     apiClient
       .get<BackupJob[]>("/jobs/backups", { params: { limit } })
@@ -28,11 +22,6 @@ export const dashboardApi = {
 
   getConnections: () =>
     apiClient.get<ConnectionEntity[]>("/connections").then((r) => r.data),
-
-  getRecentAudit: (limit = 10) =>
-    apiClient
-      .get<AuditLog[]>("/audit", { params: { pageSize: limit } })
-      .then((r) => r.data),
 
   getDailyAnalytics: (window: AnalyticsWindow = 30, connectionId?: string) =>
     apiClient
@@ -51,10 +40,5 @@ export const dashboardApi = {
       .get<ConnectionsHealth>("/jobs/analytics/connections-health", {
         params: { window },
       })
-      .then((r) => r.data),
-
-  getRestoreStatus: () =>
-    apiClient
-      .get<RestoreStatusCounts>("/jobs/analytics/restore-status")
       .then((r) => r.data),
 };

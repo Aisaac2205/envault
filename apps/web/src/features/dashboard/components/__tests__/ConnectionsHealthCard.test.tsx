@@ -143,7 +143,7 @@ describe("ConnectionsHealthCard", () => {
 
     renderCard();
 
-    expect(screen.getByRole("heading", { level: 2, name: "Connections health" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Connection status" })).toBeInTheDocument();
     expect(
       screen.getByText(/Overdue: no successful backup for more than 3× the schedule interval/),
     ).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe("ConnectionsHealthCard", () => {
 
   describe("rows", () => {
     function table() {
-      return screen.getByRole("table", { name: "Connections health" });
+      return screen.getByRole("table", { name: "Connection status" });
     }
 
     it("orders them stale, late, unknown, then ok", () => {
@@ -202,10 +202,62 @@ describe("ConnectionsHealthCard", () => {
       const [store, shop] = within(table()).getAllByRole("row").slice(1);
       expect(within(store!).getAllByRole("cell")[1]).toHaveTextContent("Failed");
       expect(within(store!).getAllByRole("cell")[1]).toHaveTextContent("5 days ago");
-      // A failed backup that never finished has no duration to show.
-      expect(within(store!).getAllByRole("cell")[1]).not.toHaveTextContent("·");
+      // A failed backup never produced a dump: its duration is a dash, not "0 ms".
+      expect(within(store!).getAllByRole("cell")[1]).toHaveTextContent("5 days ago · —");
       expect(within(shop!).getAllByRole("cell")[1]).toHaveTextContent("Completed");
       expect(within(shop!).getAllByRole("cell")[1]).toHaveTextContent("2 hours ago · 12.4 s");
+    });
+
+    it("shows a dash, never 0 ms, for a failed backup that recorded a zero duration", () => {
+      const failedAtZero = connection("Zero", "late", {
+        lastBackup: { status: "failed", createdAt: ago(3 * HOUR), completedAt: ago(3 * HOUR), durationSeconds: 0, fileSizeMb: null },
+      });
+      mockHealth({ data: health([failedAtZero]) });
+
+      renderCard();
+
+      const cell = within(within(table()).getAllByRole("row")[1]!).getAllByRole("cell")[1]!;
+      expect(cell).toHaveTextContent("Failed");
+      expect(cell).toHaveTextContent("3 hours ago · —");
+      expect(cell).not.toHaveTextContent("0 ms");
+    });
+
+    it("shows a dash for a completed backup without a usable duration, and keeps real ones", () => {
+      const noDuration = connection("Missing", "ok", {
+        lastBackup: { status: "completed", createdAt: ago(HOUR), completedAt: ago(HOUR), durationSeconds: null, fileSizeMb: 1 },
+      });
+      const zero = connection("Instant", "ok", {
+        lastBackup: { status: "completed", createdAt: ago(HOUR), completedAt: ago(HOUR), durationSeconds: 0, fileSizeMb: 1 },
+      });
+      const quick = connection("Quick", "ok", {
+        lastBackup: { status: "completed", createdAt: ago(HOUR), completedAt: ago(HOUR), durationSeconds: 0.4, fileSizeMb: 1 },
+      });
+      mockHealth({ data: health([noDuration, zero, quick]) });
+
+      renderCard();
+
+      const cells = within(table())
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[1]!.textContent);
+      // The rows are ordered by name within a freshness: Instant, Missing, Quick.
+      expect(cells[0]).toContain("1 hour ago · —");
+      expect(cells[1]).toContain("1 hour ago · —");
+      expect(cells[2]).toContain("1 hour ago · 400 ms");
+    });
+
+    it("lets a long connection name wrap to two lines instead of cutting it, with the full name on hover", () => {
+      const longName = "e2e-conn-9f3a1c2b-production-primary-replica-eu-west-1 (PG)";
+      mockHealth({ data: health([connection(longName, "ok")]) });
+
+      renderCard();
+
+      const name = within(table()).getByText(longName);
+      expect(name).toHaveAttribute("title", longName);
+      expect(name).toHaveClass("line-clamp-2");
+      expect(name).not.toHaveClass("truncate");
+      // A name with no spaces still breaks, so it cannot push the columns out of the card.
+      expect(name.className).toContain("[overflow-wrap:anywhere]");
     });
 
     it("says when a connection has never backed up", () => {
@@ -292,12 +344,35 @@ describe("ConnectionsHealthCard", () => {
       const { container } = renderCard();
 
       expect(table().parentElement).toHaveClass("hidden", "@4xl:block");
-      expect(screen.getByRole("list", { name: "Connections health" })).toHaveClass("@4xl:hidden");
+      expect(screen.getByRole("list", { name: "Connection status" })).toHaveClass("@4xl:hidden");
       expect(container.querySelector("[class~='@container']")).not.toBeNull();
     });
   });
 
   describe("window", () => {
+    it("asks for the picked window while the first answer is still loading", async () => {
+      mockHealth({ isLoading: true });
+      const user = userEvent.setup();
+
+      renderCard();
+      await user.click(screen.getByRole("button", { name: "7d" }));
+
+      expect(hook.useConnectionsHealth).toHaveBeenLastCalledWith(7);
+      expect(screen.getByRole("button", { name: "7d" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("asks for the picked window after an error, and the error card keeps the control", async () => {
+      mockHealth({ isError: true, error: new Error("boom") });
+      const user = userEvent.setup();
+
+      renderCard();
+      await user.click(screen.getByRole("button", { name: "90d" }));
+
+      expect(hook.useConnectionsHealth).toHaveBeenLastCalledWith(90);
+      expect(screen.getByRole("button", { name: "90d" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+
     it("opens on 30 days and asks for the window the user picks", async () => {
       mockHealth({ data: health([SHOP]) });
       const user = userEvent.setup();
