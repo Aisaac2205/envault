@@ -248,16 +248,16 @@
   --chart-marker-border: oklch(0.4 0.01 260);
   --chart-marker-foreground: oklch(0.9 0 0);
   --chart-label: oklch(0.75 0.01 260);
-  /* Dark values of the failures scale: more failures is brighter, and the worst step is the
-     most saturated red (a pale pink end read as the mildest). The reds pass
-     validate_palette.js --ordinal on #1C1C20. The no-failure lime is brighter than the reds on
-     purpose (a darker olive was 1.56:1 and blurred with the empty cell); it passes CVD and
-     normal-vision separation against the first red and the empty cell. */
+  /* Dark values of the failures scale: more failures is brighter, and the worst step stays a
+     saturated red (a pale pink end read as the mildest). The reds pass
+     validate_palette.js --ordinal on #1C1C20 and are vivid enough to hold their own next to the
+     no-failure lime (a darker olive was 1.56:1 and blurred with the empty cell). Lime, the first
+     red and the empty cell pass CVD and normal-vision separation. */
   --chart-scale-01: #26262C;
   --chart-scale-02: #84CC16;
-  --chart-scale-03: #873E3E;
-  --chart-scale-04: #CC3C44;
-  --chart-scale-05: #FC4351;
+  --chart-scale-03: #B91C1C;
+  --chart-scale-04: #E5383B;
+  --chart-scale-05: #FF5A5F;
   --chart-scale-pattern-color: #5A5A64;
   --chart-indicator-color: oklch(1 0 0);
   --chart-indicator-secondary-color: oklch(0.145 0 0);
