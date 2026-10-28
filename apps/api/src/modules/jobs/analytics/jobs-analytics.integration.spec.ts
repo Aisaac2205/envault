@@ -219,6 +219,7 @@ integration('jobs analytics PostgreSQL integration', () => {
       expect(Number(row.failed)).toBe(1);
       expect(row.p50).toBe(25);
       expect(row.p95).toBe(38.5);
+      expect(row.max).toBe(40);
       expect(row.totalSizeMb).toBe(105);
     });
 
@@ -229,6 +230,7 @@ integration('jobs analytics PostgreSQL integration', () => {
       expect(typeof row.failed).toBe('string');
       expect(typeof row.p50).toBe('number');
       expect(typeof row.p95).toBe('number');
+      expect(typeof row.max).toBe('number');
       expect(typeof row.totalSizeMb).toBe('number');
     });
 
@@ -269,15 +271,16 @@ integration('jobs analytics PostgreSQL integration', () => {
       expect(rows).toHaveLength(1);
       const [row] = rows;
       // Same values as the base fixture (5 completed, 1 failed, p50=25, p95=38.5,
-      // totalSizeMb=105): unchanged even with the pending/running rows present.
+      // max=40, totalSizeMb=105): unchanged even with the pending/running rows present.
       expect(Number(row.completed)).toBe(5);
       expect(Number(row.failed)).toBe(1);
       expect(row.p50).toBe(25);
       expect(row.p95).toBe(38.5);
+      expect(row.max).toBe(40);
       expect(row.totalSizeMb).toBe(105);
     });
 
-    it('returns null percentiles and zero totalSizeMb for a day with only failed jobs (no completed)', async () => {
+    it('returns null durations and zero totalSizeMb for a day with only failed jobs (no completed)', async () => {
       await insertBackupJob({
         id: '00000000-0000-0000-0000-000000000b10',
         connectionId,
@@ -296,10 +299,11 @@ integration('jobs analytics PostgreSQL integration', () => {
       expect(Number(row.failed)).toBe(1);
       expect(row.p50).toBeNull();
       expect(row.p95).toBeNull();
+      expect(row.max).toBeNull();
       expect(row.totalSizeMb).toBe(0);
     });
 
-    it('excludes a completed job with null startedAt from the percentile calculation', async () => {
+    it('excludes a completed job with null startedAt from the duration calculations', async () => {
       await insertBackupJob({
         id: '00000000-0000-0000-0000-000000000b20',
         connectionId,
@@ -315,7 +319,7 @@ integration('jobs analytics PostgreSQL integration', () => {
         status: JobStatus.COMPLETED,
         createdAt: '2026-03-13 09:00:00',
         // No startedAt/completedAt: must count toward `completed` and
-        // `totalSizeMb`, but be excluded from the percentile calculation.
+        // `totalSizeMb`, but be excluded from the percentile and max calculations.
         fileSizeMb: 30,
       });
 
@@ -326,7 +330,85 @@ integration('jobs analytics PostgreSQL integration', () => {
       expect(Number(row.completed)).toBe(2);
       expect(row.p50).toBe(20);
       expect(row.p95).toBe(20);
+      expect(row.max).toBe(20);
       expect(row.totalSizeMb).toBe(50);
+    });
+
+    describe('connectionId filter', () => {
+      const otherConnectionId = '00000000-0000-0000-0000-000000000702';
+
+      beforeEach(async () => {
+        // A second connection on the same day: one completed 100s/7MB backup and
+        // one failed backup, so any leak would change every aggregate below.
+        await insertBackupJob({
+          id: '00000000-0000-0000-0000-000000000c01',
+          connectionId: otherConnectionId,
+          status: JobStatus.COMPLETED,
+          createdAt: '2026-03-10 13:00:00',
+          startedAt: '2026-03-10 13:00:00',
+          completedAt: '2026-03-10 13:01:40',
+          fileSizeMb: 7,
+        });
+        await insertBackupJob({
+          id: '00000000-0000-0000-0000-000000000c02',
+          connectionId: otherConnectionId,
+          status: JobStatus.FAILED,
+          createdAt: '2026-03-10 14:00:00',
+          fileSizeMb: 999,
+        });
+      });
+
+      it('aggregates every connection when no connectionId is given', async () => {
+        const [row] = await repository.getDailyBackupRows({ from: '2026-03-10', toExclusive: '2026-03-11' });
+
+        expect(Number(row.completed)).toBe(6);
+        expect(Number(row.failed)).toBe(2);
+        expect(row.max).toBe(100);
+        expect(row.totalSizeMb).toBe(112);
+      });
+
+      it('aggregates only the given connection', async () => {
+        const rows = await repository.getDailyBackupRows({
+          from: '2026-03-10',
+          toExclusive: '2026-03-11',
+          connectionId,
+        });
+
+        expect(rows).toHaveLength(1);
+        const [row] = rows;
+        // Exactly the base fixture: the other connection's jobs are excluded.
+        expect(Number(row.completed)).toBe(5);
+        expect(Number(row.failed)).toBe(1);
+        expect(row.p50).toBe(25);
+        expect(row.p95).toBe(38.5);
+        expect(row.max).toBe(40);
+        expect(row.totalSizeMb).toBe(105);
+      });
+
+      it('aggregates only the other connection when it is the one given', async () => {
+        const [row] = await repository.getDailyBackupRows({
+          from: '2026-03-10',
+          toExclusive: '2026-03-11',
+          connectionId: otherConnectionId,
+        });
+
+        expect(Number(row.completed)).toBe(1);
+        expect(Number(row.failed)).toBe(1);
+        expect(row.p50).toBe(100);
+        expect(row.p95).toBe(100);
+        expect(row.max).toBe(100);
+        expect(row.totalSizeMb).toBe(7);
+      });
+
+      it('returns no rows for a connection without backups', async () => {
+        const rows = await repository.getDailyBackupRows({
+          from: '2026-03-10',
+          toExclusive: '2026-03-11',
+          connectionId: '00000000-0000-0000-0000-000000000799',
+        });
+
+        expect(rows).toEqual([]);
+      });
     });
   });
 

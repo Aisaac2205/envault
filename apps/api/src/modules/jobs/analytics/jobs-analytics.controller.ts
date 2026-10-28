@@ -10,7 +10,7 @@ export class JobsAnalyticsController {
 
   @Get('daily')
   getDailySeries(@Query() query: AnalyticsWindowQueryDto) {
-    return this.service.getDailySeries(query.window);
+    return this.service.getDailySeries(query.window, query.connectionId);
   }
 
   @Get('storage-by-connection')

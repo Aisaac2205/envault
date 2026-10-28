@@ -39,6 +39,18 @@ describe('JobsAnalyticsService', () => {
   });
 
   describe('getDailySeries', () => {
+    const CONNECTION_ID = '6c1f2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+
+    const emptyDay = (date: string) => ({
+      date,
+      completed: 0,
+      failed: 0,
+      p50DurationSeconds: null,
+      p95DurationSeconds: null,
+      maxDurationSeconds: null,
+      totalSizeMb: 0,
+    });
+
     it('calls the repository with the correct from/toExclusive bounds for the requested window', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-03-15T12:00:00.000Z'));
 
@@ -47,10 +59,11 @@ describe('JobsAnalyticsService', () => {
       expect(repository.getDailyBackupRows).toHaveBeenCalledWith({
         from: '2026-03-09',
         toExclusive: '2026-03-16',
+        connectionId: null,
       });
     });
 
-    it('returns the envelope shape with window, from, to, timezone and zero-filled days', async () => {
+    it('returns the envelope shape with window, from, to, timezone, connectionId and zero-filled days', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-03-10T00:00:00.000Z'));
       repository.getDailyBackupRows.mockResolvedValue([]);
 
@@ -61,15 +74,10 @@ describe('JobsAnalyticsService', () => {
         from: '2026-03-04',
         to: '2026-03-10',
         timezone: 'UTC',
-        days: [
-          { date: '2026-03-04', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-          { date: '2026-03-05', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-          { date: '2026-03-06', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-          { date: '2026-03-07', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-          { date: '2026-03-08', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-          { date: '2026-03-09', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-          { date: '2026-03-10', completed: 0, failed: 0, p50DurationSeconds: null, p95DurationSeconds: null, totalSizeMb: 0 },
-        ],
+        connectionId: null,
+        days: ['2026-03-04', '2026-03-05', '2026-03-06', '2026-03-07', '2026-03-08', '2026-03-09', '2026-03-10'].map(
+          emptyDay,
+        ),
       });
     });
 
@@ -81,15 +89,43 @@ describe('JobsAnalyticsService', () => {
       expect(repository.getDailyBackupRows).toHaveBeenCalledWith({
         from: '2026-02-14',
         toExclusive: '2026-03-16',
+        connectionId: null,
       });
       expect(result.window).toBe(30);
       expect(result.days).toHaveLength(30);
     });
 
+    it('scopes the repository query to the given connectionId and echoes it in the series', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-03-15T12:00:00.000Z'));
+
+      const result = await service.getDailySeries(7, CONNECTION_ID);
+
+      expect(repository.getDailyBackupRows).toHaveBeenCalledWith({
+        from: '2026-03-09',
+        toExclusive: '2026-03-16',
+        connectionId: CONNECTION_ID,
+      });
+      expect(result.connectionId).toBe(CONNECTION_ID);
+    });
+
+    it('applies the default window when only a connectionId is given', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-03-15T00:00:00.000Z'));
+
+      const result = await service.getDailySeries(undefined, CONNECTION_ID);
+
+      expect(repository.getDailyBackupRows).toHaveBeenCalledWith({
+        from: '2026-02-14',
+        toExclusive: '2026-03-16',
+        connectionId: CONNECTION_ID,
+      });
+      expect(result.window).toBe(30);
+      expect(result.connectionId).toBe(CONNECTION_ID);
+    });
+
     it('maps repository rows into the returned days by date', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-03-10T00:00:00.000Z'));
       repository.getDailyBackupRows.mockResolvedValue([
-        { date: '2026-03-10', completed: '2', failed: '1', p50: 20, p95: 30, totalSizeMb: 40 },
+        { date: '2026-03-10', completed: '2', failed: '1', p50: 20, p95: 30, max: 32.04, totalSizeMb: 40 },
       ]);
 
       const result = await service.getDailySeries(7);
@@ -101,6 +137,7 @@ describe('JobsAnalyticsService', () => {
         failed: 1,
         p50DurationSeconds: 20,
         p95DurationSeconds: 30,
+        maxDurationSeconds: 32,
         totalSizeMb: 40,
       });
     });

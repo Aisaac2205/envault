@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expectErrorEnvelope, expectSuccessEnvelope } from '../../support/envelope';
 import { expect, test } from '../../support/fixtures';
 
@@ -116,10 +117,11 @@ test.describe('GET /jobs/analytics/daily', () => {
         from: string;
         to: string;
         timezone: string;
+        connectionId: string | null;
         days: Record<string, number | string | null>[];
       }>(await request.get(`jobs/analytics/daily?window=${window}`));
 
-      expect(series).toMatchObject({ window, timezone: 'UTC' });
+      expect(series).toMatchObject({ window, timezone: 'UTC', connectionId: null });
       expect(series.from).toMatch(ISO_DAY);
       expect(series.days.map((day) => day.date)).toEqual(consecutiveDays(series.from, window));
       expect(series.to).toBe(series.days.at(-1)?.date);
@@ -128,6 +130,7 @@ test.describe('GET /jobs/analytics/daily', () => {
           'completed',
           'date',
           'failed',
+          'maxDurationSeconds',
           'p50DurationSeconds',
           'p95DurationSeconds',
           'totalSizeMb',
@@ -138,15 +141,38 @@ test.describe('GET /jobs/analytics/daily', () => {
         expect(day.totalSizeMb as number).toBeGreaterThanOrEqual(0);
 
         // Durations are those of the day's completed backups: none, no duration
-        // (null); otherwise numbers, with the 95th percentile at or above the median.
+        // (null); otherwise numbers ordered median <= 95th percentile <= max.
         if (day.completed === 0) {
           expect(day.p50DurationSeconds).toBeNull();
           expect(day.p95DurationSeconds).toBeNull();
+          expect(day.maxDurationSeconds).toBeNull();
         } else {
           expect(day.p50DurationSeconds as number).toBeGreaterThanOrEqual(0);
           expect(day.p95DurationSeconds as number).toBeGreaterThanOrEqual(day.p50DurationSeconds as number);
+          expect(day.maxDurationSeconds as number).toBeGreaterThanOrEqual(day.p95DurationSeconds as number);
         }
       }
+    });
+  }
+
+  test('scopes the series to a connectionId and echoes it', async ({ request }) => {
+    // A random id that no backup belongs to: every day is empty, whatever else ran.
+    const connectionId = randomUUID();
+    const series = await expectSuccessEnvelope<{
+      connectionId: string | null;
+      days: { completed: number; failed: number; totalSizeMb: number }[];
+    }>(await request.get(`jobs/analytics/daily?window=7&connectionId=${connectionId}`));
+
+    expect(series.connectionId).toBe(connectionId);
+    expect(series.days).toHaveLength(7);
+    for (const day of series.days) {
+      expect(day).toMatchObject({ completed: 0, failed: 0, totalSizeMb: 0 });
+    }
+  });
+
+  for (const connectionId of ['not-a-uuid', '123']) {
+    test(`rejects connectionId=${connectionId} with 400`, async ({ request }) => {
+      await expectErrorEnvelope(await request.get(`jobs/analytics/daily?connectionId=${connectionId}`), 400);
     });
   }
 

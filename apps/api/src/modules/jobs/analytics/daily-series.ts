@@ -42,6 +42,7 @@ export interface ParsedDailyRow {
   failed: number;
   p50DurationSeconds: number | null;
   p95DurationSeconds: number | null;
+  maxDurationSeconds: number | null;
   totalSizeMb: number;
 }
 
@@ -53,6 +54,7 @@ export function parseDailyRow(row: DailyBackupRawRow): ParsedDailyRow {
     failed: Number(row.failed),
     p50DurationSeconds: row.p50 === null ? null : roundTo(row.p50, 1),
     p95DurationSeconds: row.p95 === null ? null : roundTo(row.p95, 1),
+    maxDurationSeconds: row.max === null ? null : roundTo(row.max, 1),
     totalSizeMb: roundTo(row.totalSizeMb, 2),
   };
 }
@@ -75,6 +77,7 @@ export function zeroFillDailySeries(days: string[], rows: ParsedDailyRow[]): Par
       failed: 0,
       p50DurationSeconds: null,
       p95DurationSeconds: null,
+      maxDurationSeconds: null,
       totalSizeMb: 0,
     };
   });
