@@ -5,6 +5,16 @@ export interface SeriesPathPoint {
   x: number;
   y: number;
   key: string;
+  /**
+   * `false` when the row has no value for this series. The path breaks there
+   * instead of being drawn at y 0. Omitted means defined.
+   * (envault: added on top of the vendored bklit source.)
+   */
+  defined?: boolean;
+}
+
+function hasSeriesValue(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 export function computeSeriesPathPoints(
@@ -17,10 +27,12 @@ export function computeSeriesPathPoints(
   return data.map((datum, index) => {
     const xValue = xAccessor(datum);
     const yValue = datum[dataKey];
+    const defined = hasSeriesValue(yValue);
     return {
       x: xScale(xValue) ?? 0,
-      y: typeof yValue === "number" ? (yScale(yValue) ?? 0) : 0,
+      y: defined ? (yScale(yValue) ?? 0) : 0,
       key: String(xValue.getTime?.() ?? index),
+      defined,
     };
   });
 }
@@ -74,6 +86,7 @@ export function seriesPathFromPoints(
   }
 
   const generator = d3Line<SeriesPathPoint>()
+    .defined((point) => point.defined !== false)
     .x((point) => point.x)
     .y((point) => point.y)
     .curve(curve);

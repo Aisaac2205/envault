@@ -137,8 +137,14 @@ export function useAnimatedSeriesPath({
     );
   };
 
+  // envault: the data morph samples y(x) across the whole curve, which would
+  // draw through a missing value. A series with gaps skips the tween and is
+  // drawn straight from its target points, which keep the break.
+  const hasGaps = targetPoints.some((point) => point.defined === false);
+
   const shouldAnimate =
     enabled &&
+    !hasGaps &&
     !reducedMotion &&
     chartPhase === "ready" &&
     durationMs > 0 &&

@@ -8,6 +8,7 @@ import { SystemHealthCard } from "./components/SystemHealthCard";
 import { BackupTimeline } from "./components/BackupTimeline";
 import { RestoreTimeline } from "./components/RestoreTimeline";
 import { BackupAreaChart } from "./components/BackupAreaChart";
+import { DumpDurationChart } from "./components/DumpDurationChart";
 import { UpcomingCronjobsCard } from "./components/UpcomingCronjobsCard";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { buttonVariants } from "@/shared/ui/button";
@@ -113,6 +114,8 @@ export default function Dashboard() {
           )}
 
           <KpiGrid stats={stats} connections={connections} dailyCounts={dailyCounts} />
+
+          <DumpDurationChart />
 
           <BackupAreaChart data={dailyCounts} />
 

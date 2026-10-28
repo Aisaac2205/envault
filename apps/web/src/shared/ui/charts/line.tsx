@@ -58,6 +58,18 @@ export interface LineGlow {
   strokeWidth?: number;
 }
 
+/**
+ * Under-stroke in the surface color, so lines that cross stay separable.
+ * (envault: added on top of the vendored bklit source.)
+ */
+export interface LineHalo {
+  /** Halo color, normally the chart surface. */
+  color: string;
+  /** Extra width over the line's `strokeWidth`, in px. Default: 3 */
+  extraWidth?: number;
+}
+
+const DEFAULT_HALO_EXTRA_WIDTH = 3;
 const DEFAULT_GLOW_BLUR = 6;
 const DEFAULT_GLOW_OPACITY = 0.7;
 const DEFAULT_HIGHLIGHT_DIM_OPACITY = 0.3;
@@ -95,6 +107,25 @@ export interface LineProps {
   stroke?: string;
   /** Stroke width. Default: 2.5 */
   strokeWidth?: number;
+  /**
+   * SVG dash pattern for the whole series stroke (e.g. `"6 4"` dashed,
+   * `"0.5 6"` dotted with the round line cap). Omit for solid.
+   * (envault: added on top of the vendored bklit source.)
+   */
+  strokeDasharray?: string;
+  /**
+   * Cap on each end of the stroke and of every dash. Use `"butt"` for a dashed
+   * line, so the dash length is the pattern's: a round cap adds half the
+   * stroke width to each end and closes the gaps. Default: `"round"`
+   * (envault: added on top of the vendored bklit source.)
+   */
+  strokeLinecap?: "butt" | "round" | "square";
+  /**
+   * Surface colored stroke drawn behind the line, with the same dash pattern
+   * and cap, that knocks out whatever passes under it.
+   * (envault: added on top of the vendored bklit source.)
+   */
+  halo?: LineHalo;
   /** Curve function. Default: curveNatural */
   curve?: CurveFactory;
   /** Whether to animate the line. Default: true */
@@ -162,10 +193,13 @@ export interface LineProps {
 function LineSeriesStroke({
   animatedPathD,
   curve,
+  defined,
   filter,
   getY,
   pathRef,
   renderData,
+  strokeDasharray,
+  strokeLinecap = "round",
   strokeOpacity,
   strokeWidth,
   useDataTransitionPath,
@@ -175,9 +209,14 @@ function LineSeriesStroke({
 }: {
   animatedPathD: string;
   curve: CurveFactory;
+  /** Rows without a value break the path (envault: gap support). */
+  defined: (datum: Record<string, unknown>) => boolean;
   filter?: string;
   getY: (datum: Record<string, unknown>) => number;
   pathRef?: RefObject<SVGPathElement | null>;
+  strokeDasharray?: string;
+  /** envault: cap override (the vendored stroke was always round). */
+  strokeLinecap?: "butt" | "round" | "square";
   strokeOpacity?: number;
   renderData: Record<string, unknown>[];
   strokeWidth: number;
@@ -194,7 +233,8 @@ function LineSeriesStroke({
         filter={filter}
         ref={pathRef}
         stroke={visibleStroke}
-        strokeLinecap="round"
+        strokeDasharray={strokeDasharray}
+        strokeLinecap={strokeLinecap}
         strokeOpacity={strokeOpacity}
         strokeWidth={strokeWidth}
       />
@@ -205,10 +245,12 @@ function LineSeriesStroke({
     <LinePath
       curve={curve}
       data={renderData}
+      defined={defined}
       filter={filter}
       innerRef={pathRef}
       stroke={visibleStroke}
-      strokeLinecap="round"
+      strokeDasharray={strokeDasharray}
+      strokeLinecap={strokeLinecap}
       strokeOpacity={strokeOpacity}
       strokeWidth={strokeWidth}
       x={(d) => xScale(xAccessor(d)) ?? 0}
@@ -457,6 +499,9 @@ export function Line({
   yAxisId,
   stroke = chartCssVars.linePrimary,
   strokeWidth = 2.5,
+  strokeDasharray,
+  strokeLinecap = "round",
+  halo,
   curve = curveNatural,
   animate = true,
   fadeEdges = true,
@@ -563,6 +608,15 @@ export function Line({
     },
     [dataKey, yScale]
   );
+  // envault: a row without a finite number breaks the line instead of being
+  // plotted at y 0.
+  const isDefined = useCallback(
+    (d: Record<string, unknown>) => {
+      const value = d[dataKey];
+      return typeof value === "number" && Number.isFinite(value);
+    },
+    [dataKey]
+  );
 
   const colorStops = useMemo(
     () => resolveStrokeGradientStops(strokeGradient),
@@ -618,10 +672,30 @@ export function Line({
         enabled={effectiveShowHighlight}
         seriesIndex={seriesIndex}
       >
+        {/* envault: halo first, so the line and every later series draw over it. */}
+        {halo && showSeriesStroke && !hasDashTail ? (
+          <LineSeriesStroke
+            animatedPathD={animatedPathD}
+            curve={curve}
+            defined={isDefined}
+            getY={getY}
+            renderData={renderData}
+            strokeDasharray={strokeDasharray}
+            strokeLinecap={strokeLinecap}
+            strokeWidth={
+              strokeWidth + (halo.extraWidth ?? DEFAULT_HALO_EXTRA_WIDTH)
+            }
+            useDataTransitionPath={useDataTransitionPath}
+            visibleStroke={halo.color}
+            xAccessor={xAccessor}
+            xScale={xScale}
+          />
+        ) : null}
         {glowOptions && showSeriesStroke ? (
           <LineSeriesStroke
             animatedPathD={animatedPathD}
             curve={curve}
+            defined={isDefined}
             filter={`url(#${glowFilterId})`}
             getY={getY}
             renderData={renderData}
@@ -636,9 +710,12 @@ export function Line({
         <LineSeriesStroke
           animatedPathD={animatedPathD}
           curve={curve}
+          defined={isDefined}
           getY={getY}
           pathRef={pathRef}
           renderData={renderData}
+          strokeDasharray={strokeDasharray}
+          strokeLinecap={strokeLinecap}
           strokeWidth={strokeWidth}
           useDataTransitionPath={useDataTransitionPath}
           visibleStroke={visibleStroke}
