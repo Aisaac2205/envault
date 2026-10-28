@@ -5,19 +5,26 @@ import { Stagger, StaggerItem } from "@/shared/ui/motion/Stagger";
 import { useConnectionsHealth } from "../hooks/useConnectionsHealth";
 import { useDailyAnalytics } from "../hooks/useDailyAnalytics";
 import type { RestoreJob } from "../types";
-import { formatCount, formatRate } from "./backups-per-day/backups-per-day-data";
+import { formatCount, formatRate } from "./backup-stats";
 import { formatDuration } from "./dump-duration/format-duration";
 import { useDurationLocale } from "./dump-duration/use-duration-locale";
+import { ComparisonKpi } from "./kpis/ComparisonKpi";
+import { KpiDelta, type Comparison } from "./kpis/KpiDelta";
 import { LastRestoreKpi } from "./kpis/LastRestoreKpi";
 import { SeriesKpi, type DataStatus } from "./kpis/SeriesKpi";
 import {
+  BASELINE_WINDOW_DAYS,
   KPI_WINDOW_DAYS,
   RECENT_BACKUP_DAYS,
+  countChange,
   lastCalendarDays,
   pickLastRestore,
-  toP95Series,
-  toSuccessRateSeries,
+  rateChange,
+  relativeChange,
+  sumValues,
+  type Change,
 } from "./kpis/kpi-data";
+import { formatCountChange, formatPercentChange, formatPointsChange } from "./kpis/kpi-format";
 
 interface KpiGridProps {
   /** The restores the dashboard already fetched. */
@@ -31,29 +38,37 @@ function statusOf(query: { data: unknown; isError: boolean }): DataStatus {
   return query.isError ? "error" : "loading";
 }
 
+/** A comparison that waits for the reference while it loads, and says so when there is none. */
+function comparisonOf(
+  referenceStatus: DataStatus,
+  change: Change | null,
+  describe: (change: Change) => { text: string; reference: string },
+): Comparison {
+  if (referenceStatus === "loading") return { status: "loading" };
+  if (!change) return { status: "none" };
+  return { status: "ready", change, ...describe(change) };
+}
+
 /**
- * Four KPIs. The success rate and the 95th percentile come from the connections
- * health answer (the whole window, exact percentiles); their sparklines and the
- * 7 day backup count come from the daily series the charts below already load.
+ * Four KPIs, each drawn once on the page. The success rate and the 95th
+ * percentile come from the connections health answer (the whole window, exact
+ * percentiles) and are compared with the 90 day answer, because the charts
+ * below already draw their daily series. The 7 day backup count keeps its bars:
+ * the calendar shows failures, not volume.
  */
 export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
   const { t } = useTranslation("dashboard");
   const locale = useDurationLocale();
   const health = useConnectionsHealth(KPI_WINDOW_DAYS);
+  const baseline = useConnectionsHealth(BASELINE_WINDOW_DAYS);
   const daily = useDailyAnalytics(KPI_WINDOW_DAYS);
 
   const healthStatus = statusOf(health);
+  const baselineStatus = statusOf(baseline);
   const dailyStatus = statusOf(daily);
   const overall = health.data?.overall;
+  const reference = baseline.data?.overall;
 
-  const successSeries = useMemo(
-    () => (daily.data ? toSuccessRateSeries(daily.data.days) : null),
-    [daily.data],
-  );
-  const p95Series = useMemo(
-    () => (daily.data ? toP95Series(daily.data.days) : null),
-    [daily.data],
-  );
   const weekSeries = useMemo(
     () =>
       daily.data
@@ -61,16 +76,42 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
         : null,
     [daily.data],
   );
-  const weekTotal = weekSeries?.reduce((sum, day) => sum + (day.value ?? 0), 0) ?? 0;
+  // The 7 calendar days before those: the first half of a window twice as long.
+  const previousWeekTotal = useMemo(
+    () =>
+      daily.data
+        ? sumValues(lastCalendarDays(daily.data.days, 2 * RECENT_BACKUP_DAYS, daily.data.to).slice(0, RECENT_BACKUP_DAYS))
+        : 0,
+    [daily.data],
+  );
+  const weekTotal = weekSeries ? sumValues(weekSeries) : 0;
 
   const finished = overall ? overall.completed + overall.failed : 0;
   const hasBackups = finished > 0;
   const lastRestore = useMemo(() => pickLastRestore(restores), [restores]);
 
+  const successComparison = comparisonOf(
+    baselineStatus,
+    rateChange(overall?.successRate, reference?.successRate),
+    (change) => ({
+      text: t("kpi.delta.points", { value: formatPointsChange(change, locale) }),
+      reference: t("kpi.delta.vsBaseline", { value: formatRate(reference?.successRate ?? null, locale) }),
+    }),
+  );
+  const p95Comparison = comparisonOf(
+    baselineStatus,
+    relativeChange(overall?.p95DurationSeconds, reference?.p95DurationSeconds),
+    (change) => ({
+      text: formatPercentChange(change, locale),
+      reference: t("kpi.delta.vsBaseline", { value: formatDuration(reference?.p95DurationSeconds, locale) }),
+    }),
+  );
+  const weekChange = countChange(weekTotal, previousWeekTotal);
+
   return (
     <Stagger className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <StaggerItem className="h-full">
-        <SeriesKpi
+        <ComparisonKpi
           accent="var(--chart-1)"
           caption={
             hasBackups && overall
@@ -80,13 +121,10 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
                 })
               : t("kpi.noBackups")
           }
-          formatPoint={(value) => formatRate(value, locale)}
+          comparison={successComparison}
           icon={<ShieldCheck />}
-          kind="area"
           label={t("kpi.successRate")}
           onRetry={() => void health.refetch()}
-          series={successSeries}
-          seriesStatus={dailyStatus}
           value={formatRate(overall?.successRate ?? null, locale)}
           valueStatus={healthStatus}
         />
@@ -94,7 +132,13 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
       <StaggerItem className="h-full">
         <SeriesKpi
           accent="var(--chart-3)"
-          caption={t("kpi.backups7d.caption")}
+          caption={
+            <KpiDelta
+              change={weekChange}
+              reference={t("kpi.delta.vsPrevious", { value: formatCount(previousWeekTotal, locale) })}
+              text={formatCountChange(weekChange, locale)}
+            />
+          }
           formatPoint={(value) => t("kpi.hover.backups", { count: value })}
           icon={<CalendarCheck />}
           kind="bar"
@@ -107,20 +151,17 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
         />
       </StaggerItem>
       <StaggerItem className="h-full">
-        <SeriesKpi
+        <ComparisonKpi
           accent="var(--chart-duration-p95)"
           caption={
             overall?.p50DurationSeconds != null
               ? t("kpi.p95.caption", { p50: formatDuration(overall.p50DurationSeconds, locale) })
               : t("kpi.noBackups")
           }
-          formatPoint={(value) => formatDuration(value, locale)}
+          comparison={p95Comparison}
           icon={<Gauge />}
-          kind="area"
           label={t("kpi.p95")}
           onRetry={() => void health.refetch()}
-          series={p95Series}
-          seriesStatus={dailyStatus}
           value={formatDuration(overall?.p95DurationSeconds, locale)}
           valueStatus={healthStatus}
         />

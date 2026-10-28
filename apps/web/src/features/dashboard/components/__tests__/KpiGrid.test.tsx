@@ -72,6 +72,23 @@ const HEALTH: ConnectionsHealth = {
   connections: [],
 };
 
+/** The 90 day answer the 30 day figures are compared with: a slightly lower rate and a faster p95. */
+const BASELINE: ConnectionsHealth = {
+  ...HEALTH,
+  window: 90,
+  overall: {
+    completed: 3500,
+    failed: 136,
+    successRate: 0.9625,
+    p50DurationSeconds: 4,
+    p95DurationSeconds: 10,
+  },
+};
+
+function withOverall(base: ConnectionsHealth, overall: Partial<ConnectionsHealth["overall"]>): ConnectionsHealth {
+  return { ...base, overall: { ...base.overall, ...overall } };
+}
+
 function restore(over: Partial<RestoreJob> = {}): RestoreJob {
   return {
     id: "r-1",
@@ -91,8 +108,10 @@ function query<T>(over: Record<string, unknown> = {}) {
 function mockQueries(
   health: ReturnType<typeof query<ConnectionsHealth>>,
   daily: ReturnType<typeof query<DailyBackupSeries>>,
+  baseline: ReturnType<typeof query<ConnectionsHealth>> = query({ data: BASELINE }),
 ) {
-  hooks.useConnectionsHealth.mockReturnValue(health);
+  // The 30 day figures and the 90 day baseline are two queries of the same hook.
+  hooks.useConnectionsHealth.mockImplementation((window: number) => (window === 90 ? baseline : health));
   hooks.useDailyAnalytics.mockReturnValue(daily);
 }
 
@@ -130,13 +149,25 @@ describe("KpiGrid", () => {
     expect(screen.queryByText("Active connections")).not.toBeInTheDocument();
   });
 
-  it("asks for the 30 day window, the one the charts open on, so no extra query is made", () => {
+  it("asks for the 30 day window, the one the charts open on, and for the 90 day one to compare with", () => {
     mockQueries(query({ data: HEALTH }), query({ data: month() }));
 
     render(<KpiGrid restoresLoading={false} restores={[]} />);
 
     expect(hooks.useConnectionsHealth).toHaveBeenCalledWith(30);
+    expect(hooks.useConnectionsHealth).toHaveBeenCalledWith(90);
     expect(hooks.useDailyAnalytics).toHaveBeenCalledWith(30);
+  });
+
+  it("draws one sparkline only, the 7 day bars: the charts below already draw the other series", () => {
+    mockQueries(query({ data: HEALTH }), query({ data: month((index) => (index === 29 ? { completed: 5, p95DurationSeconds: 9.5 } : {})) }));
+
+    render(<KpiGrid restoresLoading={false} restores={[]} />);
+
+    expect([...plots.byKey.keys()]).toEqual(["bar:var(--chart-3)"]);
+    for (const color of [...plots.byKey.values()].map((props) => (props as PlotProps).color)) {
+      expect(color).not.toMatch(/--color-(success|warning|error|info)/);
+    }
   });
 
   describe("success rate", () => {
@@ -149,20 +180,36 @@ describe("KpiGrid", () => {
       expect(kpi("Success rate (30d)")).toHaveTextContent("1,203 of 1,234 backups completed");
     });
 
-    it("draws the daily rate with a gap on the days without finished backups", () => {
-      const series = month((index) => (index === 29 ? { completed: 9, failed: 1 } : index === 28 ? { failed: 2 } : {}));
-      mockQueries(query({ data: HEALTH }), query({ data: series }));
+    it("compares it with the 90 day rate, in points, with a word as well as an arrow", () => {
+      mockQueries(query({ data: HEALTH }), query({ data: month() }));
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      const { series: drawn } = plot("area:var(--chart-1)");
-      expect(drawn).toHaveLength(30);
-      expect(drawn.at(-1)).toEqual({ date: "2026-10-27", value: 0.9 });
-      expect(drawn.at(-2)).toEqual({ date: "2026-10-26", value: 0 });
-      expect(drawn[0]?.value).toBeNull();
+      const group = kpi("Success rate (30d)");
+      // 97.49% against 96.25% is 1.24 points up; the baseline is written the way every rate is.
+      expect(group).toHaveTextContent("Higher: +1.2 pts");
+      expect(group).toHaveTextContent("vs 90d: 96.2%");
+      expect(group.querySelector("svg[aria-hidden='true']")).not.toBeNull();
     });
 
-    it("has a dash and a note when nothing finished in the window", () => {
+    it("reads a drop as lower and no move as unchanged", () => {
+      mockQueries(
+        query({ data: withOverall(HEALTH, { successRate: 0.9 }) }),
+        query({ data: month() }),
+      );
+      const { unmount } = render(<KpiGrid restoresLoading={false} restores={[]} />);
+      expect(kpi("Success rate (30d)")).toHaveTextContent("Lower: -6.3 pts");
+      unmount();
+
+      mockQueries(
+        query({ data: withOverall(HEALTH, { successRate: 0.9625 }) }),
+        query({ data: month() }),
+      );
+      render(<KpiGrid restoresLoading={false} restores={[]} />);
+      expect(kpi("Success rate (30d)")).toHaveTextContent("Unchanged: 0.0 pts");
+    });
+
+    it("has a dash and a note when nothing finished in the window, and nothing to compare", () => {
       const empty = { completed: 0, failed: 0, successRate: null, p50DurationSeconds: null, p95DurationSeconds: null };
       mockQueries(query({ data: { ...HEALTH, overall: empty } }), query({ data: month() }));
 
@@ -170,24 +217,28 @@ describe("KpiGrid", () => {
 
       expect(figure("Success rate (30d)")).toHaveTextContent("—");
       expect(kpi("Success rate (30d)")).toHaveTextContent("No backups in this period");
+      expect(kpi("Success rate (30d)")).toHaveTextContent("No 90d baseline yet");
       expect(figure("p95 duration (30d)")).toHaveTextContent("—");
     });
 
-    it("swaps the caption for the day under the pointer, and puts it back when the pointer leaves", () => {
-      // Index 27 is 2026-10-25.
-      const series = month((index) => (index === 27 ? { completed: 24, failed: 1 } : {}));
-      mockQueries(query({ data: HEALTH }), query({ data: series }));
+    it("holds the row for the comparison while the 90 day answer loads, and keeps the figure", () => {
+      mockQueries(query({ data: HEALTH }), query({ data: month() }), query({ isLoading: true }));
+
       render(<KpiGrid restoresLoading={false} restores={[]} />);
-      const { onHoverChange } = plot("area:var(--chart-1)");
 
-      act(() => onHoverChange(27));
-      expect(kpi("Success rate (30d)")).toHaveTextContent("Oct 25 · 96%");
+      expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
+      expect(within(kpi("Success rate (30d)")).getByTestId("kpi-delta-skeleton")).toBeInTheDocument();
+      expect(within(kpi("p95 duration (30d)")).getByTestId("kpi-delta-skeleton")).toBeInTheDocument();
+    });
 
-      act(() => onHoverChange(3));
-      expect(kpi("Success rate (30d)")).toHaveTextContent("Oct 1 · no backups");
+    it("keeps the figure and says there is no baseline when the 90 day answer fails", () => {
+      mockQueries(query({ data: HEALTH }), query({ data: month() }), query({ isError: true }));
 
-      act(() => onHoverChange(null));
-      expect(kpi("Success rate (30d)")).toHaveTextContent("1,203 of 1,234 backups completed");
+      render(<KpiGrid restoresLoading={false} restores={[]} />);
+
+      expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
+      expect(kpi("Success rate (30d)")).toHaveTextContent("No 90d baseline yet");
+      expect(kpi("Success rate (30d)")).not.toHaveTextContent("Could not load");
     });
   });
 
@@ -224,49 +275,86 @@ describe("KpiGrid", () => {
       expect(plot("bar:var(--chart-3)").series.map((point) => point.value)).toEqual([0, 0, 0, 0, 0, 3, 0]);
     });
 
-    it("reads the day under the pointer as a count", () => {
-      mockQueries(
-        query({ data: HEALTH }),
-        query({ data: month((index) => (index === 29 ? { completed: 12 } : index === 28 ? { completed: 1 } : {})) }),
-      );
+    it("compares it with the 7 calendar days before, not with the last rows of the series", () => {
+      // The week before (index 16 to 22) completes 2 a day; the week itself, 4 a day.
+      const series = month((index) => (index >= 23 ? { completed: 4 } : index >= 16 ? { completed: 2 } : { completed: 90 }));
+      mockQueries(query({ data: HEALTH }), query({ data: series }));
+
+      render(<KpiGrid restoresLoading={false} restores={[]} />);
+
+      expect(figure("Backups last 7 days")).toHaveTextContent("28");
+      const group = kpi("Backups last 7 days");
+      expect(group).toHaveTextContent("Higher: +14");
+      expect(group).toHaveTextContent("vs 14 in the 7d before");
+    });
+
+    it("reads a quieter week as lower", () => {
+      const series = month((index) => (index >= 23 ? { completed: 1 } : index >= 16 ? { completed: 3 } : {}));
+      mockQueries(query({ data: HEALTH }), query({ data: series }));
+
+      render(<KpiGrid restoresLoading={false} restores={[]} />);
+
+      expect(kpi("Backups last 7 days")).toHaveTextContent("Lower: -14");
+      expect(kpi("Backups last 7 days")).toHaveTextContent("vs 21 in the 7d before");
+    });
+
+    it("swaps the comparison for the day under the pointer, and puts it back when the pointer leaves", () => {
+      const series = month((index) => (index === 29 ? { completed: 12 } : index === 28 ? { completed: 1 } : {}));
+      mockQueries(query({ data: HEALTH }), query({ data: series }));
       render(<KpiGrid restoresLoading={false} restores={[]} />);
       const { onHoverChange } = plot("bar:var(--chart-3)");
 
       act(() => onHoverChange(6));
       expect(kpi("Backups last 7 days")).toHaveTextContent("Oct 27 · 12 backups");
+      expect(kpi("Backups last 7 days")).not.toHaveTextContent("in the 7d before");
 
       act(() => onHoverChange(5));
       expect(kpi("Backups last 7 days")).toHaveTextContent("Oct 26 · 1 backup");
+
+      act(() => onHoverChange(null));
+      expect(kpi("Backups last 7 days")).toHaveTextContent("vs 0 in the 7d before");
     });
   });
 
   describe("p95 duration", () => {
-    it("shows the window's 95th percentile and its median, and draws the daily p95 with gaps", () => {
-      const series = month((index) => (index === 29 ? { completed: 5, p95DurationSeconds: 9.5 } : {}));
-      mockQueries(query({ data: HEALTH }), query({ data: series }));
+    it("shows the window's 95th percentile and its median", () => {
+      mockQueries(query({ data: HEALTH }), query({ data: month() }));
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
       expect(figure("p95 duration (30d)")).toHaveTextContent("12.4 s");
       expect(kpi("p95 duration (30d)")).toHaveTextContent("Median 4.2 s");
-      const { series: drawn } = plot("area:var(--chart-duration-p95)");
-      expect(drawn.at(-1)?.value).toBe(9.5);
-      expect(drawn[0]?.value).toBeNull();
     });
 
-    it("never colors a sparkline with a status color", () => {
+    it("compares it with the 90 day p95, as a share of it", () => {
+      mockQueries(query({ data: HEALTH }), query({ data: month() }));
+
+      render(<KpiGrid restoresLoading={false} restores={[]} />);
+
+      // 12.4 s against 10 s is 24% slower.
+      expect(kpi("p95 duration (30d)")).toHaveTextContent("Higher: +24%");
+      expect(kpi("p95 duration (30d)")).toHaveTextContent("vs 90d: 10.0 s");
+    });
+
+    it("reads a faster month as lower", () => {
+      mockQueries(query({ data: withOverall(HEALTH, { p95DurationSeconds: 7.5 }) }), query({ data: month() }));
+
+      render(<KpiGrid restoresLoading={false} restores={[]} />);
+
+      expect(kpi("p95 duration (30d)")).toHaveTextContent("Lower: -25%");
+    });
+
+    it("has nothing to compare when the 90 day window has no p95", () => {
       mockQueries(
         query({ data: HEALTH }),
-        query({ data: month((index) => (index === 29 ? { completed: 5, p95DurationSeconds: 9.5 } : {})) }),
+        query({ data: month() }),
+        query({ data: withOverall(BASELINE, { p95DurationSeconds: null }) }),
       );
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      const colors = [...plots.byKey.values()].map((props) => (props as PlotProps).color);
-      expect(colors).toHaveLength(3);
-      for (const color of colors) {
-        expect(color).not.toMatch(/--color-(success|warning|error|info)/);
-      }
+      expect(figure("p95 duration (30d)")).toHaveTextContent("12.4 s");
+      expect(kpi("p95 duration (30d)")).toHaveTextContent("No 90d baseline yet");
     });
   });
 
@@ -318,7 +406,7 @@ describe("KpiGrid", () => {
 
   describe("states", () => {
     it("is busy while the health answer and the daily series load", () => {
-      mockQueries(query({ isLoading: true }), query({ isLoading: true }));
+      mockQueries(query({ isLoading: true }), query({ isLoading: true }), query({ isLoading: true }));
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
@@ -353,13 +441,14 @@ describe("KpiGrid", () => {
       expect(kpi("Success rate (30d)")).not.toHaveTextContent("Could not load");
     });
 
-    it("still shows the figure when only the daily series is missing, with a baseline in place of the plot", () => {
+    it("says the backups card could not load when the daily series fails, and keeps the health figures", () => {
       mockQueries(query({ data: HEALTH }), query({ isError: true }));
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
       expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
       expect(plots.byKey.size).toBe(0);
+      expect(kpi("Backups last 7 days")).toHaveTextContent("Could not load");
     });
   });
 });

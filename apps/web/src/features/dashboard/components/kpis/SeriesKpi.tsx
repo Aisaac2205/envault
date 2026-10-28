@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/shared/ui/button";
 import { useDurationLocale } from "../dump-duration/use-duration-locale";
 import { KpiCard } from "./KpiCard";
+import { KpiRetry } from "./KpiRetry";
 import { KpiSparkline } from "./KpiSparkline";
 import { formatDayLabel, hasSeriesData, type DayValue } from "./kpi-data";
 
@@ -17,7 +17,7 @@ interface SeriesKpiProps {
   /** The headline figure, already formatted. */
   value: string;
   /** The line under it until the pointer is over the plot. */
-  caption: string;
+  caption: ReactNode;
   /** Status of the headline figure. */
   valueStatus: DataStatus;
   /** The daily series behind the sparkline; `null` while it has none. */
@@ -70,14 +70,7 @@ export function SeriesKpi({
     return (
       <KpiCard
         accent={accent}
-        caption={
-          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{t("kpi.error")}</span>
-            <Button className="h-7 px-2 pointer-coarse:h-11 pointer-coarse:px-3" onClick={onRetry} size="sm" variant="outline">
-              {t("kpi.retry")}
-            </Button>
-          </span>
-        }
+        caption={<KpiRetry onRetry={onRetry} />}
         icon={icon}
         label={label}
         value="—"

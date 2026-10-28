@@ -19,7 +19,7 @@ const KPI_CARDS = [
 ];
 
 const PANELS = [
-  'Backups per day',
+  'Backup calendar',
   'Recent backups',
   'Storage by connection',
   'Connections health',
