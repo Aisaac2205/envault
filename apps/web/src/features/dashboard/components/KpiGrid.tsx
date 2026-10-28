@@ -141,7 +141,6 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
           }
           formatPoint={(value) => t("kpi.hover.backups", { count: value })}
           icon={<CalendarCheck />}
-          kind="bar"
           label={t("kpi.backups7d")}
           onRetry={() => void daily.refetch()}
           series={weekSeries}

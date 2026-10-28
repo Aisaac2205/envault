@@ -1,8 +1,9 @@
 // Vendored from the @bklit registry (ui.bklit.com/r/heatmap-chart.json), MIT, bklit/bklit-ui.
 // Copied from the registry with curl, because the shadcn CLI ignores the project aliases.
-// Copied verbatim.
+// Copied verbatim, minus the exports of four registry files this app does not use and does not ship
+// (heatmap-legend, heatmap-legend-gradient, heatmap-chart-loading, generate-heatmap-skeleton-data).
+// The calendar builds its own legend from the vendored `Legend` and its own loading state.
 
-export { generateHeatmapSkeletonFromTarget } from "./generate-heatmap-skeleton-data";
 export {
   computeHeatmapEnterFadeDelayMs,
   computeHeatmapLevelRange,
@@ -25,10 +26,6 @@ export {
   type HeatmapChartProps,
   type HeatmapLayout,
 } from "./heatmap-chart";
-export {
-  HeatmapChartLoading,
-  type HeatmapChartLoadingProps,
-} from "./heatmap-chart-loading";
 export {
   buildHeatmapColorScale,
   buildHeatmapColorScaleFromStyles,
@@ -61,12 +58,6 @@ export {
   useHeatmapInteraction,
   useHeatmapInteractionOptional,
 } from "./heatmap-context";
-export {
-  HEATMAP_LEGEND_LEVELS,
-  HeatmapLegend,
-  type HeatmapLegendProps,
-  type HeatmapLegendVariant,
-} from "./heatmap-legend";
 export {
   resolveHeatmapSeparatorConfig,
   resolveHeatmapSeparatorConfigWithData,

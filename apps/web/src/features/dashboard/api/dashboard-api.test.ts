@@ -10,15 +10,12 @@ const mockApiClient = vi.mocked(apiClient);
 // a call to the client means adding its route here, which is the moment to
 // check that the API really serves it.
 const SERVED_ENDPOINTS = [
-  "/jobs/summary",
   "/jobs/backups",
   "/jobs/restores",
   "/jobs/analytics/daily",
   "/jobs/analytics/storage-by-connection",
-  "/jobs/analytics/restore-status",
   "/jobs/analytics/connections-health",
   "/connections",
-  "/audit",
 ];
 
 // Calls every function of the client and returns the path each one requested.
@@ -118,16 +115,6 @@ describe("dashboardApi", () => {
       expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/connections-health", {
         params: { window: 30 },
       });
-    });
-
-    it("getRestoreStatus requests the restore status counts", async () => {
-      const counts = { pending: 0, running: 1, completed: 4, failed: 2, total: 7 };
-      mockApiClient.get.mockResolvedValue({ data: counts });
-
-      const result = await dashboardApi.getRestoreStatus();
-
-      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/restore-status");
-      expect(result).toBe(counts);
     });
   });
 });

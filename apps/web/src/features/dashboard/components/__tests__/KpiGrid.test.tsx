@@ -13,7 +13,6 @@ vi.mock("../../hooks/useConnectionsHealth", () => ({ useConnectionsHealth: hooks
 vi.mock("../../hooks/useDailyAnalytics", () => ({ useDailyAnalytics: hooks.useDailyAnalytics }));
 
 type PlotProps = {
-  kind: "area" | "bar";
   series: { date: string; value: number | null }[];
   color: string;
   onHoverChange: (index: number | null) => void;
@@ -24,8 +23,8 @@ type PlotProps = {
 const plots = vi.hoisted(() => ({ byKey: new Map<string, unknown>() }));
 vi.mock("../kpis/KpiSparkline", () => ({
   KpiSparkline: (props: PlotProps) => {
-    plots.byKey.set(`${props.kind}:${props.color}`, props);
-    return <div data-testid={`plot-${props.kind}`} />;
+    plots.byKey.set(`bar:${props.color}`, props);
+    return <div data-testid="plot-bar" />;
   },
 }));
 

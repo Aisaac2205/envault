@@ -13,7 +13,6 @@ interface SeriesKpiProps {
   label: string;
   icon: ReactNode;
   accent: string;
-  kind: "area" | "bar";
   /** The headline figure, already formatted. */
   value: string;
   /** The line under it until the pointer is over the plot. */
@@ -36,7 +35,6 @@ export function SeriesKpi({
   label,
   icon,
   accent,
-  kind,
   value,
   caption,
   valueStatus,
@@ -60,7 +58,7 @@ export function SeriesKpi({
   if (seriesStatus === "loading") {
     visual = <div aria-hidden="true" className="h-11 w-full animate-pulse rounded-md bg-muted motion-reduce:animate-none" />;
   } else if (seriesStatus === "ready" && series && hasSeriesData(series)) {
-    visual = <KpiSparkline color={accent} kind={kind} onHoverChange={setHovered} series={series} />;
+    visual = <KpiSparkline color={accent} onHoverChange={setHovered} series={series} />;
   } else {
     // Nothing to draw: a dashed baseline keeps the card's shape instead of a hole.
     visual = <div aria-hidden="true" className="h-px w-full self-center border-t border-dashed border-border" />;
