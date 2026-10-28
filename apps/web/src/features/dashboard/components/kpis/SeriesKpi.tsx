@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useDurationLocale } from "../dump-duration/use-duration-locale";
-import { KpiCard } from "./KpiCard";
+import { KpiCard, type KpiPeriod } from "./KpiCard";
 import { KpiRetry } from "./KpiRetry";
 import { KpiSparkline } from "./KpiSparkline";
 import { formatDayLabel, hasSeriesData, type DayValue } from "./kpi-data";
@@ -11,6 +11,8 @@ export type DataStatus = "loading" | "error" | "ready";
 
 interface SeriesKpiProps {
   label: string;
+  /** The window the figure and the bars cover. */
+  period: KpiPeriod;
   icon: ReactNode;
   accent: string;
   /** The headline figure, already formatted. */
@@ -33,6 +35,7 @@ interface SeriesKpiProps {
  */
 export function SeriesKpi({
   label,
+  period,
   icon,
   accent,
   value,
@@ -71,6 +74,7 @@ export function SeriesKpi({
         caption={<KpiRetry onRetry={onRetry} />}
         icon={icon}
         label={label}
+        period={period}
         value="—"
         visual={visual}
       />
@@ -83,6 +87,7 @@ export function SeriesKpi({
       caption={shownCaption}
       icon={icon}
       label={label}
+      period={period}
       loading={valueStatus === "loading"}
       value={value}
       visual={visual}

@@ -18,7 +18,7 @@ function threeConnections() {
   return [row("a", "Shop", 27 * GB, 9), row("b", "CRM", 13.5 * GB, 3), row("c", "Blog", 4.5 * GB, 1)];
 }
 
-/** Five connections: the two smallest fold into "Otras (2)". */
+/** Five connections: the two smallest fold into "2 otras". */
 function fiveConnections() {
   return [
     row("a", "Shop", 20 * GB, 10),
@@ -135,7 +135,8 @@ describe("StorageByConnectionChart", () => {
       ]);
       // Wiki + Forum = 5 GB; the total is unchanged by folding.
       expect(within(legend()).getAllByRole("button")).toHaveLength(4);
-      expect(item(/Otras \(2\)/)).toHaveTextContent("5.00 GB");
+      expect(item(/^2 otras/)).toHaveTextContent("5.00 GB");
+      expect(within(legend()).queryByText(/\(\d+\)/)).not.toBeInTheDocument();
       expect(within(centerOf(container)).getByText("40.00 GB")).toBeInTheDocument();
       expect(screen.queryByText("Wiki")).not.toBeInTheDocument();
     });

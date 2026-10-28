@@ -124,19 +124,27 @@ describe("DumpDurationChart", () => {
       screen.getByRole("heading", { level: 2, name: "Duración de los respaldos" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Mediana, percentil 95 y respaldo más lento por día"),
+      screen.getByText("Cuánto tardaron los respaldos de cada día"),
     ).toBeInTheDocument();
   });
 
-  it("renders the three legend labels", () => {
+  it("renders the three legend entries: the short term and a muted word for what it means", () => {
     mockAnalytics({ data: series(monthWithGap()) });
 
     render(<DumpDurationChart />);
 
     const legend = screen.getByRole("group", { name: "Leyenda" });
-    expect(within(legend).getByText("Mediana (p50)")).toBeInTheDocument();
-    expect(within(legend).getByText("Percentil 95 (p95)")).toBeInTheDocument();
-    expect(within(legend).getByText("Más lento (máx.)")).toBeInTheDocument();
+    const entries = [
+      { name: "p50 mediana", term: "p50", hint: "mediana" },
+      { name: "p95 percentil 95", term: "p95", hint: "percentil 95" },
+      { name: "máx. más lento", term: "máx.", hint: "más lento" },
+    ];
+    for (const { name, term, hint } of entries) {
+      const button = within(legend).getByRole("button", { name });
+      expect(within(button).getByText(term)).toBeInTheDocument();
+      expect(within(button).getByText(hint)).toHaveClass("text-text-secondary");
+    }
+    expect(legend.textContent).not.toMatch(/[()]/);
   });
 
   it("describes the chart as an image with a text summary", () => {
@@ -250,9 +258,9 @@ describe("DumpDurationChart", () => {
     const status = screen.getByRole("status", { name: "Cargando duración de los respaldos" });
     const legend = status.querySelector("[role=\"group\"]");
     expect(legend).not.toBeNull();
-    expect(legend).toHaveTextContent("Mediana (p50)");
-    expect(legend).toHaveTextContent("Percentil 95 (p95)");
-    expect(legend).toHaveTextContent("Más lento (máx.)");
+    expect(legend).toHaveTextContent("p50 mediana");
+    expect(legend).toHaveTextContent("p95 percentil 95");
+    expect(legend).toHaveTextContent("máx. más lento");
     // Nothing to click or tab to until there is a chart to emphasize.
     expect(legend?.closest("[inert]")).not.toBeNull();
   });
@@ -348,8 +356,12 @@ describe("DumpDurationChart", () => {
       render(<DumpDurationChart />);
 
       const legend = screen.getByRole("group", { name: "Leyenda" });
-      // The three words and nothing else: no figures, no date.
-      expect(legend.textContent).toBe("Mediana (p50)Percentil 95 (p95)Más lento (máx.)");
+      // The three terms and their meaning, nothing else: no figures, no date.
+      expect(within(legend).getAllByRole("button").map((button) => button.textContent)).toEqual([
+        "p50 mediana",
+        "p95 percentil 95",
+        "máx. más lento",
+      ]);
       expect(within(legend).queryByText("—")).not.toBeInTheDocument();
       expect(within(legend).queryByText(/Último día con respaldos/)).not.toBeInTheDocument();
       // Each entry is the sample of its line plus the word, nothing else.
@@ -386,7 +398,7 @@ describe("DumpDurationChart", () => {
       await waitFor(() => {
         expect(mainSeriesPath(container, "p50")).not.toBeNull();
       });
-      const p95Button = screen.getByRole("button", { name: /Percentil 95/ });
+      const p95Button = screen.getByRole("button", { name: "p95 percentil 95" });
 
       await user.click(p95Button);
 
@@ -414,8 +426,8 @@ describe("DumpDurationChart", () => {
       await waitFor(() => {
         expect(mainSeriesPath(container, "p50")).not.toBeNull();
       });
-      const p50Button = screen.getByRole("button", { name: /Mediana/ });
-      const maxButton = screen.getByRole("button", { name: /Más lento/ });
+      const p50Button = screen.getByRole("button", { name: "p50 mediana" });
+      const maxButton = screen.getByRole("button", { name: "máx. más lento" });
 
       await user.click(p50Button);
       await user.click(maxButton);
@@ -433,7 +445,7 @@ describe("DumpDurationChart", () => {
       const user = userEvent.setup();
 
       render(<DumpDurationChart />);
-      const p50Button = screen.getByRole("button", { name: /Mediana/ });
+      const p50Button = screen.getByRole("button", { name: "p50 mediana" });
       p50Button.focus();
 
       await user.keyboard("{Enter}");
@@ -451,7 +463,7 @@ describe("DumpDurationChart", () => {
       await waitFor(() => {
         expect(mainSeriesPath(container, "p50")).not.toBeNull();
       });
-      const p50Button = screen.getByRole("button", { name: /Mediana/ });
+      const p50Button = screen.getByRole("button", { name: "p50 mediana" });
 
       await user.hover(p50Button);
       await waitFor(() => {

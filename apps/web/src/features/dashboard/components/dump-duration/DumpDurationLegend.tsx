@@ -30,10 +30,12 @@ interface SeriesLegendItemProps {
 }
 
 /**
- * One legend entry: the line sample (stroke pattern included) and the label. A
- * real button, so it works with a tap, a click or the keyboard.
+ * One legend entry: the line sample (stroke pattern included), the short term
+ * and, muted, what it means. A real button, so it works with a tap, a click or
+ * the keyboard.
  */
 function SeriesLegendItem({ pinnedKey, onTogglePinned }: SeriesLegendItemProps) {
+  const { t } = useTranslation("dashboard");
   const { index } = useLegendItem();
   const series = DURATION_SERIES[index];
   if (!series) {
@@ -47,13 +49,18 @@ function SeriesLegendItem({ pinnedKey, onTogglePinned }: SeriesLegendItemProps) 
       pressed={pinnedKey === series.key}
     >
       <LineSwatch series={series} />
-      <LegendLabel className="text-xs font-medium" />
+      <span className="flex min-w-0 items-baseline gap-1.5">
+        <LegendLabel className="text-xs font-medium" />
+        {/* The space keeps the term and its meaning two words for assistive technology: `p50 median`. */}
+        {" "}
+        <span className="text-xs text-text-secondary">{t(series.hintKey)}</span>
+      </span>
     </LegendItem>
   );
 }
 
 /**
- * The original bklit legend, compact: a line sample and a word for each series,
+ * The original bklit legend, compact: a line sample and a term for each series,
  * so a series is never told apart by color alone. The day's values are in the
  * tooltip, not here. Clicking an entry emphasizes that series on the chart.
  */
@@ -70,7 +77,7 @@ export function DumpDurationLegend({
     () =>
       DURATION_SERIES.map((series) => ({
         id: series.key,
-        label: t(series.labelKey),
+        label: t(series.shortKey),
         value: 0,
         color: series.color,
       })),

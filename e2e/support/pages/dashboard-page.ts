@@ -13,9 +13,11 @@ export class DashboardPage {
   }
 
   /**
-   * The figure printed in a KPI card. A card is a group named by its label, and
-   * the figure is the first paragraph in it (the caption is the second); this is
-   * the one place that depends on that layout.
+   * The figure printed in a KPI card. A card is a group named by its title and,
+   * when it has one, its window spelled out ("Success rate last 30 days": the
+   * visible `30d` chip is hidden from assistive technology). The figure is the
+   * first paragraph in it (the caption is the second); this is the one place
+   * that depends on that layout.
    */
   kpiValue(label: string): Locator {
     return this.page

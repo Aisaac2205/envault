@@ -12,8 +12,9 @@ interface DumpDurationTooltipProps {
 }
 
 /**
- * Hover card for the duration chart: the day and the three values. The text
- * wears text tokens; the line sample beside it carries the series identity.
+ * Hover card for the duration chart: the day and the three values, each keyed by
+ * its short term only (the legend says what the term means). The text wears
+ * text tokens; the line sample beside it carries the series identity.
  * A day without a completed backup shows an em dash, not 0.
  */
 export function DumpDurationTooltip({ point }: DumpDurationTooltipProps) {
@@ -44,7 +45,7 @@ export function DumpDurationTooltip({ point }: DumpDurationTooltipProps) {
               <div className="flex min-w-0 items-center gap-2">
                 <LineSwatch series={series} />
                 <span className="truncate text-sm text-chart-tooltip-muted">
-                  {t(series.labelKey)}
+                  {t(series.shortKey)}
                 </span>
               </div>
               <span className="text-right text-sm font-medium tabular-nums text-chart-tooltip-foreground">

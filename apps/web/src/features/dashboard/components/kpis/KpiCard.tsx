@@ -2,8 +2,16 @@ import { useId, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/shared/lib/cn";
 import { Skeleton } from "@/shared/ui/skeleton";
 
+/** The window a figure covers: `30d` for the eye, `last 30 days` for assistive technology. */
+export interface KpiPeriod {
+  chip: string;
+  label: string;
+}
+
 interface KpiCardProps {
   label: string;
+  /** The window of the figure, shown as a chip after the label. Omitted when the figure has none. */
+  period?: KpiPeriod;
   /** A 16px icon. It is decoration: the label names the card. */
   icon: ReactNode;
   /** A CSS color (`var(--chart-1)`) that tints the icon chip, the top wash and the hover border. */
@@ -26,6 +34,7 @@ interface KpiCardProps {
  */
 export function KpiCard({
   label,
+  period,
   icon,
   accent,
   value,
@@ -41,7 +50,7 @@ export function KpiCard({
       aria-busy={loading || undefined}
       aria-labelledby={labelId}
       className={cn(
-        "group/kpi relative flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/80 bg-card p-4 shadow-xs transition-[border-color,box-shadow] duration-200 ease-out motion-reduce:transition-none sm:p-5",
+        "group/kpi @container/kpi relative flex h-full min-w-0 flex-col overflow-hidden rounded-xl border border-border/80 bg-card p-3 shadow-xs transition-[border-color,box-shadow] duration-200 ease-out motion-reduce:transition-none sm:p-5",
         "hover:border-[color-mix(in_oklab,var(--kpi-accent)_55%,var(--color-border))] hover:shadow-md",
         className,
       )}
@@ -54,28 +63,42 @@ export function KpiCard({
         className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-[color-mix(in_oklab,var(--kpi-accent)_11%,transparent)] to-transparent"
       />
       <div className="relative flex min-h-9 items-center gap-2.5">
+        {/* Below sm the card is half a phone wide: the title gets the room, the accent wash still tells the cards apart. */}
         <span
           aria-hidden="true"
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklab,var(--kpi-accent)_16%,transparent)] text-[var(--kpi-accent)] [&>svg]:size-4"
+          className="hidden size-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_oklab,var(--kpi-accent)_16%,transparent)] text-[var(--kpi-accent)] sm:flex [&>svg]:size-4"
         >
           {icon}
         </span>
-        <h3 className="min-w-0 text-sm font-medium leading-tight text-text-secondary" id={labelId}>
+        {/* Two lines of 18px fit the 36px row, chip included, so a wrapping title never moves the figure. */}
+        <h3 className="min-w-0 text-sm font-medium leading-[1.125rem] text-text-secondary" id={labelId}>
           {label}
+          {period ? (
+            <>
+              {" "}
+              <span
+                aria-hidden="true"
+                className="inline-flex h-[1.125rem] items-center rounded border border-border bg-muted/60 px-1.5 align-top text-[11px] font-medium leading-none tabular-nums text-text-secondary"
+              >
+                {period.chip}
+              </span>
+              <span className="sr-only"> {period.label}</span>
+            </>
+          ) : null}
         </h3>
       </div>
-      <div className="relative mt-4">
+      <div className="relative mt-3 sm:mt-4">
         {loading ? (
-          <Skeleton className="h-8 w-28 motion-reduce:animate-none" />
+          <Skeleton className="h-6 w-20 motion-reduce:animate-none sm:h-8 sm:w-28" />
         ) : (
-          <p className="text-3xl font-semibold leading-none tracking-tight tabular-nums text-text-primary">
+          <p className="text-2xl font-semibold leading-none tracking-tight tabular-nums text-text-primary sm:text-3xl">
             {value}
           </p>
         )}
       </div>
       <div className="relative mt-2 min-h-4">
         {loading ? (
-          <Skeleton className="h-3.5 w-36 motion-reduce:animate-none" />
+          <Skeleton className="h-3.5 w-full max-w-36 motion-reduce:animate-none" />
         ) : (
           <p className="text-xs leading-4 text-text-secondary tabular-nums">{caption}</p>
         )}

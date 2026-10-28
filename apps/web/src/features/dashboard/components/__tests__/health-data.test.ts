@@ -3,8 +3,10 @@ import type { ConnectionHealth, ConnectionSchedule, Freshness } from "../../type
 import {
   describeInterval,
   earliestNextRun,
+  ENGINE_NAMES,
   engineLabel,
   formatSpan,
+  knownEngine,
   sortBySeverity,
   tightestSchedule,
 } from "../connections-health/health-data";
@@ -177,5 +179,22 @@ describe("engineLabel", () => {
     ["mariadb", "MARIADB"],
   ])("labels %s as %s", (dbType, label) => {
     expect(engineLabel(dbType)).toBe(label);
+  });
+});
+
+describe("knownEngine", () => {
+  it.each([
+    ["postgres", "postgresql", "PostgreSQL"],
+    ["postgresql", "postgresql", "PostgreSQL"],
+    ["mysql", "mysql", "MySQL"],
+    ["MySQL", "mysql", "MySQL"],
+  ])("knows %s as %s, named %s in full", (dbType, engine, name) => {
+    const known = knownEngine(dbType);
+    expect(known).toBe(engine);
+    expect(known && ENGINE_NAMES[known]).toBe(name);
+  });
+
+  it("has no icon for any other engine", () => {
+    expect(knownEngine("mariadb")).toBeNull();
   });
 });

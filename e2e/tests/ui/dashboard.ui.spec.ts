@@ -12,9 +12,9 @@ import { DashboardPage } from '../../support/pages/dashboard-page';
 
 // A dash is a figure with nothing to summarise yet (no backup finished, no restore ran).
 const KPI_CARDS = [
-  { label: 'Success rate (30d)', shape: /^(\d+(\.\d+)?%|—)$/ },
+  { label: 'Success rate last 30 days', shape: /^(\d+(\.\d+)?%|—)$/ },
   { label: 'Backups last 7 days', shape: /^\d+$/ },
-  { label: 'p95 duration (30d)', shape: /^(—|\d+ ms|\d+(\.\d+)? s|\d+ m \d{2} s|\d+ h \d{2} m)$/ },
+  { label: 'p95 duration last 30 days', shape: /^(—|\d+ ms|\d+(\.\d+)? s|\d+ m \d{2} s|\d+ h \d{2} m)$/ },
   { label: 'Last restore', shape: /^(Completed|Failed|Running|Pending|—)$/ },
 ];
 
@@ -122,9 +122,9 @@ test.describe('dashboard of an empty system', () => {
 
     await expect(page.getByRole('heading', { name: 'Welcome to EnVault Management' })).toBeVisible();
     // Nothing finished, so there is no rate or duration to show, and no restore ran.
-    await expect(dashboard.kpiValue('Success rate (30d)')).toHaveText('—');
+    await expect(dashboard.kpiValue('Success rate last 30 days')).toHaveText('—');
     await expect(dashboard.kpiValue('Backups last 7 days')).toHaveText('0');
-    await expect(dashboard.kpiValue('p95 duration (30d)')).toHaveText('—');
+    await expect(dashboard.kpiValue('p95 duration last 30 days')).toHaveText('—');
     await expect(dashboard.kpiValue('Last restore')).toHaveText('—');
     for (const heading of [
       'No completed backups in this period',

@@ -9,7 +9,7 @@ import {
 
 const LABELS = {
   deleted: "Conexión eliminada",
-  other: (count: number) => `Otras (${count})`,
+  other: (count: number) => `${count} otras`,
 };
 
 function row(id: string, name: string | null, sizeMb: number, count = 1): ConnectionStorage {
@@ -53,7 +53,7 @@ describe("toStorageSlices", () => {
     expect(slices).toHaveLength(4);
     expect(slices[3]).toMatchObject({
       id: "other",
-      label: "Otras (2)",
+      label: "2 otras",
       value: 100,
       backupCount: 4,
       color: OTHER_COLOR,

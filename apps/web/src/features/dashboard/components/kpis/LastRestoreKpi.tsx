@@ -64,10 +64,12 @@ export function LastRestoreKpi({ restore, loading }: LastRestoreKpiProps) {
       label={label}
       loading={loading}
       value={
-        <span className="inline-flex items-center gap-2">
+        // A word, not a number: it is sized by the card, not the screen. Four cards beside a
+        // sidebar are as narrow as two on a phone, and "Completado" must fit either way.
+        <span className="inline-flex items-center gap-1.5 text-lg leading-tight @min-[11rem]/kpi:gap-2 @min-[11rem]/kpi:text-2xl @min-[13.5rem]/kpi:text-3xl @min-[13.5rem]/kpi:leading-none">
           <StatusIcon
             aria-hidden="true"
-            className={cn("size-6 shrink-0", isRunning && "animate-spin motion-reduce:animate-none")}
+            className={cn("size-4 shrink-0 @min-[11rem]/kpi:size-5 @min-[13.5rem]/kpi:size-6", isRunning && "animate-spin motion-reduce:animate-none")}
             style={{ color }}
           />
           <span>{tCommon(`status.${restore.status}`)}</span>
@@ -83,7 +85,12 @@ export function LastRestoreKpi({ restore, loading }: LastRestoreKpiProps) {
             {formatRelativeTime(restore.createdAt)}
           </time>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-text-primary">
-            {restore.isDryRun ? <FlaskConical aria-hidden="true" className="size-3.5" /> : <ArchiveRestore aria-hidden="true" className="size-3.5" />}
+            {/* The word says it; in a narrow card the icon would push "Simulación previa" onto two lines. */}
+            {restore.isDryRun ? (
+              <FlaskConical aria-hidden="true" className="hidden size-3.5 @min-[9rem]/kpi:block" />
+            ) : (
+              <ArchiveRestore aria-hidden="true" className="hidden size-3.5 @min-[9rem]/kpi:block" />
+            )}
             {t(restore.isDryRun ? "kpi.restore.dryRun" : "kpi.restore.real")}
           </span>
         </RestoreDetail>
