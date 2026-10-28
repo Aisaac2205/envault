@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo } from "react";
 import { HeartPulse, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -9,10 +9,10 @@ import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { cn } from "@/shared/lib/cn";
 import { useConnectionsHealth } from "../hooks/useConnectionsHealth";
+import { HEALTH_RANGE_KEY, useStoredRange } from "../hooks/useStoredRange";
 import { HealthCardList } from "./connections-health/HealthCardList";
 import { HealthTable } from "./connections-health/HealthTable";
 import { sortBySeverity } from "./connections-health/health-data";
-import { DEFAULT_RANGE_DAYS, type QuickRangeDays } from "./dump-duration/dump-duration-data";
 import { QuickRangeControl } from "./dump-duration/QuickRangeControl";
 import { useDurationLocale } from "./dump-duration/use-duration-locale";
 
@@ -36,7 +36,8 @@ export function ConnectionsHealthCard() {
   const { t } = useTranslation("dashboard");
   const locale = useDurationLocale();
   const titleId = useId();
-  const [windowDays, setWindowDays] = useState<QuickRangeDays>(DEFAULT_RANGE_DAYS);
+  // It opens on the window it was left on, kept apart from the duration chart's.
+  const [windowDays, setWindowDays] = useStoredRange(HEALTH_RANGE_KEY);
   const health = useConnectionsHealth(windowDays);
 
   const rows = useMemo(

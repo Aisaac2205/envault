@@ -62,6 +62,7 @@ describe("DumpDurationChart quick ranges", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it("offers 7d, 30d and 90d as toggle buttons, with 30d pressed by default", () => {
@@ -91,6 +92,35 @@ describe("DumpDurationChart quick ranges", () => {
 
     expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(30, undefined);
     expect(pressedLabels()).toEqual(["30d"]);
+  });
+
+  it("opens on the range it was left on, kept under its own key", () => {
+    localStorage.setItem("vaultly:dashboard:duration-range", "90");
+    localStorage.setItem("vaultly:dashboard:health-range", "7");
+
+    render(<DumpDurationChart />);
+
+    expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(90, undefined);
+    expect(pressedLabels()).toEqual(["90d"]);
+  });
+
+  it("opens on 30d when the stored range is not one of the buttons", () => {
+    localStorage.setItem("vaultly:dashboard:duration-range", "15");
+
+    render(<DumpDurationChart />);
+
+    expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(30, undefined);
+    expect(pressedLabels()).toEqual(["30d"]);
+  });
+
+  it("remembers the range the user picks, and only its own", async () => {
+    const user = userEvent.setup();
+    render(<DumpDurationChart />);
+
+    await user.click(within(quickRanges()).getByRole("button", { name: "7d" }));
+
+    expect(localStorage.getItem("vaultly:dashboard:duration-range")).toBe("7");
+    expect(localStorage.getItem("vaultly:dashboard:health-range")).toBeNull();
   });
 
   it("keeps the button pressed when it is selected again", async () => {

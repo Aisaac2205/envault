@@ -136,6 +136,7 @@ describe("ConnectionsHealthCard", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it("is a real heading with a one line caption that explains freshness", () => {
@@ -438,6 +439,28 @@ describe("ConnectionsHealthCard", () => {
       renderCard();
 
       expect(screen.getByRole("group", { name: "Window of the success rate and durations" })).toBeInTheDocument();
+    });
+
+    it("opens on the window it was left on, kept under its own key", () => {
+      localStorage.setItem("vaultly:dashboard:health-range", "90");
+      localStorage.setItem("vaultly:dashboard:duration-range", "7");
+      mockHealth({ data: health([SHOP]) });
+
+      renderCard();
+
+      expect(hook.useConnectionsHealth).toHaveBeenLastCalledWith(90);
+      expect(screen.getByRole("button", { name: "90d" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("remembers the window the user picks, and only its own", async () => {
+      mockHealth({ data: health([SHOP]) });
+      const user = userEvent.setup();
+
+      renderCard();
+      await user.click(screen.getByRole("button", { name: "7d" }));
+
+      expect(localStorage.getItem("vaultly:dashboard:health-range")).toBe("7");
+      expect(localStorage.getItem("vaultly:dashboard:duration-range")).toBeNull();
     });
   });
 

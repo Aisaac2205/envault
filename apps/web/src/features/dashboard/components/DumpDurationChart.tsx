@@ -8,17 +8,16 @@ import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { LineChartLoading } from "@/shared/ui/charts/line-chart-loading";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { useDailyAnalytics } from "../hooks/useDailyAnalytics";
+import { DURATION_RANGE_KEY, useStoredRange } from "../hooks/useStoredRange";
 import { ConnectionFilter } from "./dump-duration/ConnectionFilter";
 import { DumpDurationLegend } from "./dump-duration/DumpDurationLegend";
 import { DumpDurationPlot } from "./dump-duration/DumpDurationPlot";
 import { QuickRangeControl } from "./dump-duration/QuickRangeControl";
 import {
   ALL_CONNECTIONS,
-  DEFAULT_RANGE_DAYS,
   hasDurationData,
   toConnectionId,
   toDurationRows,
-  type QuickRangeDays,
 } from "./dump-duration/dump-duration-data";
 
 const NO_HOVER = () => undefined;
@@ -51,8 +50,8 @@ function DurationLoading({ label }: { label: string }) {
 export function DumpDurationChart() {
   const { t } = useTranslation("dashboard");
   const [connectionValue, setConnectionValue] = useState(ALL_CONNECTIONS);
-  // The window asked of the API, and the chart shows all of it.
-  const [rangeDays, setRangeDays] = useState<QuickRangeDays>(DEFAULT_RANGE_DAYS);
+  // The window asked of the API, and the chart shows all of it. It opens on the one it was left on.
+  const [rangeDays, setRangeDays] = useStoredRange(DURATION_RANGE_KEY);
 
   const analytics = useDailyAnalytics(rangeDays, toConnectionId(connectionValue));
   const { data: connections = [] } = useConnections();

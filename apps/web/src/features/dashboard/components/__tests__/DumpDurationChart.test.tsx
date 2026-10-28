@@ -113,6 +113,8 @@ describe("DumpDurationChart", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    // The chart remembers the range it was left on: the next test starts from none.
+    localStorage.clear();
   });
 
   it("renders a real heading and the subtitle", () => {
