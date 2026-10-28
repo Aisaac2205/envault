@@ -10,19 +10,19 @@ import { DashboardPage } from '../../support/pages/dashboard-page';
 // stack therefore check structure and the shape of each figure, never a value;
 // the empty system is shown by canning the API's answers.
 
+// A dash is a figure with nothing to summarise yet (no backup finished, no restore ran).
 const KPI_CARDS = [
-  { label: 'Success rate (30d)', shape: /^\d+(\.\d+)?%$/ },
+  { label: 'Success rate (30d)', shape: /^(\d+(\.\d+)?%|—)$/ },
   { label: 'Backups last 7 days', shape: /^\d+$/ },
-  { label: 'Failed', shape: /^\d+$/ },
-  { label: 'Active connections', shape: /^\d+\/\d+$/ },
+  { label: 'p95 duration (30d)', shape: /^(—|\d+ ms|\d+(\.\d+)? s|\d+ m \d{2} s|\d+ h \d{2} m)$/ },
+  { label: 'Last restore', shape: /^(Completed|Failed|Running|Pending|—)$/ },
 ];
 
 const PANELS = [
   'Backups per day',
   'Recent backups',
   'Storage by connection',
-  'System health',
-  'Upcoming runs',
+  'Connections health',
 ];
 
 // Every request the dashboard makes for its data, in the paths the browser uses.
@@ -30,12 +30,9 @@ const DATA_ENDPOINTS = [
   '/api/jobs/backups',
   '/api/jobs/restores',
   '/api/connections',
-  '/api/backups/r2',
-  '/api/cronjobs',
-  '/api/jobs/stats',
-  '/api/jobs/daily-counts',
   '/api/jobs/analytics/daily',
   '/api/jobs/analytics/storage-by-connection',
+  '/api/jobs/analytics/connections-health',
 ];
 
 test.describe('dashboard with the real stack', () => {
@@ -50,7 +47,7 @@ test.describe('dashboard with the real stack', () => {
     }
   });
 
-  test('shows a panel for backups, restores, storage and schedules', async ({ page }) => {
+  test('shows a panel for backups, storage and the health of each connection', async ({ page }) => {
     const dashboard = new DashboardPage(page);
     await dashboard.goto();
 
@@ -61,7 +58,7 @@ test.describe('dashboard with the real stack', () => {
 
   // About defect D4: /api/health is not part of the public API (health is
   // internal, see health.api.spec.ts) and the dashboard has no client for it.
-  // The "System health" panel is a storage summary filled from /api/backups/r2.
+  // The "Connections health" panel reads /api/jobs/analytics/connections-health.
   // If a screen starts calling /api/health, this test fails on that 404.
   test('makes only requests that succeed', async ({ page }) => {
     const answered = new Set<string>();
@@ -87,15 +84,13 @@ test.describe('dashboard with the real stack', () => {
 
 test.describe('dashboard of an empty system', () => {
   test.beforeEach(async ({ page }) => {
-    // No connection, job, stored backup or cronjob exists, whatever the other
-    // specs are doing to the shared stack at this moment.
+    // No connection, job or stored backup exists, whatever the other specs are
+    // doing to the shared stack at this moment.
     await mockApiGet(page, 'connections', []);
     await mockApiGet(page, 'jobs/backups', []);
     await mockApiGet(page, 'jobs/restores', []);
-    await mockApiGet(page, 'backups/r2', []);
-    await mockApiGet(page, 'cronjobs', []);
-    await mockApiGet(page, 'jobs/daily-counts', []);
-    // The analytics behind the charts: no backup ever ran and nothing is stored.
+    // The analytics behind the KPIs and the panels: no backup ever ran, nothing is
+    // stored and there is no production connection to report on.
     await mockApiGet(page, 'jobs/analytics/daily', {
       window: 30,
       from: '2026-09-28',
@@ -105,11 +100,19 @@ test.describe('dashboard of an empty system', () => {
       days: [],
     });
     await mockApiGet(page, 'jobs/analytics/storage-by-connection', []);
-    await mockApiGet(page, 'jobs/stats', {
-      successRate30d: 0,
-      backupsToday: 0,
-      failed7d: 0,
-      totalStorageMb: 0,
+    await mockApiGet(page, 'jobs/analytics/connections-health', {
+      window: 30,
+      from: '2026-09-28',
+      to: '2026-10-27',
+      timezone: 'UTC',
+      overall: {
+        completed: 0,
+        failed: 0,
+        successRate: null,
+        p50DurationSeconds: null,
+        p95DurationSeconds: null,
+      },
+      connections: [],
     });
   });
 
@@ -118,17 +121,17 @@ test.describe('dashboard of an empty system', () => {
     await dashboard.goto();
 
     await expect(page.getByRole('heading', { name: 'Welcome to EnVault Management' })).toBeVisible();
-    await expect(dashboard.kpiValue('Success rate (30d)')).toHaveText('0%');
+    // Nothing finished, so there is no rate or duration to show, and no restore ran.
+    await expect(dashboard.kpiValue('Success rate (30d)')).toHaveText('—');
     await expect(dashboard.kpiValue('Backups last 7 days')).toHaveText('0');
-    await expect(dashboard.kpiValue('Failed')).toHaveText('0');
-    await expect(dashboard.kpiValue('Active connections')).toHaveText('0/0');
+    await expect(dashboard.kpiValue('p95 duration (30d)')).toHaveText('—');
+    await expect(dashboard.kpiValue('Last restore')).toHaveText('—');
     for (const heading of [
       'No completed backups in this period',
       'No backups in this period',
       'No recent backups',
       'No stored backups',
-      'No health data',
-      'No scheduled runs',
+      'No production connections',
     ]) {
       await expect(page.getByRole('heading', { name: heading }), heading).toBeVisible();
     }

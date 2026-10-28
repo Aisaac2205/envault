@@ -1,15 +1,12 @@
-import { useDashboard, useConnectionStats, useStorageStats } from "./hooks";
-import { useQuery } from "@tanstack/react-query";
+import { useDashboard, useConnectionStats } from "./hooks";
 import { useTranslation } from "react-i18next";
-import { dashboardApi } from "./api/dashboard-api";
 import { DashboardHeader } from "./components/DashboardHeader";
 import { KpiGrid } from "./components/KpiGrid";
-import { SystemHealthCard } from "./components/SystemHealthCard";
 import { BackupTimeline } from "./components/BackupTimeline";
 import { BackupsPerDayChart } from "./components/BackupsPerDayChart";
+import { ConnectionsHealthCard } from "./components/ConnectionsHealthCard";
 import { DumpDurationChart } from "./components/DumpDurationChart";
 import { StorageByConnectionChart } from "./components/StorageByConnectionChart";
-import { UpcomingCronjobsCard } from "./components/UpcomingCronjobsCard";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { buttonVariants } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
@@ -27,38 +24,11 @@ export default function Dashboard() {
     errors: dashboardErrors,
   } = useDashboard();
   const { data: connections = [], isLoading: connectionsLoading } = useConnectionStats();
-  const { data: dumps = [], isLoading: storageLoading } = useStorageStats();
-  const { data: cronjobs = [], isLoading: cronjobsLoading } = useQuery({
-    queryKey: ["dashboard", "cronjobs"],
-    queryFn: async () => {
-      const response = await dashboardApi.getCronjobs();
-      return Array.isArray(response) ? response : [];
-    },
-    refetchInterval: 30_000,
-  });
 
-  const { data: stats = null, isLoading: statsLoading } = useQuery({
-    queryKey: ["dashboard", "stats"],
-    queryFn: dashboardApi.getStats,
-    refetchInterval: 30_000,
-  });
+  const refreshCycle = recentBackups.length + recentRestores.length + connections.length;
 
-  const { data: dailyCounts = [], isLoading: dailyCountsLoading } = useQuery({
-    queryKey: ["dashboard", "daily-counts"],
-    queryFn: dashboardApi.getDailyCounts,
-    refetchInterval: 30_000,
-  });
-
-  const refreshCycle =
-    recentBackups.length +
-    recentRestores.length +
-    connections.length +
-    dumps.length +
-    cronjobs.length +
-    dailyCounts.length;
-
-  const rawLoading =
-    dashboardLoading || connectionsLoading || storageLoading || cronjobsLoading || statsLoading || dailyCountsLoading;
+  // The charts and the health card load and show their own states; the overlay covers the lists this page reads itself.
+  const rawLoading = dashboardLoading || connectionsLoading;
   const isLoading = useSmoothLoading(rawLoading);
 
   return (
@@ -113,7 +83,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <KpiGrid stats={stats} connections={connections} dailyCounts={dailyCounts} />
+          <KpiGrid restores={recentRestores} restoresLoading={dashboardLoading} />
 
           <DumpDurationChart />
 
@@ -124,10 +94,7 @@ export default function Dashboard() {
             <StorageByConnectionChart />
           </div>
 
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 lg:items-stretch">
-            <SystemHealthCard dumps={dumps} />
-            <UpcomingCronjobsCard cronjobs={cronjobs} />
-          </div>
+          <ConnectionsHealthCard />
         </div>
       )}
 
