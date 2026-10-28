@@ -69,7 +69,7 @@
   "onboarding.description": "To start protecting your data and scheduling automated backups, connect your first PostgreSQL or MySQL database.",
   "onboarding.cta": "Connect database",
   "duration.title": "Dump duration",
-  "duration.subtitle": "Median, 95th percentile and slowest dump per day",
+  "duration.subtitle": "How long each day's backups took",
   "duration.connection.label": "Connection",
   "duration.connection.all": "All connections",
   "duration.legend.label": "Legend",

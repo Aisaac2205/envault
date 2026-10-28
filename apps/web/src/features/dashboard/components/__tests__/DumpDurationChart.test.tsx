@@ -124,7 +124,7 @@ describe("DumpDurationChart", () => {
       screen.getByRole("heading", { level: 2, name: "Duración de los respaldos" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Mediana, percentil 95 y respaldo más lento por día"),
+      screen.getByText("Cuánto tardaron los respaldos de cada día"),
     ).toBeInTheDocument();
   });
 

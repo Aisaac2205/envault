@@ -69,7 +69,7 @@
   "onboarding.description": "Para comenzar a proteger tus datos y programar respaldos automáticos, conecta tu primera base de datos PostgreSQL o MySQL.",
   "onboarding.cta": "Conectar base de datos",
   "duration.title": "Duración de los respaldos",
-  "duration.subtitle": "Mediana, percentil 95 y respaldo más lento por día",
+  "duration.subtitle": "Cuánto tardaron los respaldos de cada día",
   "duration.connection.label": "Conexión",
   "duration.connection.all": "Todas las conexiones",
   "duration.legend.label": "Leyenda",
