@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BackupDailyRollupEntity } from '../../database/entities/backup-daily-rollup.entity';
 import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 import { RestoreJobEntity } from '../../database/entities/restore-job.entity';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
@@ -11,7 +12,12 @@ import { JobsAnalyticsService } from './analytics/jobs-analytics.service';
 import { JobsAnalyticsRepository } from './analytics/jobs-analytics.repository';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BackupJobEntity, RestoreJobEntity, ConnectionEntity])],
+  imports: [TypeOrmModule.forFeature([
+      BackupJobEntity,
+      BackupDailyRollupEntity,
+      RestoreJobEntity,
+      ConnectionEntity,
+    ])],
   controllers: [JobsAnalyticsController, JobsController],
   providers: [JobsService, JobsRepository, JobsAnalyticsService, JobsAnalyticsRepository],
 })

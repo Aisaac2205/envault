@@ -176,6 +176,24 @@ Once the initial migration exists, **any future schema change follows this flow*
 
 > ⚠️ **Never modify a migration that has been committed and applied in any environment.** If you need to fix something, generate a new migration that fixes the problem. A migration is immutable after the first `migration:run` in any environment.
 
+### 4.1 Example: `1778716800025-create-backup-daily-rollups`
+
+This migration adds the `backup_daily_rollups` table, which keeps the per-day aggregates of the `backup_jobs` rows that retention, reconcile and failed-job hygiene delete, so `/jobs/analytics/daily` keeps its history after a purge.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `connectionId` | `character varying` | Part of the primary key. Same type as `backup_jobs.connectionId`. |
+| `day` | `date` | Part of the primary key. UTC day of the deleted row's `createdAt`. |
+| `completed`, `failed` | `integer`, default `0` | Purged jobs by outcome. |
+| `totalSizeMb` | `double precision`, default `0` | Size of the purged completed jobs. |
+| `durationsSeconds` | `double precision[]`, default `'{}'` | Duration of each purged completed job that had both timestamps. Percentiles cannot be merged from pre-computed values, so the raw values are kept. |
+| `updatedAt` | `timestamp`, default `now()` | Last time a purge touched the row. |
+
+- The primary key is `(connectionId, day)` and there is **no foreign key**: the rollup must outlive soft-deleted connections and the job rows it summarizes.
+- The migration is hand-written and idempotent (`CREATE TABLE IF NOT EXISTS`); `down()` drops the table. `BackupDailyRollupEntity` matches the DDL: TypeORM's schema builder reports no difference for it.
+- It is not folded into `InitialSchema`: no earlier table depends on it, so a fresh database gets it from this migration like any other.
+- `BackupRepository` writes the table in the same SQL statement that deletes the rows, and `JobsAnalyticsRepository` merges it with the live rows. History purged before this migration ran cannot be backfilled.
+
 ---
 
 ## 5. Available commands (already configured in `package.json`)

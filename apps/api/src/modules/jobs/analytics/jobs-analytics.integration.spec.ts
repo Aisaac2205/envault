@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
+import { BackupDailyRollupEntity } from '../../../database/entities/backup-daily-rollup.entity';
 import { BackupJobEntity } from '../../../database/entities/backup-job.entity';
 import { RestoreJobEntity } from '../../../database/entities/restore-job.entity';
 import { Environment } from '../../../database/enums/environment.enum';
@@ -68,7 +69,7 @@ integration('jobs analytics PostgreSQL integration', () => {
     dataSource = new DataSource({
       type: 'postgres',
       url: testDatabaseUrl,
-      entities: [BackupJobEntity, RestoreJobEntity],
+      entities: [BackupJobEntity, BackupDailyRollupEntity, RestoreJobEntity],
       extra: { max: 1 },
     });
     await dataSource.initialize();
@@ -92,6 +93,7 @@ integration('jobs analytics PostgreSQL integration', () => {
 
   beforeEach(async () => {
     await dataSource.query('DELETE FROM backup_jobs');
+    await dataSource.query('DELETE FROM backup_daily_rollups');
     await dataSource.query('DELETE FROM restore_jobs');
     await dataSource.query(`SET TIME ZONE 'UTC'`);
   });
@@ -119,6 +121,22 @@ integration('jobs analytics PostgreSQL integration', () => {
         row.completedAt ? `${row.completedAt}` : null,
         row.createdAt,
       ],
+    );
+  }
+
+  async function insertRollup(row: {
+    connectionId: string;
+    day: string;
+    completed: number;
+    failed: number;
+    totalSizeMb: number;
+    durationsSeconds: number[];
+  }): Promise<void> {
+    await dataSource.query(
+      `INSERT INTO backup_daily_rollups
+         ("connectionId", "day", completed, failed, "totalSizeMb", "durationsSeconds")
+       VALUES ($1, $2::date, $3, $4, $5, $6::float8[])`,
+      [row.connectionId, row.day, row.completed, row.failed, row.totalSizeMb, row.durationsSeconds],
     );
   }
 
@@ -332,6 +350,84 @@ integration('jobs analytics PostgreSQL integration', () => {
       expect(row.p95).toBe(20);
       expect(row.max).toBe(20);
       expect(row.totalSizeMb).toBe(50);
+    });
+
+    describe('rollup of purged jobs', () => {
+      // 2026-03-19..21 are untouched by the fixture of the enclosing describe.
+      const otherConnectionId = '00000000-0000-0000-0000-000000000702';
+
+      it('merges the rollup counts, size and durations with the live rows of the same day', async () => {
+        // Purged on 2026-03-20: two completed jobs (10s, 20s, 30 MB) and one failed job.
+        await insertRollup({ connectionId, day: '2026-03-20', completed: 2, failed: 1, totalSizeMb: 30, durationsSeconds: [10, 20] });
+        // Still live the same day: one completed job of 40s and 5 MB.
+        await insertBackupJob({
+          id: '00000000-0000-0000-0000-000000000d01',
+          connectionId,
+          status: JobStatus.COMPLETED,
+          createdAt: '2026-03-20 08:00:00',
+          startedAt: '2026-03-20 08:00:00',
+          completedAt: '2026-03-20 08:00:40',
+          fileSizeMb: 5,
+        });
+
+        const rows = await repository.getDailyBackupRows({ from: '2026-03-20', toExclusive: '2026-03-21' });
+
+        expect(rows).toHaveLength(1);
+        const [row] = rows;
+        expect(Number(row.completed)).toBe(3);
+        expect(Number(row.failed)).toBe(1);
+        // Percentiles over the merged durations 10, 20 and 40.
+        expect(row.p50).toBe(20);
+        expect(row.p95).toBe(38);
+        expect(row.max).toBe(40);
+        expect(row.totalSizeMb).toBe(35);
+      });
+
+      it('returns a day that exists only in the rollup, and excludes rollup days outside the range', async () => {
+        await insertRollup({ connectionId, day: '2026-03-19', completed: 9, failed: 9, totalSizeMb: 999, durationsSeconds: [999] });
+        await insertRollup({ connectionId, day: '2026-03-20', completed: 1, failed: 2, totalSizeMb: 12.5, durationsSeconds: [7.5] });
+        await insertRollup({ connectionId, day: '2026-03-21', completed: 9, failed: 9, totalSizeMb: 999, durationsSeconds: [999] });
+
+        const rows = await repository.getDailyBackupRows({ from: '2026-03-20', toExclusive: '2026-03-21' });
+
+        expect(rows).toEqual([
+          { date: '2026-03-20', completed: '1', failed: '2', p50: 7.5, p95: 7.5, max: 7.5, totalSizeMb: 12.5 },
+        ]);
+      });
+
+      it('keeps null durations for a rollup day without purged durations', async () => {
+        await insertRollup({ connectionId, day: '2026-03-20', completed: 0, failed: 3, totalSizeMb: 0, durationsSeconds: [] });
+
+        const rows = await repository.getDailyBackupRows({ from: '2026-03-20', toExclusive: '2026-03-21' });
+
+        expect(rows).toEqual([
+          { date: '2026-03-20', completed: '0', failed: '3', p50: null, p95: null, max: null, totalSizeMb: 0 },
+        ]);
+      });
+
+      it('applies the connectionId filter to the rollup rows and their durations', async () => {
+        await insertRollup({ connectionId, day: '2026-03-20', completed: 1, failed: 0, totalSizeMb: 4, durationsSeconds: [10] });
+        await insertRollup({ connectionId: otherConnectionId, day: '2026-03-20', completed: 2, failed: 5, totalSizeMb: 100, durationsSeconds: [200, 300] });
+
+        const [all] = await repository.getDailyBackupRows({ from: '2026-03-20', toExclusive: '2026-03-21' });
+        const [scoped] = await repository.getDailyBackupRows({ from: '2026-03-20', toExclusive: '2026-03-21', connectionId });
+        const none = await repository.getDailyBackupRows({
+          from: '2026-03-20',
+          toExclusive: '2026-03-21',
+          connectionId: '00000000-0000-0000-0000-000000000799',
+        });
+
+        expect(Number(all.completed)).toBe(3);
+        expect(Number(all.failed)).toBe(5);
+        expect(all.max).toBe(300);
+        expect(all.totalSizeMb).toBe(104);
+        expect(Number(scoped.completed)).toBe(1);
+        expect(Number(scoped.failed)).toBe(0);
+        expect(scoped.p50).toBe(10);
+        expect(scoped.max).toBe(10);
+        expect(scoped.totalSizeMb).toBe(4);
+        expect(none).toEqual([]);
+      });
     });
 
     describe('connectionId filter', () => {

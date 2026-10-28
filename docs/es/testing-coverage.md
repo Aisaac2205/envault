@@ -291,6 +291,15 @@ Las cuatro specs de integración y la variable que activa cada una:
 | `src/modules/jobs/analytics/jobs-analytics.integration.spec.ts` | `JOBS_ANALYTICS_TEST_DATABASE_URL` | El repositorio de analíticas. |
 | `src/modules/restore/restore-lease.integration.spec.ts` | `RESTORE_LEASE_TEST_DATABASE_URL` | Los repositorios de leases de restore y de conexiones. |
 
+Después de la línea base se agregó una quinta spec y creció la de analíticas:
+
+| Spec | Variable | Tests | Ejercita |
+|------|----------|------:|----------|
+| `src/modules/backup/backup-rollup.integration.spec.ts` | `JOBS_ANALYTICS_TEST_DATABASE_URL` | 20 | Las tres rutas de borrado del repositorio de backup (`deleteByFileKeys`, `deleteByIds`, `deleteFailedOlderThan`) contra la consulta diaria de analíticas: la serie diaria, con y sin filtro de conexión, es idéntica antes y después de una purga completa, de una purga parcial de un día, de dos purgas del mismo día y de dos purgas concurrentes; las filas PENDING y RUNNING se borran sin contarse; los completados sin marcas de tiempo cuentan pero no aportan duración. |
+| `src/modules/jobs/analytics/jobs-analytics.integration.spec.ts` | `JOBS_ANALYTICS_TEST_DATABASE_URL` | 17 (antes 13) | Agrega cuatro tests de la combinación de filas vivas y resumen en la consulta diaria. |
+
+La spec nueva reutiliza la variable de analíticas. Con las cuatro variables definidas contra un PostgreSQL 16 local en `localhost:5434`, las cinco suites de integración ejecutaron 60 tests, 0 omitidos (auditoría 4, lease de backup 9, lease de restore 10, analíticas 17, resumen de backup 20), medido el 2026-10-27. Ese mismo día, `pnpm -C apps/api test` sin las variables ejecutó 93 suites y 1561 tests, con 5 suites y 60 tests omitidos. Los tests unitarios del mismo cambio son `src/database/1778716800025-create-backup-daily-rollups.spec.ts` (4 tests) y el bloque de purga de `src/modules/backup/backup.repository.spec.ts` (8 tests).
+
 Como se omiten, los repositorios anteriores están subcontados: su cobertura real es mayor que las cifras de aquí, y una ejecución con las cuatro variables definidas subiría los números de la API. Todo lo de la línea base sale de las 55 suites que corren sin infraestructura.
 
 ---

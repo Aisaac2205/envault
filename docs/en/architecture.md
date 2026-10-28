@@ -158,6 +158,8 @@ Native dump streams pipe directly into Cloudflare R2 without staging intermediat
 ### 4. Two-Stage Coordinated Purge
 The purge process operates in two coordinated stages to prevent orphan files in cloud storage and inconsistent entries in the control database. First, EnVault issues the physical deletion command to the object storage bucket. Once the cloud provider confirms remote object removal, the platform purges the corresponding job record from the control database.
 
+Rolling up comes first, in the same statement. Every delete of `backup_jobs` rows (retention, reconcile and failed-job hygiene) is one SQL statement that deletes the rows and adds their COMPLETED and FAILED counts, the size of the completed ones and the duration of each completed one to `backup_daily_rollups`, keyed by connection and UTC day. Because the delete and the rollup commit together, and `DELETE ... RETURNING` hands each row to exactly one statement, a row is rolled up exactly once even when two purges run at the same time. PENDING and RUNNING rows are deleted without being counted. `/jobs/analytics/daily` merges the live rows with the rollup, so its history, counts and percentiles survive a purge; storage-by-connection stays live-only because it tracks what is still stored. History purged before the rollup existed cannot be recovered.
+
 ### 5. Non-Destructive Dry-Run Simulation
 To validate retention policies before executing irreversible deletions, EnVault supports dry-run simulation mode. This operation computes configured retention rules and reports the exact list of candidate dumps, their IDs, and the total storage volume to be reclaimed, without modifying or deleting any remote objects.
 

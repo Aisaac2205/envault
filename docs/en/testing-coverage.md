@@ -291,6 +291,15 @@ The four integration specs, and the variable that switches each on:
 | `src/modules/jobs/analytics/jobs-analytics.integration.spec.ts` | `JOBS_ANALYTICS_TEST_DATABASE_URL` | The analytics repository. |
 | `src/modules/restore/restore-lease.integration.spec.ts` | `RESTORE_LEASE_TEST_DATABASE_URL` | The restore lease and connections repositories. |
 
+A fifth spec was added after the baseline, and the analytics spec grew:
+
+| Spec | Variable | Tests | Exercises |
+|------|----------|------:|-----------|
+| `src/modules/backup/backup-rollup.integration.spec.ts` | `JOBS_ANALYTICS_TEST_DATABASE_URL` | 20 | The three delete paths of the backup repository (`deleteByFileKeys`, `deleteByIds`, `deleteFailedOlderThan`) against the daily analytics query: the daily series, with and without the connection filter, is identical before and after a full purge, a partial purge of a day, two purges of the same day and two concurrent purges; PENDING and RUNNING rows are deleted without being counted; completed rows without timestamps count but add no duration. |
+| `src/modules/jobs/analytics/jobs-analytics.integration.spec.ts` | `JOBS_ANALYTICS_TEST_DATABASE_URL` | 17 (was 13) | Adds four tests of the live plus rollup merge in the daily query. |
+
+The new spec reuses the analytics variable. With the four variables set against a local PostgreSQL 16 on `localhost:5434`, the five integration suites ran 60 tests, 0 skipped (audit 4, backup lease 9, restore lease 10, analytics 17, backup rollup 20), measured on 2026-10-27. The same day, `pnpm -C apps/api test` without the variables ran 93 suites and 1561 tests, with 5 suites and 60 tests skipped. The unit tests of the same change are `src/database/1778716800025-create-backup-daily-rollups.spec.ts` (4 tests) and the purge block of `src/modules/backup/backup.repository.spec.ts` (8 tests).
+
 Because they are skipped, the repositories above are under-counted: their real coverage is higher than the figures here, and a run with the four variables set would raise the API numbers. Everything in the Baseline comes from the 55 suites that run without infrastructure.
 
 ---

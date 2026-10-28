@@ -176,6 +176,24 @@ Una vez que existe la migration inicial, **cualquier cambio futuro al schema sig
 
 > ⚠️ **Nunca modificar una migration ya commiteada y aplicada en cualquier entorno.** Si necesitás corregir algo, generá una migration nueva que arregle el problema. Una migration es inmutable después del primer `migration:run` en cualquier entorno.
 
+### 4.1 Ejemplo: `1778716800025-create-backup-daily-rollups`
+
+Esta migration agrega la tabla `backup_daily_rollups`, que conserva los agregados diarios de las filas de `backup_jobs` que borran la retención, la conciliación y la limpieza de jobs fallidos, para que `/jobs/analytics/daily` mantenga su historial después de una purga.
+
+| Columna | Tipo | Significado |
+|---|---|---|
+| `connectionId` | `character varying` | Parte de la clave primaria. Mismo tipo que `backup_jobs.connectionId`. |
+| `day` | `date` | Parte de la clave primaria. Día UTC del `createdAt` de la fila borrada. |
+| `completed`, `failed` | `integer`, por defecto `0` | Jobs purgados según su resultado. |
+| `totalSizeMb` | `double precision`, por defecto `0` | Tamaño de los jobs completados purgados. |
+| `durationsSeconds` | `double precision[]`, por defecto `'{}'` | Duración de cada job completado purgado que tenía ambas marcas de tiempo. Los percentiles no se pueden combinar a partir de valores ya calculados, por eso se guardan los valores originales. |
+| `updatedAt` | `timestamp`, por defecto `now()` | Última vez que una purga tocó la fila. |
+
+- La clave primaria es `(connectionId, day)` y **no hay clave foránea**: el resumen debe sobrevivir a las conexiones eliminadas lógicamente y a las filas de jobs que resume.
+- La migration está escrita a mano y es idempotente (`CREATE TABLE IF NOT EXISTS`); `down()` elimina la tabla. `BackupDailyRollupEntity` coincide con el DDL: el schema builder de TypeORM no reporta diferencias para ella.
+- No se incorporó a `InitialSchema`: ninguna tabla anterior depende de ella, así que una base nueva la obtiene de esta migration como de cualquier otra.
+- `BackupRepository` escribe la tabla en la misma sentencia SQL que borra las filas, y `JobsAnalyticsRepository` la combina con las filas vivas. El historial purgado antes de ejecutar esta migration no se puede recuperar.
+
 ---
 
 ## 5. Comandos disponibles (ya configurados en `package.json`)
