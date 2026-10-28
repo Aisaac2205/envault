@@ -1,10 +1,12 @@
-import { useDashboard, useConnectionStats, useRecentFailures } from "./hooks";
+import { useDashboard, useConnectionStats, useDailyAnalytics, useRecentFailures } from "./hooks";
 import { useTranslation } from "react-i18next";
 import { DashboardHeader } from "./components/DashboardHeader";
 import { KpiGrid } from "./components/KpiGrid";
 import { BackupsHeatmapCard } from "./components/BackupsHeatmapCard";
 import { ConnectionsHealthCard } from "./components/ConnectionsHealthCard";
 import { DumpDurationChart } from "./components/DumpDurationChart";
+import { CALENDAR_DAYS } from "./components/backups-heatmap/heatmap-data";
+import { dataPresence } from "./components/empty-states/data-presence";
 import { RecentFailuresCard } from "./components/RecentFailuresCard";
 import { StorageByConnectionChart } from "./components/StorageByConnectionChart";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
@@ -25,6 +27,11 @@ export default function Dashboard() {
   const { data: connections = [], isLoading: connectionsLoading } = useConnectionStats();
   // The card shows the failures; the page reads the same query (one request) so a new failure is announced.
   const { data: recentFailures = [] } = useRecentFailures();
+
+  // The 90 days of the backup calendar (the same query, one request): with the connections they say
+  // whether anything has run yet, which every card's empty state follows.
+  const quarter = useDailyAnalytics(CALENDAR_DAYS);
+  const presence = dataPresence(connectionsLoading ? undefined : connections.length, quarter.data?.days);
 
   const refreshCycle = recentFailures.length + recentRestores.length + connections.length;
 
@@ -86,16 +93,16 @@ export default function Dashboard() {
 
           <KpiGrid restores={recentRestores} restoresLoading={dashboardLoading} />
 
-          <DumpDurationChart />
+          <DumpDurationChart presence={presence} />
 
           <BackupsHeatmapCard />
 
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 lg:items-stretch">
-            <RecentFailuresCard />
+            <RecentFailuresCard presence={presence} />
             <StorageByConnectionChart />
           </div>
 
-          <ConnectionsHealthCard />
+          <ConnectionsHealthCard presence={presence} />
         </div>
       )}
 

@@ -5,16 +5,20 @@ import { Link } from "react-router-dom";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
-import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { cn } from "@/shared/lib/cn";
 import { useConnectionsHealth } from "../hooks/useConnectionsHealth";
 import { HEALTH_RANGE_KEY, useStoredRange } from "../hooks/useStoredRange";
 import { HealthCardList } from "./connections-health/HealthCardList";
+import { CardEmpty } from "./empty-states/CardEmpty";
+import type { DataPresence } from "./empty-states/data-presence";
 import { HealthTable } from "./connections-health/HealthTable";
 import { sortBySeverity } from "./connections-health/health-data";
 import { QuickRangeControl } from "./dump-duration/QuickRangeControl";
 import { useDurationLocale } from "./dump-duration/use-duration-locale";
+
+/** The body's height while loading and when empty: four 64px rows and three 8px gaps. */
+const BODY_HEIGHT = "min-h-[17.5rem]";
 
 /** A few rows of placeholder, so the card does not jump when the data arrives. */
 function HealthLoading({ label }: { label: string }) {
@@ -32,7 +36,12 @@ function HealthLoading({ label }: { label: string }) {
  * enough for its schedule, what ran last, what runs next, and how reliable and
  * fast it has been over the window.
  */
-export function ConnectionsHealthCard() {
+interface ConnectionsHealthCardProps {
+  /** What the dashboard has to show, from the page; without any connection the welcome banner leads instead. */
+  presence?: DataPresence;
+}
+
+export function ConnectionsHealthCard({ presence = "unknown" }: ConnectionsHealthCardProps) {
   const { t } = useTranslation("dashboard");
   const locale = useDurationLocale();
   const titleId = useId();
@@ -61,9 +70,13 @@ export function ConnectionsHealthCard() {
         </Button>
       </Alert>
     );
+  } else if (rows.length === 0 && presence === "no-connections") {
+    // No connection at all: the welcome banner above is the one way to add the first.
+    body = <CardEmpty className={BODY_HEIGHT} icon={<HeartPulse />} message={t("health.empty.noConnections")} />;
   } else if (rows.length === 0) {
+    // Connections, but none in production: only this card can say so, and where to fix it.
     body = (
-      <EmptyState
+      <CardEmpty
         action={
           <Link
             className={cn(buttonVariants({ size: "sm" }), "gap-1.5 pointer-coarse:h-11")}
@@ -73,10 +86,9 @@ export function ConnectionsHealthCard() {
             {t("health.empty.cta")}
           </Link>
         }
-        className="py-8"
-        description={t("health.empty.description")}
+        className={BODY_HEIGHT}
         icon={<HeartPulse />}
-        title={t("health.empty.title")}
+        message={t("health.empty.noProduction")}
       />
     );
   } else {

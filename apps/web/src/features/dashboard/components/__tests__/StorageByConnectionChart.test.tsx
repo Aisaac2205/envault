@@ -317,15 +317,22 @@ describe("StorageByConnectionChart", () => {
       expect(screen.queryByRole("img")).not.toBeInTheDocument();
     });
 
-    it("explains an empty list", () => {
+    it("keeps the donut's place with an empty ring and one line where the legend goes", () => {
       mockStorage({ data: [] });
 
-      render(<StorageByConnectionChart />);
+      const { container } = render(<StorageByConnectionChart />);
 
-      expect(
-        screen.getByRole("heading", { level: 3, name: "Sin respaldos almacenados" }),
-      ).toBeInTheDocument();
       expect(screen.queryByRole("img")).not.toBeInTheDocument();
+      const ring = screen.getByTestId("storage-empty-ring");
+      // The ring of the loading state, standing still: the size of the drawn donut, and no data color.
+      expect(ring).toHaveClass("rounded-full", "border-[26px]", "border-muted");
+      expect(ring).not.toHaveClass("animate-pulse");
+      expect(ring).toHaveStyle({ width: "176px", height: "176px" });
+      expect(container.querySelector("[fill^='var(--chart-'], [style*='--chart-']")).toBeNull();
+      const empty = screen.getByTestId("card-empty");
+      expect(within(empty).getByText("Aún no hay respaldos almacenados")).toBeInTheDocument();
+      // As tall as the three legend rows of the loading state.
+      expect(empty).toHaveClass("min-h-[8.25rem]");
     });
 
     it("treats connections with nothing stored as empty", () => {
@@ -333,7 +340,8 @@ describe("StorageByConnectionChart", () => {
 
       render(<StorageByConnectionChart />);
 
-      expect(screen.getByText("Sin respaldos almacenados")).toBeInTheDocument();
+      expect(screen.getByText("Aún no hay respaldos almacenados")).toBeInTheDocument();
+      expect(screen.getByTestId("storage-empty-ring")).toBeInTheDocument();
     });
 
     it("shows the error with its reason and retries on request", async () => {

@@ -275,14 +275,42 @@ describe("BackupsHeatmapCard", () => {
       expect(screen.getAllByTestId("heatmap-stat-skeleton")).toHaveLength(3);
     });
 
-    it("explains an empty window instead of drawing a grid of empty days", () => {
+    /** The pattern each drawn day cell is filled with; the hatch of "no backups" is level 0. */
+    function cellFills(container: HTMLElement) {
+      return Array.from(container.querySelectorAll<SVGRectElement>("rect.visx-heatmap-rect"))
+        .map((rect) => rect.getAttribute("fill") ?? "")
+        .filter((fill) => fill.startsWith("url("));
+    }
+
+    it("keeps the 90 day grid with every day hatched as without backups, and says so where the figures go", async () => {
       mockAnalytics({ data: quarter() });
 
-      render(<BackupsHeatmapCard />);
+      const { container } = render(<BackupsHeatmapCard />);
 
-      expect(screen.getByRole("heading", { name: "Sin respaldos en este período" })).toBeInTheDocument();
-      expect(screen.getByText(/últimos 90 días/, { selector: "p.text-balance" })).toBeInTheDocument();
-      expect(screen.queryByRole("img")).not.toBeInTheDocument();
+      const calendar = await screen.findByRole("img");
+      expect(calendar.getAttribute("aria-label")).toBe("Calendario de respaldos del 30 jul al 27 oct. Sin respaldos.");
+      await waitFor(() => expect(cellFills(container).length).toBeGreaterThanOrEqual(90));
+      expect(new Set(cellFills(container))).toEqual(new Set(["url(#heatmap-level-0)"]));
+      // The legend stays, so the hatch is explained.
+      expect(screen.getByRole("group", { name: "Leyenda" })).toBeInTheDocument();
+      // The figures give way to one line, in a box as tall as their placeholders.
+      expect(container.querySelector("[data-stat]")).toBeNull();
+      const empty = screen.getByTestId("card-empty");
+      expect(within(empty).getByText("Sin respaldos en los últimos 90 días")).toBeInTheDocument();
+      expect(empty).toHaveClass("min-h-[12.25rem]", "@md:min-h-24", "@3xl:min-h-[19.5rem]");
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    });
+
+    it("draws the grid even when the answer has no days", async () => {
+      mockAnalytics({ data: { ...quarter(), days: [] } });
+
+      const { container } = render(<BackupsHeatmapCard />);
+
+      expect((await screen.findByRole("img")).getAttribute("aria-label")).toBe(
+        "Calendario de respaldos del 30 jul al 27 oct. Sin respaldos.",
+      );
+      await waitFor(() => expect(cellFills(container).length).toBeGreaterThanOrEqual(90));
+      expect(screen.getByText("Sin respaldos en los últimos 90 días")).toBeInTheDocument();
     });
 
     it("shows the error with a retry that asks again", async () => {

@@ -4,13 +4,13 @@ import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
-import { EmptyState } from "@/shared/ui/empty-state";
 import { useDailyAnalytics } from "../hooks/useDailyAnalytics";
 import type { DailyBackupSeries } from "../types";
 import { formatCount } from "./backup-stats";
 import { BackupsHeatmapPlot } from "./backups-heatmap/BackupsHeatmapPlot";
 import { FailureDaysTable } from "./backups-heatmap/FailureDaysTable";
 import { FailureSummary } from "./backups-heatmap/FailureSummary";
+import { CardEmpty } from "./empty-states/CardEmpty";
 import {
   CALENDAR_DAYS,
   emptyWindow,
@@ -28,6 +28,7 @@ function describe(
   locale: string,
 ): string {
   const range = { from: formatDayLabel(series.from, locale), to: formatDayLabel(series.to, locale) };
+  if (summary.activeDays === 0) return t("calendar.chartLabel.empty", range);
   return summary.failed > 0
     ? t("calendar.chartLabel", {
         ...range,
@@ -53,11 +54,16 @@ export function BackupsHeatmapCard() {
   const failed = useMemo(() => (series ? failureDays(series.days) : []), [series]);
   // The grid the card shows while the data is on its way: the same 90 days, all empty.
   const placeholder = useMemo(() => emptyWindow(new Date().toISOString().slice(0, 10)), []);
+  // The API fills every day of the window; an answer without days still gets its grid.
+  const days = useMemo(
+    () => (series && series.days.length > 0 ? series.days : emptyWindow(series?.to ?? placeholder.at(-1)!.date)),
+    [series, placeholder],
+  );
 
   let body;
   if (analytics.isLoading) {
     body = (
-      <CalendarLayout summary={null}>
+      <CalendarLayout aside={<FailureSummary summary={null} />}>
         <BackupsHeatmapPlot days={placeholder} description="" loading />
       </CalendarLayout>
     );
@@ -75,17 +81,28 @@ export function BackupsHeatmapCard() {
       </Alert>
     );
   } else if (!series || !summary || summary.activeDays === 0) {
+    // No backup in the 90 days: the real grid, every day hatched as without backups, and one line
+    // where the figures go, in a box as tall as their placeholders at every width.
     body = (
-      <EmptyState
-        className="min-h-[220px] py-6 md:min-h-[280px]"
-        description={t("calendar.empty.description", { days: CALENDAR_DAYS })}
-        icon={<CalendarDays />}
-        title={t("calendar.empty.title")}
-      />
+      <CalendarLayout
+        aside={
+          <CardEmpty
+            className="min-h-[12.25rem] @md:min-h-24 @3xl:min-h-[19.5rem]"
+            icon={<CalendarDays />}
+            message={t("calendar.empty", { days: CALENDAR_DAYS })}
+          />
+        }
+      >
+        <BackupsHeatmapPlot
+          days={days}
+          description={series ? describe(series, summarizeFailures(days), t, locale) : ""}
+          loading={false}
+        />
+      </CalendarLayout>
     );
   } else {
     body = (
-      <CalendarLayout summary={summary}>
+      <CalendarLayout aside={<FailureSummary summary={summary} />}>
         <BackupsHeatmapPlot days={series.days} description={describe(series, summary, t, locale)} loading={false} />
         <FailureDaysTable days={failed} />
       </CalendarLayout>
@@ -106,18 +123,17 @@ export function BackupsHeatmapCard() {
 }
 
 interface CalendarLayoutProps {
-  summary: ReturnType<typeof summarizeFailures> | null;
+  /** The figures beside the calendar, their placeholders, or the line that stands in for them. */
+  aside: React.ReactNode;
   children: React.ReactNode;
 }
 
 /** The calendar on the left and its figures on the right once the card is wide; stacked before that. */
-function CalendarLayout({ summary, children }: CalendarLayoutProps) {
+function CalendarLayout({ aside, children }: CalendarLayoutProps) {
   return (
     <div className="flex flex-col gap-5 @3xl:flex-row @3xl:items-start @3xl:gap-8">
       <div className="min-w-0 space-y-3 @3xl:flex-1">{children}</div>
-      <div className="@3xl:w-72 @3xl:shrink-0">
-        <FailureSummary summary={summary} />
-      </div>
+      <div className="@3xl:w-72 @3xl:shrink-0">{aside}</div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ConnectionHealth, ConnectionsHealth, Freshness } from "../../types";
 import { ConnectionsHealthCard } from "../ConnectionsHealthCard";
+import type { DataPresence } from "../empty-states/data-presence";
 import { useEnglishLocale } from "./english-locale";
 
 const hook = vi.hoisted(() => ({ useConnectionsHealth: vi.fn() }));
@@ -123,10 +124,10 @@ function mockHealth(result: Record<string, unknown>) {
   });
 }
 
-function renderCard() {
+function renderCard(presence?: DataPresence) {
   return render(
     <MemoryRouter>
-      <ConnectionsHealthCard />
+      <ConnectionsHealthCard presence={presence} />
     </MemoryRouter>,
   );
 }
@@ -486,14 +487,28 @@ describe("ConnectionsHealthCard", () => {
       expect(refetch).toHaveBeenCalledTimes(1);
     });
 
-    it("leads to the connections page when there is no production connection", () => {
+    it("leads to the connections page when there are connections but none in production", () => {
       mockHealth({ data: health([]) });
 
-      renderCard();
+      renderCard("active");
 
-      expect(screen.getByRole("heading", { level: 3, name: "No production connections" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Go to connections" })).toHaveAttribute("href", "/connections");
+      const empty = screen.getByTestId("card-empty");
+      expect(within(empty).getByText("No production connections")).toBeInTheDocument();
+      expect(within(empty).getByRole("link", { name: "Go to connections" })).toHaveAttribute("href", "/connections");
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      // As tall as the four loading rows.
+      expect(empty).toHaveClass("min-h-[17.5rem]");
+    });
+
+    it("leaves the way to the connections page to the welcome banner when there is no connection at all", () => {
+      mockHealth({ data: health([]) });
+
+      renderCard("no-connections");
+
+      const empty = screen.getByTestId("card-empty");
+      expect(within(empty).getByText("No connections yet")).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(empty).toHaveClass("min-h-[17.5rem]");
     });
   });
 });

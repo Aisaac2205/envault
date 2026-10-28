@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { BackupJob } from "../../types";
 import { RecentFailuresCard } from "../RecentFailuresCard";
+import type { DataPresence } from "../empty-states/data-presence";
 import { useEnglishLocale } from "./english-locale";
 
 const failures = vi.hoisted(() => ({ useRecentFailures: vi.fn(), RECENT_FAILURES_LIMIT: 5 }));
@@ -49,10 +50,10 @@ function mockFailures(result: Record<string, unknown>) {
   });
 }
 
-function renderCard() {
+function renderCard(presence?: DataPresence) {
   return render(
     <MemoryRouter>
-      <RecentFailuresCard />
+      <RecentFailuresCard presence={presence} />
     </MemoryRouter>,
   );
 }
@@ -153,19 +154,53 @@ describe("RecentFailuresCard", () => {
   });
 
   describe("states", () => {
-    it("says, with a success icon, that nothing failed when the list is empty", () => {
+    it("says, with a success icon, that nothing failed when there are backups and none failed", () => {
       mockFailures({ data: [] });
 
-      const { container } = renderCard();
+      renderCard("active");
 
       expect(screen.queryByRole("list")).not.toBeInTheDocument();
-      const label = screen.getByText("Sin respaldos fallidos");
-      expect(label).toHaveClass("text-text-primary");
+      const empty = screen.getByTestId("card-empty");
+      expect(within(empty).getByText("Sin respaldos fallidos")).toBeInTheDocument();
       // The state is in the words; the icon only repeats it, in the success color.
-      const icon = container.querySelector("svg.text-success");
+      const icon = empty.querySelector("svg.text-success");
       expect(icon).not.toBeNull();
       expect(icon).toHaveAttribute("aria-hidden", "true");
+      // As tall as the loading rows, so the card does not shrink.
+      expect(empty).toHaveClass("min-h-80");
       expect(screen.getByRole("link", { name: "Ver todos los respaldos" })).toBeInTheDocument();
+    });
+
+    it.each(["no-connections", "no-backups"] as const)(
+      "says where failures will show when nothing has run yet (%s), in a neutral color",
+      (presence) => {
+        mockFailures({ data: [] });
+
+        renderCard(presence);
+
+        const empty = screen.getByTestId("card-empty");
+        expect(within(empty).getByText("Los respaldos fallidos aparecerán aquí")).toBeInTheDocument();
+        expect(screen.queryByText("Sin respaldos fallidos")).not.toBeInTheDocument();
+        expect(empty.querySelector(".text-success")).toBeNull();
+        expect(empty).toHaveClass("min-h-80");
+      },
+    );
+
+    it("drops the link to the backups when there is no connection, but keeps its room", () => {
+      mockFailures({ data: [] });
+
+      renderCard("no-connections");
+
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByTestId("failures-footer")).toHaveClass("h-8");
+    });
+
+    it("keeps the link to the backups when there are connections but no recent backup", () => {
+      mockFailures({ data: [] });
+
+      renderCard("no-backups");
+
+      expect(screen.getByRole("link", { name: "Ver todos los respaldos" })).toHaveAttribute("href", "/dumps");
     });
 
     it("shows a busy placeholder while loading", () => {
@@ -174,8 +209,9 @@ describe("RecentFailuresCard", () => {
       renderCard();
 
       const status = screen.getByRole("status", { name: "Cargando fallos recientes" });
-      // A placeholder per row the card can list.
+      // A placeholder per row the card can list, in the same height as the empty states.
       expect(status.children).toHaveLength(5);
+      expect(status).toHaveClass("min-h-80");
       expect(screen.queryByRole("list")).not.toBeInTheDocument();
     });
 
@@ -209,9 +245,17 @@ describe("RecentFailuresCard", () => {
     it("says nothing failed", () => {
       mockFailures({ data: [] });
 
-      renderCard();
+      renderCard("active");
 
       expect(screen.getByText("No failed backups")).toBeInTheDocument();
+    });
+
+    it("says where failures will show before the first backup", () => {
+      mockFailures({ data: [] });
+
+      renderCard("no-backups");
+
+      expect(screen.getByText("Failed backups will appear here")).toBeInTheDocument();
     });
   });
 });

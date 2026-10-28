@@ -25,6 +25,15 @@ const PANELS = [
   'Connection status',
 ];
 
+// Each card of an empty system and the one line it shows in place of its data.
+const EMPTY_PANELS = [
+  ['Dump duration', 'Durations appear once a backup completes'],
+  ['Backup calendar', 'No backups in the last 90 days'],
+  ['Recent failures', 'Failed backups will appear here'],
+  ['Storage by connection', 'No stored backups yet'],
+  ['Connection status', 'No connections yet'],
+] as const;
+
 // Every request the dashboard makes for its data, in the paths the browser uses.
 const DATA_ENDPOINTS = [
   '/api/jobs/backups',
@@ -116,7 +125,7 @@ test.describe('dashboard of an empty system', () => {
     });
   });
 
-  test('welcomes the admin and explains each empty panel', async ({ page }) => {
+  test('welcomes the admin and keeps every card in place with a line on what will appear', async ({ page }) => {
     const dashboard = new DashboardPage(page);
     await dashboard.goto();
 
@@ -126,16 +135,20 @@ test.describe('dashboard of an empty system', () => {
     await expect(dashboard.kpiValue('Backups last 7 days')).toHaveText('0');
     await expect(dashboard.kpiValue('p95 duration last 30 days')).toHaveText('—');
     await expect(dashboard.kpiValue('Last restore')).toHaveText('—');
-    for (const heading of [
-      'No completed backups in this period',
-      'No backups in this period',
-      'No stored backups',
-      'No production connections',
-    ]) {
-      await expect(page.getByRole('heading', { name: heading }), heading).toBeVisible();
+    // Every card keeps its frame and says, in one line, what it will show.
+    for (const [title, message] of EMPTY_PANELS) {
+      await expect(dashboard.panelTitle(title), title).toBeVisible();
+      await expect(dashboard.emptyMessage(message), message).toBeVisible();
     }
-    // The recent failures card says it in a line, not a heading: nothing failed.
-    await expect(page.getByText('No failed backups', { exact: true })).toBeVisible();
+    // The calendar still draws its 90 days, every one without backups.
+    await expect(page.getByRole('img', { name: /^Backup calendar from .+\. No backups\.$/ })).toBeVisible();
+  });
+
+  test('offers one way to add the first connection: the welcome banner', async ({ page }) => {
+    await new DashboardPage(page).goto();
+
+    await expect(page.getByRole('link', { name: 'Connect database' })).toBeVisible();
+    await expect(page.getByRole('main').locator('a[href="/connections"]')).toHaveCount(1);
   });
 
   test('leads from the welcome banner to the connections page', async ({ page }) => {
