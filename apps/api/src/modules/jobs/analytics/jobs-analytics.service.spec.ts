@@ -472,6 +472,17 @@ describe('JobsAnalyticsService', () => {
         ]);
       });
 
+      it('reports the largest gap of an irregular schedule whatever the time of day it is asked', async () => {
+        givenSuccessAge(1_000, ['0 9,17 * * *']);
+
+        for (const hour of ['08', '12', '20']) {
+          const now = new Date(`2026-03-15T${hour}:00:00.000Z`);
+          const [row] = (await service.getConnectionsHealth(7, now)).connections;
+
+          expect(row.schedules[0].intervalSeconds).toBe(16 * 3_600);
+        }
+      });
+
       it('has a null interval for an invalid cron expression instead of failing the request', async () => {
         givenSuccessAge(1_000, ['definitely not cron']);
 
