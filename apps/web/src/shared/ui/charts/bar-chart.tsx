@@ -594,8 +594,23 @@ const ChartCore = memo(function ChartCore({
     [children]
   );
 
+  // envault: `<YAxis>` takes its ticks from the target domain of each axis. The
+  // bar chart never published one, so the axis fell back to the lifecycle default
+  // [0, 100] and a small chart showed a lone "0". Publish the real domains.
+  const yDomainTargetByAxis = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(yScales).map(([id, scale]) => [
+          id,
+          scale.domain() as [number, number],
+        ])
+      ),
+    [yScales]
+  );
+
   const contextValue = {
     ...DEFAULT_CHART_LIFECYCLE,
+    yDomainTargetByAxis,
     chartPhase: resolveRestingChartPhase(status),
     chartStatus: status,
     data,

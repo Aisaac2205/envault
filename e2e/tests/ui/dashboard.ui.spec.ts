@@ -18,9 +18,9 @@ const KPI_CARDS = [
 ];
 
 const PANELS = [
-  'Completed backups',
+  'Backups per day',
   'Recent backups',
-  'Recent restores',
+  'Storage by connection',
   'System health',
   'Upcoming runs',
 ];
@@ -34,6 +34,8 @@ const DATA_ENDPOINTS = [
   '/api/cronjobs',
   '/api/jobs/stats',
   '/api/jobs/daily-counts',
+  '/api/jobs/analytics/daily',
+  '/api/jobs/analytics/storage-by-connection',
 ];
 
 test.describe('dashboard with the real stack', () => {
@@ -93,6 +95,16 @@ test.describe('dashboard of an empty system', () => {
     await mockApiGet(page, 'backups/r2', []);
     await mockApiGet(page, 'cronjobs', []);
     await mockApiGet(page, 'jobs/daily-counts', []);
+    // The analytics behind the charts: no backup ever ran and nothing is stored.
+    await mockApiGet(page, 'jobs/analytics/daily', {
+      window: 30,
+      from: '2026-09-28',
+      to: '2026-10-27',
+      timezone: 'UTC',
+      connectionId: null,
+      days: [],
+    });
+    await mockApiGet(page, 'jobs/analytics/storage-by-connection', []);
     await mockApiGet(page, 'jobs/stats', {
       successRate30d: 0,
       backupsToday: 0,
@@ -111,9 +123,10 @@ test.describe('dashboard of an empty system', () => {
     await expect(dashboard.kpiValue('Failed')).toHaveText('0');
     await expect(dashboard.kpiValue('Active connections')).toHaveText('0/0');
     for (const heading of [
-      'No data for this period',
+      'No completed backups in this period',
+      'No backups in this period',
       'No recent backups',
-      'No recent restores',
+      'No stored backups',
       'No health data',
       'No scheduled runs',
     ]) {
