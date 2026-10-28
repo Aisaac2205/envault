@@ -75,6 +75,12 @@ export interface ChartBrushProps {
   fadeOuterEdges?: boolean;
   /** Optional pattern overlay inside the brush selection window. */
   selectionPattern?: ChartBrushSelectionPattern;
+  /**
+   * Width in px of the invisible drag target centred on each brush edge.
+   * Raise it to 44 for touch. Default: 8
+   * (envault: added on top of the vendored bklit source.)
+   */
+  handleSize?: number;
 }
 
 interface ChartBrushInnerProps extends ChartBrushTrackOverlayStyle {
@@ -90,6 +96,7 @@ interface ChartBrushInnerProps extends ChartBrushTrackOverlayStyle {
   onBrushPreview?: (bounds: Bounds | null) => void;
   onBrushCommit: (bounds: Bounds | null) => void;
   selectionPattern?: ChartBrushSelectionPattern;
+  handleSize?: number;
 }
 
 function toDate(value: number | Date | unknown): Date {
@@ -146,6 +153,7 @@ const ChartBrushInner = memo(function ChartBrushInner({
   blurPx,
   fadeOuterEdges,
   selectionPattern,
+  handleSize = 8,
 }: ChartBrushInnerProps) {
   const initialBrushPosition = useMemo(() => {
     if (!initialSelection || innerWidth <= 0 || innerHeight <= 0) {
@@ -246,7 +254,7 @@ const ChartBrushInner = memo(function ChartBrushInner({
       />
       <BrushComponent
         brushDirection={brushDirection}
-        handleSize={8}
+        handleSize={handleSize}
         height={innerHeight}
         initialBrushPosition={initialBrushPosition}
         key={`brush-${innerWidth}-${innerHeight}`}
@@ -278,6 +286,7 @@ export function ChartBrush({
   blurPx,
   fadeOuterEdges,
   selectionPattern,
+  handleSize,
 }: ChartBrushProps) {
   const { xScale, yScale, innerWidth, innerHeight, margin, isLoaded } =
     useChartStable();
@@ -337,6 +346,7 @@ export function ChartBrush({
       blurPx={blurPx}
       brushDirection={brushDirection}
       fadeOuterEdges={fadeOuterEdges}
+      handleSize={handleSize}
       initialSelection={initialSelection}
       innerHeight={innerHeight}
       innerWidth={innerWidth}

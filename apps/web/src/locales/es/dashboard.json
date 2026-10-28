@@ -60,5 +60,21 @@
   "chart.noBackupData": "No hay datos de respaldos disponibles",
   "onboarding.title": "Bienvenido a EnVault Management",
   "onboarding.description": "Para comenzar a proteger tus datos y programar respaldos automáticos, conecta tu primera base de datos PostgreSQL o MySQL.",
-  "onboarding.cta": "Conectar base de datos"
+  "onboarding.cta": "Conectar base de datos",
+  "duration.title": "Duración de los respaldos",
+  "duration.subtitle": "Mediana, percentil 95 y respaldo más lento por día",
+  "duration.connection.label": "Conexión",
+  "duration.connection.all": "Todas las conexiones",
+  "duration.legend.label": "Leyenda",
+  "duration.series.p50": "Mediana (p50)",
+  "duration.series.p95": "Percentil 95 (p95)",
+  "duration.series.max": "Más lento (máx.)",
+  "duration.loading": "Cargando duración de los respaldos",
+  "duration.empty.title": "Sin respaldos completados en este período",
+  "duration.empty.description": "Las duraciones aparecerán aquí cuando se complete un respaldo dentro de los últimos 90 días.",
+  "duration.error": "No se pudo cargar la duración de los respaldos: {{message}}",
+  "duration.retry": "Reintentar",
+  "duration.brush.label": "Selector de rango de fechas",
+  "duration.chartLabel": "Duración de los respaldos por día del {{from}} al {{to}}. Último día con respaldos, {{date}}: mediana {{p50}}, percentil 95 {{p95}}, más lento {{max}}.",
+  "duration.chartLabelEmpty": "Duración de los respaldos por día del {{from}} al {{to}}. Sin respaldos completados en este rango."
 }

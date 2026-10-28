@@ -34,4 +34,53 @@ describe("bklit LineChart", () => {
       expect(container.querySelector("svg path")).not.toBeNull();
     });
   });
+
+  describe("series with missing values", () => {
+    const gapData = [
+      { date: new Date("2026-10-20T00:00:00Z"), value: 10 },
+      { date: new Date("2026-10-21T00:00:00Z"), value: 14 },
+      { date: new Date("2026-10-22T00:00:00Z"), value: null },
+      { date: new Date("2026-10-23T00:00:00Z"), value: 18 },
+      { date: new Date("2026-10-24T00:00:00Z"), value: 22 },
+    ];
+
+    function renderGapChart(strokeDasharray?: string) {
+      return render(
+        <LineChart animationDuration={0} aspectRatio="2 / 1" data={gapData}>
+          <Line
+            animate={false}
+            dataKey="value"
+            fadeEdges={false}
+            showHighlight={false}
+            strokeDasharray={strokeDasharray}
+          />
+        </LineChart>
+      );
+    }
+
+    function seriesPath(container: HTMLElement) {
+      return container.querySelector<SVGPathElement>(
+        "svg path[stroke-linecap='round']"
+      );
+    }
+
+    it("breaks the line instead of dropping to zero", async () => {
+      const { container } = renderGapChart();
+
+      await waitFor(() => {
+        const d = seriesPath(container)?.getAttribute("d") ?? "";
+        expect((d.match(/M/g) ?? []).length).toBe(2);
+      });
+    });
+
+    it("applies the dash pattern to the series stroke", async () => {
+      const { container } = renderGapChart("6 4");
+
+      await waitFor(() => {
+        expect(seriesPath(container)?.getAttribute("stroke-dasharray")).toBe(
+          "6 4"
+        );
+      });
+    });
+  });
 });

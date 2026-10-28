@@ -527,7 +527,12 @@ const ChartTooltipInner = memo(function ChartTooltipInner({
                     strokeColor={chartCssVars.background}
                     strokeWidth={dotStrokeWidth}
                     variant={dotVariant}
-                    visible={visible}
+                    // envault: a series with no value at the hovered row gets no
+                    // dot (it used to sit at y 0, the top of the plot).
+                    visible={
+                      visible &&
+                      tooltipData?.yPositions[line.dataKey] !== undefined
+                    }
                     x={tooltipData?.xPositions?.[line.dataKey] ?? x}
                     y={tooltipData?.yPositions[line.dataKey] ?? 0}
                   />

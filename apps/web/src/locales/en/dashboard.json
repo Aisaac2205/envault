@@ -60,5 +60,21 @@
   "chart.noBackupData": "No backup data available",
   "onboarding.title": "Welcome to EnVault Management",
   "onboarding.description": "To start protecting your data and scheduling automated backups, connect your first PostgreSQL or MySQL database.",
-  "onboarding.cta": "Connect database"
+  "onboarding.cta": "Connect database",
+  "duration.title": "Dump duration",
+  "duration.subtitle": "Median, 95th percentile and slowest dump per day",
+  "duration.connection.label": "Connection",
+  "duration.connection.all": "All connections",
+  "duration.legend.label": "Legend",
+  "duration.series.p50": "Median (p50)",
+  "duration.series.p95": "95th percentile (p95)",
+  "duration.series.max": "Slowest (max)",
+  "duration.loading": "Loading dump duration",
+  "duration.empty.title": "No completed backups in this period",
+  "duration.empty.description": "Dump durations show up here once a backup completes within the last 90 days.",
+  "duration.error": "Could not load dump duration: {{message}}",
+  "duration.retry": "Retry",
+  "duration.brush.label": "Date range selector",
+  "duration.chartLabel": "Dump duration per day from {{from}} to {{to}}. Latest day with backups, {{date}}: median {{p50}}, 95th percentile {{p95}}, slowest {{max}}.",
+  "duration.chartLabelEmpty": "Dump duration per day from {{from}} to {{to}}. No completed backups in this range."
 }
