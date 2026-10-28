@@ -116,7 +116,8 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
   const monthPeriod = periodOf(KPI_WINDOW_DAYS);
 
   return (
-    <Stagger className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    // Two by two on a phone (a single column made the four figures a long scroll), one row from lg.
+    <Stagger className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <StaggerItem className="h-full">
         <ComparisonKpi
           accent="var(--chart-1)"

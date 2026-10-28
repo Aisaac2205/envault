@@ -171,6 +171,21 @@ describe("KpiGrid", () => {
     expect(within(kpi("Last restore")).getByRole("heading", { level: 3 }).textContent).toBe("Last restore");
   });
 
+  it("lays the cards out two by two on a phone, in one row from lg, and drops the icon tile below sm", () => {
+    mockQueries(query({ data: HEALTH }), query({ data: month() }));
+
+    const { container } = render(<KpiGrid restoresLoading={false} restores={[restore()]} />);
+
+    const grid = container.firstElementChild;
+    expect(grid).toHaveClass("grid", "grid-cols-2", "lg:grid-cols-4");
+    expect(grid).not.toHaveClass("md:grid-cols-2");
+    for (const group of screen.getAllByRole("group")) {
+      const tile = within(group).getByRole("heading", { level: 3 }).previousElementSibling;
+      expect(tile).toHaveAttribute("aria-hidden", "true");
+      expect(tile).toHaveClass("hidden", "sm:flex");
+    }
+  });
+
   it("spells the window out in Spanish too", async () => {
     mockQueries(query({ data: HEALTH }), query({ data: month() }));
     await act(() => i18n.changeLanguage("es"));
