@@ -192,6 +192,183 @@ test.describe('GET /jobs/analytics/daily', () => {
   }
 });
 
+interface WindowStats {
+  completed: number;
+  failed: number;
+  successRate: number | null;
+  p50DurationSeconds: number | null;
+  p95DurationSeconds: number | null;
+}
+
+interface ConnectionHealth extends WindowStats {
+  connectionId: string;
+  connectionName: string;
+  environment: string;
+  dbType: string;
+  lastBackup: Record<string, unknown> | null;
+  lastSuccessAt: string | null;
+  schedules: Record<string, unknown>[];
+  freshness: string;
+}
+
+interface ConnectionsHealth {
+  window: number;
+  from: string;
+  to: string;
+  timezone: string;
+  overall: WindowStats;
+  connections: ConnectionHealth[];
+}
+
+const WINDOW_STATS_KEYS = ['completed', 'failed', 'p50DurationSeconds', 'p95DurationSeconds', 'successRate'];
+
+function expectIsoDateTime(value: unknown): void {
+  expect(typeof value === 'string' && !Number.isNaN(Date.parse(value)), `${value} is a date-time`).toBe(true);
+}
+
+/** Counts, the success rate derived from them, and the ordered percentiles of one scope. */
+function expectWindowStats(stats: WindowStats): void {
+  expectCount(stats.completed);
+  expectCount(stats.failed);
+
+  const finished = stats.completed + stats.failed;
+  if (finished === 0) {
+    expect(stats.successRate).toBeNull();
+  } else {
+    expect(stats.successRate as number).toBeGreaterThanOrEqual(0);
+    expect(stats.successRate as number).toBeLessThanOrEqual(1);
+    // Rounded to four decimals.
+    expect(Math.abs((stats.successRate as number) - stats.completed / finished)).toBeLessThanOrEqual(0.00005 + 1e-9);
+  }
+
+  // Durations come from completed backups only, and both percentiles come from the same set.
+  expect(stats.p50DurationSeconds === null).toBe(stats.p95DurationSeconds === null);
+  if (stats.completed === 0) {
+    expect(stats.p50DurationSeconds).toBeNull();
+  }
+  if (stats.p50DurationSeconds !== null && stats.p95DurationSeconds !== null) {
+    expect(stats.p50DurationSeconds).toBeGreaterThanOrEqual(0);
+    expect(stats.p95DurationSeconds).toBeGreaterThanOrEqual(stats.p50DurationSeconds);
+  }
+}
+
+test.describe('GET /jobs/analytics/connections-health', () => {
+  const NAME_ORDER = new Intl.Collator('en', { sensitivity: 'base' });
+
+  for (const window of [7, 30, 90]) {
+    test(`returns the overall figures and one entry per active production connection for window=${window}`, async ({
+      request,
+    }) => {
+      const health = await expectSuccessEnvelope<ConnectionsHealth>(
+        await request.get(`jobs/analytics/connections-health?window=${window}`),
+      );
+
+      expect(Object.keys(health).sort()).toEqual(['connections', 'from', 'overall', 'timezone', 'to', 'window']);
+      expect(health).toMatchObject({ window, timezone: 'UTC' });
+      expect(health.from).toMatch(ISO_DAY);
+      expect(health.to).toBe(consecutiveDays(health.from, window).at(-1));
+
+      expect(Object.keys(health.overall).sort()).toEqual(WINDOW_STATS_KEYS);
+      expectWindowStats(health.overall);
+
+      expect(Array.isArray(health.connections)).toBe(true);
+      const names = health.connections.map((connection) => connection.connectionName);
+      expect(names.every((name, index) => index === 0 || NAME_ORDER.compare(names[index - 1], name) <= 0)).toBe(true);
+      expect(new Set(health.connections.map((connection) => connection.connectionId)).size).toBe(names.length);
+
+      // The overall figures cover every connection, listed or not.
+      const sum = (key: 'completed' | 'failed') => health.connections.reduce((total, c) => total + c[key], 0);
+      expect(health.overall.completed).toBeGreaterThanOrEqual(sum('completed'));
+      expect(health.overall.failed).toBeGreaterThanOrEqual(sum('failed'));
+
+      for (const connection of health.connections) {
+        expect(Object.keys(connection).sort()).toEqual(
+          [
+            'connectionId',
+            'connectionName',
+            'dbType',
+            'environment',
+            'freshness',
+            'lastBackup',
+            'lastSuccessAt',
+            'schedules',
+            ...WINDOW_STATS_KEYS,
+          ].sort(),
+        );
+        expect(connection.connectionId).toEqual(expect.any(String));
+        expect(connection.connectionName).toEqual(expect.any(String));
+        expect(connection.environment).toBe('prod');
+        expect(['postgres', 'mysql']).toContain(connection.dbType);
+        expectWindowStats(connection);
+      }
+    });
+
+    test(`describes the last backup, the schedules and the freshness of each connection for window=${window}`, async ({
+      request,
+    }) => {
+      const { connections } = await expectSuccessEnvelope<ConnectionsHealth>(
+        await request.get(`jobs/analytics/connections-health?window=${window}`),
+      );
+
+      for (const connection of connections) {
+        // The last backup is the latest completed or failed one, of any age; pending and running ones are not outcomes.
+        if (connection.lastBackup !== null) {
+          expect(Object.keys(connection.lastBackup).sort()).toEqual([
+            'completedAt',
+            'createdAt',
+            'durationSeconds',
+            'fileSizeMb',
+            'status',
+          ]);
+          expect(['completed', 'failed']).toContain(connection.lastBackup.status);
+          expectIsoDateTime(connection.lastBackup.createdAt);
+          for (const key of ['completedAt', 'durationSeconds', 'fileSizeMb']) {
+            const value = connection.lastBackup[key];
+            expect(value === null || (key === 'completedAt' ? typeof value === 'string' : (value as number) >= 0)).toBe(true);
+          }
+        }
+        if (connection.lastSuccessAt !== null) expectIsoDateTime(connection.lastSuccessAt);
+
+        for (const schedule of connection.schedules) {
+          expect(Object.keys(schedule).sort()).toEqual(['cronjobId', 'intervalSeconds', 'lastRunAt', 'lastStatus', 'nextRunAt']);
+          expect(schedule.cronjobId).toEqual(expect.any(String));
+          for (const key of ['nextRunAt', 'lastRunAt']) {
+            if (schedule[key] !== null) expectIsoDateTime(schedule[key]);
+          }
+          expect(schedule.lastStatus === null || typeof schedule.lastStatus === 'string').toBe(true);
+          expect(schedule.intervalSeconds === null || (schedule.intervalSeconds as number) > 0).toBe(true);
+        }
+
+        expect(['ok', 'late', 'stale', 'unknown']).toContain(connection.freshness);
+        // Freshness needs an interval to compare with; with one, a connection that never succeeded is stale.
+        const hasInterval = connection.schedules.some((schedule) => schedule.intervalSeconds !== null);
+        if (!hasInterval) expect(connection.freshness).toBe('unknown');
+        else if (connection.lastSuccessAt === null) expect(connection.freshness).toBe('stale');
+      }
+    });
+  }
+
+  test('defaults to a 30-day window', async ({ request }) => {
+    const health = await expectSuccessEnvelope<ConnectionsHealth>(await request.get('jobs/analytics/connections-health'));
+
+    expect(health.window).toBe(30);
+    expect(health.to).toBe(consecutiveDays(health.from, 30).at(-1));
+  });
+
+  for (const window of ['0', '8', '-7', '7.5', 'abc']) {
+    test(`rejects window=${window} with 400`, async ({ request }) => {
+      await expectErrorEnvelope(await request.get(`jobs/analytics/connections-health?window=${window}`), 400);
+    });
+  }
+
+  test('rejects a connectionId, which this endpoint does not take, with 400', async ({ request }) => {
+    await expectErrorEnvelope(
+      await request.get(`jobs/analytics/connections-health?window=7&connectionId=${randomUUID()}`),
+      400,
+    );
+  });
+});
+
 test.describe('pagination of GET /backups/history', () => {
   test('echoes the requested page size', async ({ request }) => {
     const page = await expectSuccessEnvelope<{ data: unknown[]; pageSize: number; page: number }>(

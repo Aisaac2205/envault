@@ -2,10 +2,14 @@ import { join } from 'node:path';
 import { DataSource } from 'typeorm';
 import { BackupDailyRollupEntity } from '../../../database/entities/backup-daily-rollup.entity';
 import { BackupJobEntity } from '../../../database/entities/backup-job.entity';
+import { ConnectionEntity } from '../../../database/entities/connection.entity';
 import { RestoreJobEntity } from '../../../database/entities/restore-job.entity';
+import { DbTypeEnum } from '../../../database/enums/db-type.enum';
 import { Environment } from '../../../database/enums/environment.enum';
 import { JobStatus } from '../../../database/enums/job-status.enum';
+import { nextUtcDay } from './daily-series';
 import { JobsAnalyticsRepository } from './jobs-analytics.repository';
+import { JobsAnalyticsService } from './jobs-analytics.service';
 
 function resolveAdminDatabaseUrl(): string | null {
   const value = process.env.JOBS_ANALYTICS_TEST_DATABASE_URL;
@@ -46,6 +50,7 @@ integration('jobs analytics PostgreSQL integration', () => {
   let adminDataSource: DataSource;
   let dataSource: DataSource;
   let repository: JobsAnalyticsRepository;
+  let service: JobsAnalyticsService;
 
   beforeAll(async () => {
     const url = adminDatabaseUrl ?? '';
@@ -69,7 +74,7 @@ integration('jobs analytics PostgreSQL integration', () => {
     dataSource = new DataSource({
       type: 'postgres',
       url: testDatabaseUrl,
-      entities: [BackupJobEntity, BackupDailyRollupEntity, RestoreJobEntity],
+      entities: [BackupJobEntity, BackupDailyRollupEntity, RestoreJobEntity, ConnectionEntity],
       extra: { max: 1 },
     });
     await dataSource.initialize();
@@ -78,6 +83,7 @@ integration('jobs analytics PostgreSQL integration', () => {
       dataSource.getRepository(BackupJobEntity),
       dataSource.getRepository(RestoreJobEntity),
     );
+    service = new JobsAnalyticsService(repository, dataSource.getRepository(ConnectionEntity));
   });
 
   afterAll(async () => {
@@ -95,6 +101,8 @@ integration('jobs analytics PostgreSQL integration', () => {
     await dataSource.query('DELETE FROM backup_jobs');
     await dataSource.query('DELETE FROM backup_daily_rollups');
     await dataSource.query('DELETE FROM restore_jobs');
+    await dataSource.query('DELETE FROM cronjobs');
+    await dataSource.query('DELETE FROM connections');
     await dataSource.query(`SET TIME ZONE 'UTC'`);
   });
 
@@ -137,6 +145,55 @@ integration('jobs analytics PostgreSQL integration', () => {
          ("connectionId", "day", completed, failed, "totalSizeMb", "durationsSeconds")
        VALUES ($1, $2::date, $3, $4, $5, $6::float8[])`,
       [row.connectionId, row.day, row.completed, row.failed, row.totalSizeMb, row.durationsSeconds],
+    );
+  }
+
+  async function insertConnection(row: {
+    id: string;
+    name: string;
+    environment?: Environment;
+    isActive?: boolean;
+  }): Promise<void> {
+    await dataSource.query(
+      `INSERT INTO connections
+         (id, name, slug, environment, "dbType", host, port, database, username, password, "isActive")
+       VALUES ($1, $2, $3, $4, $5, 'localhost', 5432, 'appdb', 'analytics-test', 'not-a-real-secret', $6)`,
+      [
+        row.id,
+        row.name,
+        `slug-${row.id}`,
+        row.environment ?? Environment.PROD,
+        DbTypeEnum.POSTGRES,
+        row.isActive ?? true,
+      ],
+    );
+  }
+
+  async function insertCronjob(row: {
+    id: string;
+    connectionId: string;
+    cronExpression: string;
+    createdAt: string;
+    isActive?: boolean;
+    lastRunAt?: string | null;
+    nextRunAt?: string | null;
+    lastStatus?: JobStatus | null;
+  }): Promise<void> {
+    await dataSource.query(
+      `INSERT INTO cronjobs
+         (id, name, "connectionId", "cronExpression", frequency, "isActive", "lastRunAt", "nextRunAt", "lastStatus", "createdAt")
+       VALUES ($1, $2, $3, $4, 'custom', $5, $6::timestamp, $7::timestamp, $8, $9::timestamp)`,
+      [
+        row.id,
+        `cron ${row.id}`,
+        row.connectionId,
+        row.cronExpression,
+        row.isActive ?? true,
+        row.lastRunAt ?? null,
+        row.nextRunAt ?? null,
+        row.lastStatus ?? null,
+        row.createdAt,
+      ],
     );
   }
 
@@ -505,6 +562,307 @@ integration('jobs analytics PostgreSQL integration', () => {
 
         expect(rows).toEqual([]);
       });
+    });
+  });
+
+  describe('getConnectionsHealth', () => {
+    const NOW = new Date('2026-03-20T12:00:00.000Z'); // window 7 = 2026-03-14 .. 2026-03-20
+
+    const ALPHA = '00000000-0000-0000-0000-000000001001'; // prod, active: live + rollup + pending/running rows
+    const BRAVO = '00000000-0000-0000-0000-000000001002'; // prod, active: no job at all
+    const CHARLIE = '00000000-0000-0000-0000-000000001003'; // prod, INACTIVE: has jobs
+    const DELTA = '00000000-0000-0000-0000-000000001004'; // active but dev: has jobs
+    const FOXTROT = '00000000-0000-0000-0000-000000001006'; // prod, active: only pending and running jobs
+
+    /** `YYYY-MM-DD HH:MM:SS` plus `seconds`, as a wall-clock string. */
+    function plusSeconds(timestamp: string, seconds: number): string {
+      const millis = Date.parse(`${timestamp.replace(' ', 'T')}Z`) + seconds * 1000;
+      return new Date(millis).toISOString().slice(0, 19).replace('T', ' ');
+    }
+
+    let jobSequence = 0;
+    /** A job created at `createdAt` that started then and ran for `seconds` (null: never started). */
+    async function job(
+      connectionId: string,
+      status: JobStatus,
+      createdAt: string,
+      seconds: number | null,
+      fileSizeMb: number | null = null,
+    ): Promise<void> {
+      jobSequence += 1;
+      await insertBackupJob({
+        id: `00000000-0000-0000-0000-0000000020${String(jobSequence).padStart(2, '0')}`,
+        connectionId,
+        status,
+        createdAt,
+        startedAt: seconds === null ? null : createdAt,
+        completedAt: seconds === null ? null : plusSeconds(createdAt, seconds),
+        fileSizeMb,
+      });
+    }
+
+    beforeEach(async () => {
+      jobSequence = 0;
+      await insertConnection({ id: ALPHA, name: 'Alpha' });
+      await insertConnection({ id: BRAVO, name: 'bravo' });
+      await insertConnection({ id: CHARLIE, name: 'Charlie', isActive: false });
+      await insertConnection({ id: DELTA, name: 'Delta', environment: Environment.DEV });
+      await insertConnection({ id: FOXTROT, name: 'Foxtrot' });
+
+      // Alpha, live rows inside the window: three completed (10, 20, 30 s) and a failed one.
+      await job(ALPHA, JobStatus.COMPLETED, '2026-03-18 08:00:00', 10, 10);
+      await job(ALPHA, JobStatus.COMPLETED, '2026-03-18 09:00:00', 20, 20);
+      await job(ALPHA, JobStatus.COMPLETED, '2026-03-18 10:00:00', 30, 30);
+      await job(ALPHA, JobStatus.FAILED, '2026-03-19 09:00:00', 5, 999);
+      // Pending and running rows are the newest of all, and carry full timestamps and
+      // outlier values so that any leak into the counts or the last backup shows up.
+      await job(ALPHA, JobStatus.PENDING, '2026-03-20 11:00:00', 1000, 5000);
+      await job(ALPHA, JobStatus.RUNNING, '2026-03-20 11:30:00', 2000, 6000);
+      // Just before the window: a live row and a rollup day that must not count.
+      await job(ALPHA, JobStatus.COMPLETED, '2026-03-13 23:59:59', 999, 999);
+      await insertRollup({ connectionId: ALPHA, day: '2026-03-13', completed: 9, failed: 9, totalSizeMb: 999, durationsSeconds: [999] });
+      // Alpha, purged rows (rollup) inside the window: two completed (40, 50 s) and one failed.
+      await insertRollup({ connectionId: ALPHA, day: '2026-03-15', completed: 2, failed: 1, totalSizeMb: 90, durationsSeconds: [40, 50] });
+
+      // Charlie (inactive) and Delta (dev) have jobs, which the overall figures still count.
+      await job(CHARLIE, JobStatus.COMPLETED, '2026-03-16 12:00:00', 60, 7);
+      await job(DELTA, JobStatus.COMPLETED, '2026-03-17 12:00:00', 70, 7);
+      await job(DELTA, JobStatus.FAILED, '2026-03-17 13:00:00', 3, 7);
+
+      // Foxtrot never finished anything.
+      await job(FOXTROT, JobStatus.PENDING, '2026-03-20 08:00:00', null);
+      await job(FOXTROT, JobStatus.RUNNING, '2026-03-20 08:30:00', null);
+
+      await insertCronjob({
+        id: '00000000-0000-0000-0000-000000003001',
+        connectionId: ALPHA,
+        cronExpression: '0 * * * *',
+        createdAt: '2026-03-01 00:00:01',
+        lastRunAt: '2026-03-20 12:00:00',
+        nextRunAt: '2026-03-20 13:00:00',
+        lastStatus: JobStatus.COMPLETED,
+      });
+      await insertCronjob({
+        id: '00000000-0000-0000-0000-000000003002',
+        connectionId: ALPHA,
+        cronExpression: '30 2 * * *',
+        createdAt: '2026-03-01 00:00:02',
+      });
+      await insertCronjob({
+        id: '00000000-0000-0000-0000-000000003003',
+        connectionId: ALPHA,
+        cronExpression: '0 9 * * 1',
+        createdAt: '2026-03-01 00:00:03',
+        isActive: false,
+      });
+      await insertCronjob({
+        id: '00000000-0000-0000-0000-000000003004',
+        connectionId: BRAVO,
+        cronExpression: '30 2 * * *',
+        createdAt: '2026-03-01 00:00:04',
+      });
+      await insertCronjob({
+        id: '00000000-0000-0000-0000-000000003005',
+        connectionId: CHARLIE,
+        cronExpression: '0 * * * *',
+        createdAt: '2026-03-01 00:00:05',
+      });
+    });
+
+    it('lists only active production connections, ordered by name regardless of case', async () => {
+      const { connections } = await service.getConnectionsHealth(7, NOW);
+
+      expect(connections.map((c) => [c.connectionId, c.connectionName, c.environment, c.dbType])).toEqual([
+        [ALPHA, 'Alpha', 'prod', 'postgres'],
+        [BRAVO, 'bravo', 'prod', 'postgres'],
+        [FOXTROT, 'Foxtrot', 'prod', 'postgres'],
+      ]);
+    });
+
+    it('counts a connection window over the live rows and the rollup, with exact percentiles', async () => {
+      const { connections } = await service.getConnectionsHealth(7, NOW);
+      const alpha = connections.find((c) => c.connectionId === ALPHA);
+
+      // Completed: 3 live + 2 rolled up. Failed: 1 live + 1 rolled up.
+      // Durations 10, 20, 30 (live) and 40, 50 (rollup): median 30, 95th percentile 40 + 0.8 * 10.
+      expect(alpha).toMatchObject({
+        completed: 5,
+        failed: 2,
+        successRate: 0.7143,
+        p50DurationSeconds: 30,
+        p95DurationSeconds: 48,
+      });
+    });
+
+    it('excludes the rows and the rollup days outside the window, and includes them in a wider one', async () => {
+      const [narrow, wide] = await Promise.all([service.getConnectionsHealth(7, NOW), service.getConnectionsHealth(30, NOW)]);
+
+      expect(narrow.connections[0]).toMatchObject({ completed: 5, failed: 2 });
+      // + the live row and the rollup day of 2026-03-13 (1 + 9 completed, 9 failed).
+      expect(wide.connections[0]).toMatchObject({ completed: 15, failed: 11 });
+      expect(wide.connections[0].p95DurationSeconds).toBeGreaterThan(900);
+    });
+
+    it('keeps a connection with no job in the window, with zeros and nulls and no last backup', async () => {
+      const { connections } = await service.getConnectionsHealth(7, NOW);
+      const bravo = connections.find((c) => c.connectionId === BRAVO);
+
+      expect(bravo).toMatchObject({
+        completed: 0,
+        failed: 0,
+        successRate: null,
+        p50DurationSeconds: null,
+        p95DurationSeconds: null,
+        lastBackup: null,
+        lastSuccessAt: null,
+      });
+    });
+
+    it('ignores pending and running rows in the counts, the percentiles and the last backup', async () => {
+      const { connections } = await service.getConnectionsHealth(7, NOW);
+      const alpha = connections.find((c) => c.connectionId === ALPHA);
+      const foxtrot = connections.find((c) => c.connectionId === FOXTROT);
+
+      // Alpha's newest row is a running one: the last backup is the failed row of 2026-03-19.
+      expect(alpha?.lastBackup).toEqual({
+        status: 'failed',
+        createdAt: '2026-03-19T09:00:00.000Z',
+        completedAt: '2026-03-19T09:00:05.000Z',
+        durationSeconds: 5,
+        fileSizeMb: 999,
+      });
+      expect(alpha?.lastSuccessAt).toBe('2026-03-18T10:00:30.000Z');
+      expect(foxtrot).toMatchObject({ completed: 0, failed: 0, lastBackup: null, lastSuccessAt: null });
+    });
+
+    it('reports the last backup of any age, even outside the window', async () => {
+      await dataSource.query('DELETE FROM backup_jobs WHERE "connectionId" = $1', [ALPHA]);
+      await job(ALPHA, JobStatus.COMPLETED, '2025-12-24 03:00:00', 42, 3);
+
+      const alpha = (await service.getConnectionsHealth(7, NOW)).connections.find((c) => c.connectionId === ALPHA);
+
+      expect(alpha).toMatchObject({ completed: 2, failed: 1, lastSuccessAt: '2025-12-24T03:00:42.000Z' });
+      expect(alpha?.lastBackup).toMatchObject({ status: 'completed', createdAt: '2025-12-24T03:00:00.000Z', durationSeconds: 42 });
+    });
+
+    it('reports only the active schedules of each connection, oldest first, with their interval', async () => {
+      const { connections } = await service.getConnectionsHealth(7, NOW);
+      const byId = new Map(connections.map((c) => [c.connectionId, c]));
+
+      expect(byId.get(ALPHA)?.schedules).toEqual([
+        {
+          cronjobId: '00000000-0000-0000-0000-000000003001',
+          nextRunAt: '2026-03-20T13:00:00.000Z',
+          lastRunAt: '2026-03-20T12:00:00.000Z',
+          lastStatus: 'completed',
+          intervalSeconds: 3_600,
+        },
+        {
+          cronjobId: '00000000-0000-0000-0000-000000003002',
+          nextRunAt: null,
+          lastRunAt: null,
+          lastStatus: null,
+          intervalSeconds: 86_400,
+        },
+      ]);
+      expect(byId.get(BRAVO)?.schedules.map((s) => s.cronjobId)).toEqual(['00000000-0000-0000-0000-000000003004']);
+      expect(byId.get(FOXTROT)?.schedules).toEqual([]);
+    });
+
+    it('derives the freshness from the smallest interval and the last success', async () => {
+      const [alpha, bravo, foxtrot] = (await service.getConnectionsHealth(7, NOW)).connections;
+
+      // Hourly schedule, last success two days ago.
+      expect(alpha.freshness).toBe('stale');
+      // A schedule and no success at all.
+      expect(bravo.freshness).toBe('stale');
+      // No schedule.
+      expect(foxtrot.freshness).toBe('unknown');
+
+      await job(FOXTROT, JobStatus.COMPLETED, '2026-03-20 10:30:00', 20, 1);
+      await insertCronjob({
+        id: '00000000-0000-0000-0000-000000003006',
+        connectionId: FOXTROT,
+        cronExpression: '0 * * * *',
+        createdAt: '2026-03-01 00:00:06',
+      });
+      const fresh = (await service.getConnectionsHealth(7, NOW)).connections.find((c) => c.connectionId === FOXTROT);
+
+      // Succeeded at 10:30:20, one hour 29 minutes 40 seconds before NOW: within 1.5 intervals.
+      expect(fresh?.freshness).toBe('ok');
+    });
+
+    it('computes the overall figures over every connection of the source, like the daily series', async () => {
+      const { overall } = await service.getConnectionsHealth(7, NOW);
+
+      // Alpha 5/2 + Charlie 1/0 + Delta 1/1; durations 10..70 in steps of 10.
+      expect(overall).toEqual({
+        completed: 7,
+        failed: 3,
+        successRate: 0.7,
+        p50DurationSeconds: 40,
+        p95DurationSeconds: 67,
+      });
+    });
+
+    it('returns an overall row of zeros and nulls even when no job exists', async () => {
+      await dataSource.query('DELETE FROM backup_jobs');
+      await dataSource.query('DELETE FROM backup_daily_rollups');
+
+      const rows = await repository.getWindowStatsRows({ from: '2026-03-14', toExclusive: '2026-03-21' });
+      const { overall } = await service.getConnectionsHealth(7, NOW);
+
+      expect(rows).toEqual([{ isOverall: true, connectionId: null, completed: '0', failed: '0', p50: null, p95: null }]);
+      expect(overall).toEqual({ completed: 0, failed: 0, successRate: null, p50DurationSeconds: null, p95DurationSeconds: null });
+    });
+
+    it.each([7, 30, 90] as const)('shares its source with the daily query: window=%i daily totals equal the health counts', async (window) => {
+      const health = await service.getConnectionsHealth(window, NOW);
+      const range = { from: health.from, toExclusive: nextUtcDay(health.to) };
+      const sum = (rows: { completed: string; failed: string }[], key: 'completed' | 'failed') =>
+        rows.reduce((total, row) => total + Number(row[key]), 0);
+
+      const daily = await repository.getDailyBackupRows(range);
+      expect(sum(daily, 'completed')).toBe(health.overall.completed);
+      expect(sum(daily, 'failed')).toBe(health.overall.failed);
+
+      for (const connection of health.connections) {
+        const scoped = await repository.getDailyBackupRows({ ...range, connectionId: connection.connectionId });
+        expect({ id: connection.connectionId, completed: sum(scoped, 'completed'), failed: sum(scoped, 'failed') }).toEqual({
+          id: connection.connectionId,
+          completed: connection.completed,
+          failed: connection.failed,
+        });
+      }
+    });
+
+    it('computes the same counts and percentiles as the daily query over a one-day range that mixes live and rolled-up rows', async () => {
+      // 2026-03-18 holds Alpha's live durations 10, 20, 30 s; add the purged 40 and 50 s of the same day.
+      await insertRollup({ connectionId: ALPHA, day: '2026-03-18', completed: 2, failed: 0, totalSizeMb: 1, durationsSeconds: [40, 50] });
+      const range = { from: '2026-03-18', toExclusive: '2026-03-19' };
+
+      const [day] = await repository.getDailyBackupRows(range);
+      const rows = await repository.getWindowStatsRows(range);
+      const overall = rows.find((row) => row.isOverall);
+      const alpha = rows.find((row) => row.connectionId === ALPHA);
+
+      expect(day).toMatchObject({ completed: '5', failed: '0', p50: 30, p95: 48 });
+      for (const row of [overall, alpha]) {
+        expect(row).toMatchObject({ completed: day.completed, failed: day.failed, p50: day.p50, p95: day.p95 });
+      }
+    });
+
+    it('is independent of the session TimeZone (columns are timestamp without tz, read as UTC)', async () => {
+      const utc = await service.getConnectionsHealth(7, NOW);
+
+      await dataSource.query(`SET TIME ZONE 'America/Guatemala'`);
+      const guatemala = await service.getConnectionsHealth(7, NOW);
+      await dataSource.query(`SET TIME ZONE 'Asia/Tokyo'`);
+      const tokyo = await service.getConnectionsHealth(7, NOW);
+      await dataSource.query(`SET TIME ZONE 'UTC'`);
+
+      expect(guatemala).toEqual(utc);
+      expect(tokyo).toEqual(utc);
     });
   });
 

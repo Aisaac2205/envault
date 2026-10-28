@@ -3,15 +3,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BackupJobEntity } from '../../../database/entities/backup-job.entity';
 import { RestoreJobEntity } from '../../../database/entities/restore-job.entity';
+import { Environment } from '../../../database/enums/environment.enum';
 import { JobStatus } from '../../../database/enums/job-status.enum';
-import { DailyBackupRawRow, ConnectionStorageRawRow } from './jobs-analytics.types';
+import { BACKUP_COUNT_AND_PERCENTILE_AGGREGATES, BackupAnalyticsRange, buildBackupAnalyticsSource } from './backup-analytics-source';
+import {
+  ActiveConnectionRawRow,
+  ConnectionStorageRawRow,
+  DailyBackupRawRow,
+  LatestBackupRawRow,
+  ScheduleRawRow,
+  WindowStatsRawRow,
+} from './jobs-analytics.types';
 
-export interface DailyRowsQuery {
-  from: string;
-  toExclusive: string;
-  /** Restricts the rows to one connection; null or omitted aggregates every connection. */
-  connectionId?: string | null;
-}
+export type DailyRowsQuery = BackupAnalyticsRange;
+
+export type WindowStatsQuery = Pick<BackupAnalyticsRange, 'from' | 'toExclusive'>;
 
 @Injectable()
 export class JobsAnalyticsRepository {
@@ -25,56 +31,111 @@ export class JobsAnalyticsRepository {
   /**
    * Daily aggregates over the live `backup_jobs` rows plus the rollup of the
    * rows retention, reconcile or DB hygiene already deleted, so the series
-   * keeps its history after a purge. The two are merged per day through a
-   * `UNION ALL` of three sources sharing one range and one optional connection
-   * filter:
-   * - live jobs, projected to one counter / size / duration per row;
-   * - rollup rows, contributing completed, failed and size with no duration;
-   * - the purged durations (`unnest`), contributing only a duration.
-   *
-   * `percentile_cont` and `MAX` ignore NULL durations, so the result is exactly
-   * what the live-only query returned before the purge.
+   * keeps its history after a purge. The rows come from the source shared with
+   * the connections health (see `buildBackupAnalyticsSource`).
    */
-  getDailyBackupRows({ from, toExclusive, connectionId }: DailyRowsQuery): Promise<DailyBackupRawRow[]> {
-    const params: unknown[] = [from, toExclusive, JobStatus.COMPLETED, JobStatus.FAILED];
-    if (connectionId) params.push(connectionId);
-    const liveFilter = connectionId ? ' AND j."connectionId" = $5' : '';
-    const rollupFilter = connectionId ? ' AND r."connectionId" = $5' : '';
-    const rollupRange = `r."day" >= CAST($1 AS date) AND r."day" < CAST($2 AS date)${rollupFilter}`;
+  getDailyBackupRows(range: DailyRowsQuery): Promise<DailyBackupRawRow[]> {
+    const source = buildBackupAnalyticsSource(range);
 
     return this.backupJobRepository.query(
       `SELECT to_char(u."day", 'YYYY-MM-DD') AS "date",
-              COALESCE(SUM(u."completed"), 0)::bigint AS "completed",
-              COALESCE(SUM(u."failed"), 0)::bigint AS "failed",
-              (percentile_cont(0.5) WITHIN GROUP (ORDER BY u."duration")
-                 FILTER (WHERE u."duration" IS NOT NULL))::float8 AS "p50",
-              (percentile_cont(0.95) WITHIN GROUP (ORDER BY u."duration")
-                 FILTER (WHERE u."duration" IS NOT NULL))::float8 AS "p95",
+              ${BACKUP_COUNT_AND_PERCENTILE_AGGREGATES},
               (MAX(u."duration"))::float8 AS "max",
               COALESCE(SUM(u."sizeMb"), 0)::float8 AS "totalSizeMb"
-       FROM (
-         SELECT DATE(j."createdAt") AS "day",
-                (j.status = $3)::int AS "completed",
-                (j.status = $4)::int AS "failed",
-                (CASE WHEN j.status = $3 THEN COALESCE(j."fileSizeMb", 0) ELSE 0 END)::float8 AS "sizeMb",
-                (CASE WHEN j.status = $3 AND j."startedAt" IS NOT NULL AND j."completedAt" IS NOT NULL
-                      THEN EXTRACT(EPOCH FROM (j."completedAt" - j."startedAt")) END)::float8 AS "duration"
-         FROM backup_jobs j
-         WHERE j."createdAt" >= CAST($1 AS date) AND j."createdAt" < CAST($2 AS date)${liveFilter}
-         UNION ALL
-         SELECT r."day", r."completed", r."failed", r."totalSizeMb", NULL::float8
-         FROM backup_daily_rollups r
-         WHERE ${rollupRange}
-         UNION ALL
-         SELECT r."day", 0, 0, 0::float8, d."duration"
-         FROM backup_daily_rollups r
-         CROSS JOIN LATERAL unnest(r."durationsSeconds") AS d("duration")
-         WHERE ${rollupRange}
-       ) u
+       FROM (${source.sql}) u
        GROUP BY u."day"
        ORDER BY u."day" ASC`,
-      params,
+      source.params,
     ) as Promise<DailyBackupRawRow[]>;
+  }
+
+  /**
+   * Counts and percentiles over a whole range, per connection and overall, from
+   * the same source as the daily series. The overall row (`isOverall`) is
+   * always returned, with zeros and nulls when the range holds nothing; a
+   * connection with no job in the range has no row of its own.
+   */
+  getWindowStatsRows(range: WindowStatsQuery): Promise<WindowStatsRawRow[]> {
+    const source = buildBackupAnalyticsSource(range);
+
+    return this.backupJobRepository.query(
+      `SELECT (GROUPING(u."connectionId") = 1) AS "isOverall",
+              u."connectionId" AS "connectionId",
+              ${BACKUP_COUNT_AND_PERCENTILE_AGGREGATES}
+       FROM (${source.sql}) u
+       GROUP BY GROUPING SETS ((u."connectionId"), ())`,
+      source.params,
+    ) as Promise<WindowStatsRawRow[]>;
+  }
+
+  /**
+   * Active production connections. Only the columns the health view needs are
+   * read: the entity would decrypt every password for nothing. Backups are
+   * only allowed for production, hence the environment filter.
+   */
+  findActiveProdConnections(): Promise<ActiveConnectionRawRow[]> {
+    return this.backupJobRepository.query(
+      `SELECT c.id::text AS "connectionId",
+              c.name AS "connectionName",
+              c.environment::text AS "environment",
+              c."dbType"::text AS "dbType"
+       FROM connections c
+       WHERE c."isActive" = true AND c.environment = $1
+       ORDER BY c.name ASC, c.id ASC`,
+      [Environment.PROD],
+    ) as Promise<ActiveConnectionRawRow[]>;
+  }
+
+  /**
+   * The latest completed or failed backup of each connection, of any age, and
+   * the completion of its latest success. Pending and running rows are not
+   * outcomes yet. The tz-less timestamp columns hold UTC wall-clock time, as
+   * the daily series assumes, so they are read as UTC whatever the session
+   * TimeZone or the host's clock.
+   */
+  getLatestBackups(connectionIds: string[]): Promise<LatestBackupRawRow[]> {
+    return this.backupJobRepository.query(
+      `WITH "lastOutcome" AS (
+         SELECT DISTINCT ON (j."connectionId")
+                j."connectionId", j.status, j."createdAt", j."startedAt", j."completedAt", j."fileSizeMb"
+         FROM backup_jobs j
+         WHERE j."connectionId" = ANY($1::text[]) AND j.status IN ($2, $3)
+         ORDER BY j."connectionId", j."createdAt" DESC, j.id DESC
+       ),
+       "lastSuccess" AS (
+         SELECT DISTINCT ON (j."connectionId") j."connectionId", j."completedAt"
+         FROM backup_jobs j
+         WHERE j."connectionId" = ANY($1::text[]) AND j.status = $2 AND j."completedAt" IS NOT NULL
+         ORDER BY j."connectionId", j."completedAt" DESC, j.id DESC
+       )
+       SELECT o."connectionId" AS "connectionId",
+              o.status::text AS "status",
+              (o."createdAt" AT TIME ZONE 'UTC') AS "createdAt",
+              (o."completedAt" AT TIME ZONE 'UTC') AS "completedAt",
+              (CASE WHEN o."startedAt" IS NOT NULL AND o."completedAt" IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (o."completedAt" - o."startedAt")) END)::float8 AS "durationSeconds",
+              o."fileSizeMb"::float8 AS "fileSizeMb",
+              (s."completedAt" AT TIME ZONE 'UTC') AS "lastSuccessAt"
+       FROM "lastOutcome" o
+       LEFT JOIN "lastSuccess" s ON s."connectionId" = o."connectionId"`,
+      [connectionIds, JobStatus.COMPLETED, JobStatus.FAILED],
+    ) as Promise<LatestBackupRawRow[]>;
+  }
+
+  /** The active cronjobs of the given connections, oldest first. */
+  findActiveSchedules(connectionIds: string[]): Promise<ScheduleRawRow[]> {
+    return this.backupJobRepository.query(
+      `SELECT cj.id::text AS "cronjobId",
+              cj."connectionId" AS "connectionId",
+              cj."cronExpression" AS "cronExpression",
+              (cj."nextRunAt" AT TIME ZONE 'UTC') AS "nextRunAt",
+              (cj."lastRunAt" AT TIME ZONE 'UTC') AS "lastRunAt",
+              cj."lastStatus"::text AS "lastStatus"
+       FROM cronjobs cj
+       WHERE cj."isActive" = true AND cj."connectionId" = ANY($1::text[])
+       ORDER BY cj."createdAt" ASC, cj.id ASC`,
+      [connectionIds],
+    ) as Promise<ScheduleRawRow[]>;
   }
 
   getStorageByConnection(): Promise<ConnectionStorageRawRow[]> {

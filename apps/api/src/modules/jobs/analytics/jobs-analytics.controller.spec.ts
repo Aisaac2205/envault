@@ -1,3 +1,4 @@
+import { RequestMethod } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import { JobsAnalyticsController } from './jobs-analytics.controller';
@@ -11,6 +12,7 @@ describe('JobsAnalyticsController', () => {
 
   const mockService = {
     getDailySeries: jest.fn().mockResolvedValue({ window: 30, days: [] }),
+    getConnectionsHealth: jest.fn().mockResolvedValue({ window: 30, connections: [] }),
     getStorageByConnection: jest.fn().mockResolvedValue([]),
     getRestoreStatusCounts: jest.fn().mockResolvedValue({
       pending: 0,
@@ -55,6 +57,34 @@ describe('JobsAnalyticsController', () => {
     await controller.getDailySeries({ window: 90, connectionId });
 
     expect(service.getDailySeries).toHaveBeenCalledWith(90, connectionId);
+  });
+
+  it('delegates the connections-health route to service.getConnectionsHealth with the parsed window', async () => {
+    const result = await controller.getConnectionsHealth({ window: 90 });
+
+    expect(result).toEqual({ window: 30, connections: [] });
+    expect(service.getConnectionsHealth).toHaveBeenCalledWith(90);
+  });
+
+  it('delegates the connections-health route with an undefined window when omitted', async () => {
+    await controller.getConnectionsHealth({});
+
+    expect(service.getConnectionsHealth).toHaveBeenCalledWith(undefined);
+  });
+
+  it('serves connections-health as a GET route under the analytics prefix', () => {
+    const handler = JobsAnalyticsController.prototype.getConnectionsHealth;
+
+    expect(Reflect.getMetadata('path', handler)).toBe('connections-health');
+    expect(Reflect.getMetadata('method', handler)).toBe(RequestMethod.GET);
+    expect(Reflect.getMetadata('path', JobsAnalyticsController)).toBe('jobs/analytics');
+  });
+
+  it('does not override the class-level dashboard permission on connections-health', () => {
+    const handler = JobsAnalyticsController.prototype.getConnectionsHealth;
+
+    expect(reflector.get<string>(PERMISSION_KEY, handler)).toBeUndefined();
+    expect(reflector.get<boolean>(PUBLIC_KEY, handler)).toBeUndefined();
   });
 
   it('belongs to the dashboard feature via class-level @RequirePermission metadata', () => {
