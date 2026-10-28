@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import i18n from "@/i18n";
 import type { ConnectionsHealth, DailyBackupPoint, DailyBackupSeries, RestoreJob } from "../../types";
@@ -188,12 +188,18 @@ describe("KpiGrid", () => {
 
   it("spells the window out in Spanish too", async () => {
     mockQueries(query({ data: HEALTH }), query({ data: month() }));
+    const previous = i18n.language;
     await act(() => i18n.changeLanguage("es"));
+    try {
+      render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-    render(<KpiGrid restoresLoading={false} restores={[]} />);
-
-    for (const name of ["Tasa de éxito últimos 30 días", "Respaldos últimos 7 días", "Duración p95 últimos 30 días"]) {
-      expect(kpi(name)).toBeInTheDocument();
+      for (const name of ["Tasa de éxito últimos 30 días", "Respaldos últimos 7 días", "Duración p95 últimos 30 días"]) {
+        expect(kpi(name)).toBeInTheDocument();
+      }
+    } finally {
+      // Unmount first, so nothing re-renders outside `act`, then give the next test the language it started with.
+      cleanup();
+      await i18n.changeLanguage(previous);
     }
   });
 

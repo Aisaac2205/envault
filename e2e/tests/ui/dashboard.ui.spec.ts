@@ -20,7 +20,7 @@ const KPI_CARDS = [
 
 const PANELS = [
   'Backup calendar',
-  'Recent backups',
+  'Recent failures',
   'Storage by connection',
   'Connection status',
 ];
@@ -129,12 +129,13 @@ test.describe('dashboard of an empty system', () => {
     for (const heading of [
       'No completed backups in this period',
       'No backups in this period',
-      'No recent backups',
       'No stored backups',
       'No production connections',
     ]) {
       await expect(page.getByRole('heading', { name: heading }), heading).toBeVisible();
     }
+    // The recent failures card says it in a line, not a heading: nothing failed.
+    await expect(page.getByText('No failed backups', { exact: true })).toBeVisible();
   });
 
   test('leads from the welcome banner to the connections page', async ({ page }) => {

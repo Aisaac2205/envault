@@ -1,11 +1,11 @@
-import { useDashboard, useConnectionStats } from "./hooks";
+import { useDashboard, useConnectionStats, useRecentFailures } from "./hooks";
 import { useTranslation } from "react-i18next";
 import { DashboardHeader } from "./components/DashboardHeader";
 import { KpiGrid } from "./components/KpiGrid";
-import { BackupTimeline } from "./components/BackupTimeline";
 import { BackupsHeatmapCard } from "./components/BackupsHeatmapCard";
 import { ConnectionsHealthCard } from "./components/ConnectionsHealthCard";
 import { DumpDurationChart } from "./components/DumpDurationChart";
+import { RecentFailuresCard } from "./components/RecentFailuresCard";
 import { StorageByConnectionChart } from "./components/StorageByConnectionChart";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { buttonVariants } from "@/shared/ui/button";
@@ -18,14 +18,15 @@ import { useSmoothLoading } from "@/shared/hooks/useSmoothLoading";
 export default function Dashboard() {
   const { t } = useTranslation('dashboard')
   const {
-    recentBackups,
     recentRestores,
     isLoading: dashboardLoading,
     errors: dashboardErrors,
   } = useDashboard();
   const { data: connections = [], isLoading: connectionsLoading } = useConnectionStats();
+  // The card shows the failures; the page reads the same query (one request) so a new failure is announced.
+  const { data: recentFailures = [] } = useRecentFailures();
 
-  const refreshCycle = recentBackups.length + recentRestores.length + connections.length;
+  const refreshCycle = recentFailures.length + recentRestores.length + connections.length;
 
   // The charts and the health card load and show their own states; the overlay covers the lists this page reads itself.
   const rawLoading = dashboardLoading || connectionsLoading;
@@ -90,7 +91,7 @@ export default function Dashboard() {
           <BackupsHeatmapCard />
 
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 lg:items-stretch">
-            <BackupTimeline backups={recentBackups} />
+            <RecentFailuresCard />
             <StorageByConnectionChart />
           </div>
 

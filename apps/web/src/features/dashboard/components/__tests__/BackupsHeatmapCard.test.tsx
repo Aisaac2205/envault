@@ -174,8 +174,8 @@ describe("BackupsHeatmapCard", () => {
       expect(within(stat("Días con fallidos")).getByText("2")).toBeInTheDocument();
       expect(within(stat("Días con fallidos")).getByText("de 4 días con respaldos")).toBeInTheDocument();
       expect(within(stat("Respaldos fallidos")).getByText("5")).toBeInTheDocument();
-      // 86 completed and 5 failed in the window.
-      expect(within(stat("Respaldos fallidos")).getByText("94,5% de tasa de éxito")).toBeInTheDocument();
+      // The 90 day success rate is the KPI's "vs 90d" figure: the summary does not repeat it.
+      expect(within(stat("Respaldos fallidos")).queryByText(/tasa de éxito|%/)).not.toBeInTheDocument();
       // The last failure was on the 24th; the 25th, 26th and 27th are clean.
       expect(within(stat("Sin fallidos desde hace")).getByText("3 días")).toBeInTheDocument();
     });
@@ -312,7 +312,7 @@ describe("BackupsHeatmapCard", () => {
         expect(within(legend).getByText(label), label).toBeInTheDocument();
       }
       expect(screen.getByText("of 4 days with backups")).toBeInTheDocument();
-      expect(screen.getByText("94.5% success rate")).toBeInTheDocument();
+      expect(screen.queryByText(/success rate/)).not.toBeInTheDocument();
       expect((await screen.findByRole("img")).getAttribute("aria-label")).toBe(
         "Backup calendar from Jul 30 to Oct 27. Failed backups: 5. Days with failures: 2 of 4 with backups.",
       );

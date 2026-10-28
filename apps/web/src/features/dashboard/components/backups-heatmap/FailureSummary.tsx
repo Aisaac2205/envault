@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { formatCount, formatRate, successRate } from "../backup-stats";
+import { formatCount } from "../backup-stats";
 import { useDurationLocale } from "../dump-duration/use-duration-locale";
 import type { FailureSummary as Summary } from "./heatmap-data";
 
@@ -66,8 +66,6 @@ export function FailureSummary({ summary }: FailureSummaryProps) {
     );
   }
 
-  const rate = formatRate(successRate(summary.completed, summary.failed), locale);
-
   return (
     <dl className="grid grid-cols-1 gap-2 @md:grid-cols-3 @3xl:grid-cols-1 @3xl:gap-3">
       <Stat
@@ -76,8 +74,9 @@ export function FailureSummary({ summary }: FailureSummaryProps) {
         marker="var(--chart-scale-04)"
         value={formatCount(summary.failedDays, locale)}
       />
+      {/* No success rate under it: the KPI row already compares the rate with the 90 days. */}
       <Stat
-        hint={t("calendar.stat.failed.rate", { rate })}
+        hint=""
         label={t("calendar.stat.failed")}
         marker="var(--color-error)"
         value={formatCount(summary.failed, locale)}

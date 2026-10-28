@@ -136,6 +136,7 @@ describe("ConnectionsHealthCard", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it("is a real heading with a one line caption that explains freshness", () => {
@@ -178,13 +179,34 @@ describe("ConnectionsHealthCard", () => {
       }
     });
 
-    it("keeps the text chip for an engine without an icon", () => {
+    it("leads each name with its engine icon, in the table and in the cards", () => {
+      mockHealth({ data: health([SHOP, STORE]) });
+
+      renderCard();
+
+      const list = screen.getByRole("list", { name: "Connection status" });
+      for (const scope of [table(), list]) {
+        for (const [name, engine] of [
+          ["Shop", "PostgreSQL"],
+          ["Store", "MySQL"],
+        ]) {
+          const label = within(scope).getByTitle(name);
+          const icon = within(scope).getByRole("img", { name: engine });
+          // The icon comes first, so the icons line up in a column and never wrap onto a line of their own.
+          expect(icon.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        }
+      }
+    });
+
+    it("keeps the text chip for an engine without an icon, after the name", () => {
       mockHealth({ data: health([connection("Wiki", "ok", { dbType: "mariadb" })]) });
 
       renderCard();
 
-      expect(within(table()).getByText("MARIADB")).toBeInTheDocument();
+      const chip = within(table()).getByText("MARIADB");
+      expect(chip).toBeInTheDocument();
       expect(within(table()).queryByRole("img")).not.toBeInTheDocument();
+      expect(within(table()).getByTitle("Wiki").compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("names the columns", () => {
@@ -417,6 +439,28 @@ describe("ConnectionsHealthCard", () => {
       renderCard();
 
       expect(screen.getByRole("group", { name: "Window of the success rate and durations" })).toBeInTheDocument();
+    });
+
+    it("opens on the window it was left on, kept under its own key", () => {
+      localStorage.setItem("vaultly:dashboard:health-range", "90");
+      localStorage.setItem("vaultly:dashboard:duration-range", "7");
+      mockHealth({ data: health([SHOP]) });
+
+      renderCard();
+
+      expect(hook.useConnectionsHealth).toHaveBeenLastCalledWith(90);
+      expect(screen.getByRole("button", { name: "90d" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("remembers the window the user picks, and only its own", async () => {
+      mockHealth({ data: health([SHOP]) });
+      const user = userEvent.setup();
+
+      renderCard();
+      await user.click(screen.getByRole("button", { name: "7d" }));
+
+      expect(localStorage.getItem("vaultly:dashboard:health-range")).toBe("7");
+      expect(localStorage.getItem("vaultly:dashboard:duration-range")).toBeNull();
     });
   });
 
