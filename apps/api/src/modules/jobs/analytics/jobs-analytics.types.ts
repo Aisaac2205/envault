@@ -54,7 +54,7 @@ export interface ConnectionSchedule {
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastStatus: string | null;
-  /** Seconds between the next two occurrences of the cron expression; null when it is invalid. */
+  /** Largest gap in seconds between consecutive occurrences over the next week; null when the expression is invalid. */
   intervalSeconds: number | null;
 }
 

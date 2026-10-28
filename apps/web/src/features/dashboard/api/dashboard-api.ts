@@ -4,15 +4,12 @@ import type {
   BackupJob,
   RestoreJob,
   ConnectionEntity,
-  CronjobEntity,
   AuditLog,
-  R2Object,
-  DashboardStats,
-  DailyBackupCount,
   AnalyticsWindow,
   DailyBackupSeries,
   ConnectionStorage,
   RestoreStatusCounts,
+  ConnectionsHealth,
 } from "../types";
 
 export const dashboardApi = {
@@ -32,22 +29,10 @@ export const dashboardApi = {
   getConnections: () =>
     apiClient.get<ConnectionEntity[]>("/connections").then((r) => r.data),
 
-  getCronjobs: () =>
-    apiClient.get<CronjobEntity[]>("/cronjobs").then((r) => r.data),
-
   getRecentAudit: (limit = 10) =>
     apiClient
       .get<AuditLog[]>("/audit", { params: { pageSize: limit } })
       .then((r) => r.data),
-
-  getDumpsFromR2: () =>
-    apiClient.get<R2Object[]>("/backups/r2").then((r) => r.data),
-
-  getStats: () =>
-    apiClient.get<DashboardStats>("/jobs/stats").then((r) => r.data),
-
-  getDailyCounts: () =>
-    apiClient.get<DailyBackupCount[]>("/jobs/daily-counts").then((r) => r.data),
 
   getDailyAnalytics: (window: AnalyticsWindow = 30, connectionId?: string) =>
     apiClient
@@ -59,6 +44,13 @@ export const dashboardApi = {
   getStorageByConnection: () =>
     apiClient
       .get<ConnectionStorage[]>("/jobs/analytics/storage-by-connection")
+      .then((r) => r.data),
+
+  getConnectionsHealth: (window: AnalyticsWindow = 30) =>
+    apiClient
+      .get<ConnectionsHealth>("/jobs/analytics/connections-health", {
+        params: { window },
+      })
       .then((r) => r.data),
 
   getRestoreStatus: () =>

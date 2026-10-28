@@ -13,20 +13,20 @@ export class DashboardPage {
   }
 
   /**
-   * The figure printed in a KPI card, found through the card's label. A KPI
-   * card has no role or test id, so the value is the paragraph that follows
-   * the label's row; this is the one place that depends on that layout.
+   * The figure printed in a KPI card. A card is a group named by its label, and
+   * the figure is the first paragraph in it (the caption is the second); this is
+   * the one place that depends on that layout.
    */
   kpiValue(label: string): Locator {
-    // Only a paragraph counts, so a status badge that reads "Failed" never matches.
     return this.page
-      .getByText(label, { exact: true })
-      .and(this.page.getByRole('paragraph'))
-      .locator('xpath=../following-sibling::div[1]/p[1]');
+      .getByRole('main')
+      .getByRole('group', { name: label, exact: true })
+      .getByRole('paragraph')
+      .first();
   }
 
   /**
-   * A panel's title (for example "Backups per day" or "System health"), found as
+   * A panel's title (for example "Backups per day" or "Connections health"), found as
    * plain text in a card. The chart cards render it as an h2 and the older ones
    * as a div, so this stays on text until every card has a real heading.
    */

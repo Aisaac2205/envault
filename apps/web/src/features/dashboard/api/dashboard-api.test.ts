@@ -13,15 +13,12 @@ const SERVED_ENDPOINTS = [
   "/jobs/summary",
   "/jobs/backups",
   "/jobs/restores",
-  "/jobs/stats",
-  "/jobs/daily-counts",
   "/jobs/analytics/daily",
   "/jobs/analytics/storage-by-connection",
   "/jobs/analytics/restore-status",
+  "/jobs/analytics/connections-health",
   "/connections",
-  "/cronjobs",
   "/audit",
-  "/backups/r2",
 ];
 
 // Calls every function of the client and returns the path each one requested.
@@ -50,7 +47,8 @@ describe("dashboardApi", () => {
   it("never requests a health endpoint, which the API keeps internal at /health outside the /api prefix", async () => {
     const paths = await requestedPaths();
 
-    expect(paths.filter((path) => /health/i.test(path))).toEqual([]);
+    // Only the service health route: `/jobs/analytics/connections-health` is a dashboard route.
+    expect(paths.filter((path) => /^\/(api\/)?health(\/|$)/i.test(path))).toEqual([]);
   });
 
   describe("analytics", () => {
@@ -98,6 +96,28 @@ describe("dashboardApi", () => {
 
       expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/storage-by-connection");
       expect(result).toBe(rows);
+    });
+
+    it("getConnectionsHealth requests the health of each connection over the window", async () => {
+      const health = { window: 7, connections: [] };
+      mockApiClient.get.mockResolvedValue({ data: health });
+
+      const result = await dashboardApi.getConnectionsHealth(7);
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/connections-health", {
+        params: { window: 7 },
+      });
+      expect(result).toBe(health);
+    });
+
+    it("getConnectionsHealth defaults to the 30 day window", async () => {
+      mockApiClient.get.mockResolvedValue({ data: { connections: [] } });
+
+      await dashboardApi.getConnectionsHealth();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/connections-health", {
+        params: { window: 30 },
+      });
     });
 
     it("getRestoreStatus requests the restore status counts", async () => {

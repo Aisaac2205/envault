@@ -6,18 +6,20 @@ interface QuickRangeControlProps {
   /** The range the chart is showing: the pressed button. */
   value: QuickRangeDays;
   onSelect: (days: QuickRangeDays) => void;
+  /** What the group is called for assistive technology. Defaults to a generic "Quick range". */
+  label?: string;
 }
 
 /**
  * 7d / 30d / 90d: how many days a chart shows. The chart asks the API for that
  * window, so the pressed button is plain state, not derived from the data.
  */
-export function QuickRangeControl({ value, onSelect }: QuickRangeControlProps) {
+export function QuickRangeControl({ value, onSelect, label }: QuickRangeControlProps) {
   const { t } = useTranslation("dashboard");
 
   return (
     <div
-      aria-label={t("duration.range.label")}
+      aria-label={label ?? t("duration.range.label")}
       className="flex w-full gap-0.5 rounded-lg border border-border bg-muted p-0.5 sm:inline-flex sm:w-auto"
       role="group"
     >
