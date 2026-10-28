@@ -190,18 +190,22 @@ export class BackupRepository {
     return this.repository.find({ where: { fileKey: In(fileKeys) } });
   }
 
-  /** Deletes job rows whose fileKey is in the given list. Returns rows removed. */
-  async deleteByFileKeys(fileKeys: string[]): Promise<number> {
-    if (fileKeys.length === 0) return 0;
-    const result = await this.repository.delete({ fileKey: In(fileKeys) });
-    return result.affected ?? 0;
+  /**
+   * Deletes job rows whose fileKey is in the given list and rolls them up into
+   * `backup_daily_rollups` in the same statement. Returns rows removed.
+   */
+  deleteByFileKeys(fileKeys: string[]): Promise<number> {
+    if (fileKeys.length === 0) return Promise.resolve(0);
+    return this.deleteAndRollUp(`"fileKey" = ANY($1::varchar[])`, [fileKeys]);
   }
 
-  /** Deletes job rows by id. Returns rows removed. */
-  async deleteByIds(ids: string[]): Promise<number> {
-    if (ids.length === 0) return 0;
-    const result = await this.repository.delete({ id: In(ids) });
-    return result.affected ?? 0;
+  /**
+   * Deletes job rows by id and rolls them up into `backup_daily_rollups` in the
+   * same statement. Returns rows removed.
+   */
+  deleteByIds(ids: string[]): Promise<number> {
+    if (ids.length === 0) return Promise.resolve(0);
+    return this.deleteAndRollUp(`id = ANY($1::uuid[])`, [ids]);
   }
 
   /** Count of FAILED jobs created before the cutoff (DB-hygiene preview). */
@@ -211,13 +215,74 @@ export class BackupRepository {
     });
   }
 
-  /** Removes FAILED jobs created before the cutoff. Returns rows removed. */
-  async deleteFailedOlderThan(cutoff: Date): Promise<number> {
-    const result = await this.repository.delete({
-      status: JobStatus.FAILED,
-      createdAt: LessThan(cutoff),
-    });
-    return result.affected ?? 0;
+  /**
+   * Removes FAILED jobs created before the cutoff and rolls them up into
+   * `backup_daily_rollups` in the same statement. Returns rows removed.
+   */
+  deleteFailedOlderThan(cutoff: Date): Promise<number> {
+    return this.deleteAndRollUp(`status = $1 AND "createdAt" < $2`, [
+      JobStatus.FAILED,
+      cutoff,
+    ]);
+  }
+
+  /**
+   * Single funnel for every `backup_jobs` delete. One statement deletes the
+   * rows, aggregates the COMPLETED and FAILED ones per (connectionId, UTC day)
+   * and adds them to `backup_daily_rollups`, so the daily analytics keep their
+   * history after a purge and the delete and the rollup commit together.
+   *
+   * `DELETE ... RETURNING` yields each row to exactly one statement, so even
+   * concurrent unlocked purges roll a row up exactly once. PENDING and RUNNING
+   * rows are deleted but never aggregated. The upsert inserts in key order so
+   * two concurrent purges lock the shared rollup rows in the same order.
+   *
+   * `where` is a constant predicate written by the caller (never user input),
+   * numbered from `$1` over `params`; the two status parameters follow.
+   */
+  private async deleteAndRollUp(where: string, params: unknown[]): Promise<number> {
+    const completed = `$${params.length + 1}`;
+    const failed = `$${params.length + 2}`;
+    const rows = await this.dataSource.query<{ deleted: number }[]>(
+      `WITH deleted AS (
+         DELETE FROM backup_jobs
+         WHERE ${where}
+         RETURNING "connectionId", "createdAt", status, "startedAt", "completedAt", "fileSizeMb"
+       ),
+       agg AS (
+         SELECT d."connectionId" AS "connectionId",
+                DATE(d."createdAt") AS "day",
+                (COUNT(*) FILTER (WHERE d.status = ${completed}))::int AS completed,
+                (COUNT(*) FILTER (WHERE d.status = ${failed}))::int AS failed,
+                COALESCE(SUM(d."fileSizeMb") FILTER (WHERE d.status = ${completed}), 0)::float8 AS "totalSizeMb",
+                COALESCE(
+                  array_agg(EXTRACT(EPOCH FROM (d."completedAt" - d."startedAt"))::float8)
+                    FILTER (WHERE d.status = ${completed}
+                              AND d."startedAt" IS NOT NULL
+                              AND d."completedAt" IS NOT NULL),
+                  '{}'::float8[]
+                ) AS "durationsSeconds"
+         FROM deleted d
+         WHERE d.status IN (${completed}, ${failed})
+         GROUP BY d."connectionId", DATE(d."createdAt")
+       ),
+       rolled AS (
+         INSERT INTO backup_daily_rollups AS r
+           ("connectionId", "day", completed, failed, "totalSizeMb", "durationsSeconds")
+         SELECT "connectionId", "day", completed, failed, "totalSizeMb", "durationsSeconds"
+         FROM agg
+         ORDER BY "connectionId", "day"
+         ON CONFLICT ("connectionId", "day") DO UPDATE SET
+           completed = r.completed + EXCLUDED.completed,
+           failed = r.failed + EXCLUDED.failed,
+           "totalSizeMb" = r."totalSizeMb" + EXCLUDED."totalSizeMb",
+           "durationsSeconds" = r."durationsSeconds" || EXCLUDED."durationsSeconds",
+           "updatedAt" = now()
+       )
+       SELECT COUNT(*)::int AS deleted FROM deleted`,
+      [...params, JobStatus.COMPLETED, JobStatus.FAILED],
+    );
+    return Number(rows[0]?.deleted ?? 0);
   }
 
   /**

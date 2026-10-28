@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import { BackupDailyRollupEntity } from '../../database/entities/backup-daily-rollup.entity';
 import { BackupJobEntity } from '../../database/entities/backup-job.entity';
 import { BackupLeaseEntity } from '../../database/entities/backup-lease.entity';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
@@ -25,7 +26,12 @@ import { RestoreStrategy } from './interfaces/restore-strategy.interface';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([BackupJobEntity, BackupLeaseEntity, ConnectionEntity]),
+    TypeOrmModule.forFeature([
+      BackupJobEntity,
+      BackupDailyRollupEntity,
+      BackupLeaseEntity,
+      ConnectionEntity,
+    ]),
     ConnectionsModule,
     QueueModule,
     BullModule.registerQueue({

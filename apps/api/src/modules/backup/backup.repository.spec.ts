@@ -193,6 +193,84 @@ describe('BackupRepository', () => {
     });
   });
 
+  describe('purge with daily rollup', () => {
+    const purgeSql = (): string => String(querySpy.mock.calls[0][0]);
+    const purgeParams = (): unknown[] => querySpy.mock.calls[0][1] as unknown[];
+
+    it('deleteByFileKeys deletes and rolls up in one statement, returning the deleted count', async () => {
+      querySpy.mockResolvedValue([{ deleted: 2 }]);
+
+      const deleted = await backupRepo.deleteByFileKeys(['k1', 'k2']);
+
+      expect(deleted).toBe(2);
+      expect(querySpy).toHaveBeenCalledTimes(1);
+      expect(purgeSql()).toContain('WITH deleted AS (');
+      expect(purgeSql()).toContain('DELETE FROM backup_jobs');
+      expect(purgeSql()).toContain(`"fileKey" = ANY($1::varchar[])`);
+      expect(purgeSql()).toContain('INSERT INTO backup_daily_rollups');
+      expect(purgeSql()).toContain('ON CONFLICT ("connectionId", "day") DO UPDATE');
+      expect(purgeParams()).toEqual([['k1', 'k2'], JobStatus.COMPLETED, JobStatus.FAILED]);
+    });
+
+    it('deleteByIds deletes by id array and rolls up in one statement', async () => {
+      querySpy.mockResolvedValue([{ deleted: 3 }]);
+
+      const deleted = await backupRepo.deleteByIds(['id-1', 'id-2', 'id-3']);
+
+      expect(deleted).toBe(3);
+      expect(querySpy).toHaveBeenCalledTimes(1);
+      expect(purgeSql()).toContain('id = ANY($1::uuid[])');
+      expect(purgeSql()).toContain('INSERT INTO backup_daily_rollups');
+      expect(purgeParams()).toEqual([['id-1', 'id-2', 'id-3'], JobStatus.COMPLETED, JobStatus.FAILED]);
+    });
+
+    it('deleteFailedOlderThan deletes FAILED jobs before the cutoff and rolls them up in one statement', async () => {
+      querySpy.mockResolvedValue([{ deleted: 5 }]);
+      const cutoff = new Date('2026-03-11T12:00:00Z');
+
+      const deleted = await backupRepo.deleteFailedOlderThan(cutoff);
+
+      expect(deleted).toBe(5);
+      expect(querySpy).toHaveBeenCalledTimes(1);
+      expect(purgeSql()).toContain('status = $1 AND "createdAt" < $2');
+      expect(purgeSql()).toContain('INSERT INTO backup_daily_rollups');
+      expect(purgeParams()).toEqual([JobStatus.FAILED, cutoff, JobStatus.COMPLETED, JobStatus.FAILED]);
+    });
+
+    it('aggregates only COMPLETED and FAILED rows, so PENDING and RUNNING are deleted uncounted', async () => {
+      querySpy.mockResolvedValue([{ deleted: 1 }]);
+
+      await backupRepo.deleteByIds(['id-1']);
+
+      // Statuses are the bound parameters $2 (completed) and $3 (failed) after the id array.
+      expect(purgeSql()).toContain('WHERE d.status IN ($2, $3)');
+      expect(purgeSql()).toContain('FILTER (WHERE d.status = $2');
+    });
+
+    it('never interpolates input into the statement', async () => {
+      querySpy.mockResolvedValue([{ deleted: 1 }]);
+
+      await backupRepo.deleteByFileKeys(["k'; DROP TABLE backup_jobs; --"]);
+
+      expect(purgeSql()).not.toContain('DROP TABLE');
+      expect(purgeParams()[0]).toEqual(["k'; DROP TABLE backup_jobs; --"]);
+    });
+
+    it.each([
+      ['deleteByFileKeys', (): Promise<number> => backupRepo.deleteByFileKeys([])],
+      ['deleteByIds', (): Promise<number> => backupRepo.deleteByIds([])],
+    ])('%s with an empty list returns 0 without querying', async (_name, run) => {
+      await expect(run()).resolves.toBe(0);
+      expect(querySpy).not.toHaveBeenCalled();
+    });
+
+    it('returns 0 when the statement reports no rows', async () => {
+      querySpy.mockResolvedValue([]);
+
+      await expect(backupRepo.deleteByIds(['id-1'])).resolves.toBe(0);
+    });
+  });
+
   describe('failPendingStale', () => {
     it('fails a PENDING row past the 60s grace period', async () => {
       querySpy.mockResolvedValue([{ id: 'job-1' }]);
