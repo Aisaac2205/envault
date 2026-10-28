@@ -19,13 +19,13 @@ export interface StatusSeries {
 export const STATUS_SERIES: readonly StatusSeries[] = [
   {
     key: "completed",
-    labelKey: "chart.completed",
+    labelKey: "backups.completed",
     color: "var(--color-success)",
     Icon: Check,
   },
   {
     key: "failed",
-    labelKey: "chart.failed",
+    labelKey: "backups.failed",
     color: "var(--color-error)",
     Icon: X,
   },

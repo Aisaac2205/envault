@@ -67,6 +67,8 @@
   "backups.title": "Respaldos por día",
   "backups.subtitle": "Completados y fallidos de cada día, en UTC",
   "backups.rate": "Tasa de éxito",
+  "backups.completed": "Completados",
+  "backups.failed": "Fallidos",
   "backups.legend.label": "Leyenda",
   "backups.legend.latest": "Último día con respaldos: {{date}}",
   "backups.loading": "Cargando respaldos por día",
