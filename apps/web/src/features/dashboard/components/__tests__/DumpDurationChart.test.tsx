@@ -31,9 +31,9 @@ function day(
 
 function series(days: DailyBackupPoint[]): DailyBackupSeries {
   return {
-    window: 90,
-    from: days[0]?.date ?? "2026-07-30",
-    to: days.at(-1)?.date ?? "2026-10-27",
+    window: 30,
+    from: days[0]?.date ?? "2026-08-01",
+    to: days.at(-1)?.date ?? "2026-08-30",
     timezone: "UTC",
     connectionId: null,
     days,
@@ -44,15 +44,16 @@ function dateOf(index: number): string {
   return new Date(Date.UTC(2026, 7, 1 + index)).toISOString().slice(0, 10);
 }
 
-function ninetyDaysWithGap(): DailyBackupPoint[] {
-  return Array.from({ length: 90 }, (_, index) =>
-    index === 80 ? day(dateOf(index)) : day(dateOf(index), [1.2, 3.4, 6.8]),
+/** The default window, with one day (20) that has no completed backup. */
+function monthWithGap(): DailyBackupPoint[] {
+  return Array.from({ length: 30 }, (_, index) =>
+    index === 20 ? day(dateOf(index)) : day(dateOf(index), [1.2, 3.4, 6.8]),
   );
 }
 
 /** Every day a little slower than the one before, so each day has its own values. */
 function rampingDays(): DailyBackupPoint[] {
-  return Array.from({ length: 90 }, (_, index) =>
+  return Array.from({ length: 30 }, (_, index) =>
     day(dateOf(index), [1 + index * 0.1, 2 + index * 0.1, 3 + index * 0.1]),
   );
 }
@@ -115,7 +116,7 @@ describe("DumpDurationChart", () => {
   });
 
   it("renders a real heading and the subtitle", () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+    mockAnalytics({ data: series(monthWithGap()) });
 
     render(<DumpDurationChart />);
 
@@ -128,7 +129,7 @@ describe("DumpDurationChart", () => {
   });
 
   it("renders the three legend labels", () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+    mockAnalytics({ data: series(monthWithGap()) });
 
     render(<DumpDurationChart />);
 
@@ -139,7 +140,7 @@ describe("DumpDurationChart", () => {
   });
 
   it("describes the chart as an image with a text summary", () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+    mockAnalytics({ data: series(monthWithGap()) });
 
     render(<DumpDurationChart />);
 
@@ -149,7 +150,7 @@ describe("DumpDurationChart", () => {
   });
 
   it("draws p50 solid, p95 dashed and max dotted, each broken at days without data", async () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+    mockAnalytics({ data: series(monthWithGap()) });
 
     const { container } = render(<DumpDurationChart />);
     await waitFor(() => {
@@ -170,13 +171,13 @@ describe("DumpDurationChart", () => {
     // A round cap on a near zero dash is what draws the dot.
     expect(max).toHaveAttribute("stroke-linecap", "round");
     for (const path of [p50, p95, max]) {
-      // One missing day (index 80) splits each line in two instead of dipping to 0.
+      // One missing day (index 20) splits each line in two instead of dipping to 0.
       expect((path?.getAttribute("d")?.match(/M/g) ?? []).length).toBe(2);
     }
   });
 
   it("draws the slowest line first and the median last, so the median is on top", async () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+    mockAnalytics({ data: series(monthWithGap()) });
 
     const { container } = render(<DumpDurationChart />);
     await waitFor(() => {
@@ -196,7 +197,7 @@ describe("DumpDurationChart", () => {
   });
 
   it("gives every line a halo in the card color, 3px wider, drawn right behind it", async () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+    mockAnalytics({ data: series(monthWithGap()) });
 
     const { container } = render(<DumpDurationChart />);
     await waitFor(() => {
@@ -222,12 +223,12 @@ describe("DumpDurationChart", () => {
     }
   });
 
-  it("asks for the 90 day window of every connection by default", () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+  it("asks for the 30 day window of every connection by default", () => {
+    mockAnalytics({ data: series(monthWithGap()) });
 
     render(<DumpDurationChart />);
 
-    expect(analytics.useDailyAnalytics).toHaveBeenCalledWith(90, undefined);
+    expect(analytics.useDailyAnalytics).toHaveBeenCalledWith(30, undefined);
   });
 
   it("renders the loading state without a chart", () => {
@@ -243,7 +244,7 @@ describe("DumpDurationChart", () => {
 
   it("renders the empty state when no backup completed in the window", () => {
     mockAnalytics({
-      data: series(Array.from({ length: 90 }, (_, index) => day(dateOf(index)))),
+      data: series(Array.from({ length: 30 }, (_, index) => day(dateOf(index)))),
     });
 
     render(<DumpDurationChart />);
@@ -254,8 +255,10 @@ describe("DumpDurationChart", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     // The selector stays so the user can go back to all connections.
     expect(screen.getByRole("combobox", { name: "Conexión" })).toBeInTheDocument();
-    // Nothing to range over, and no legend without lines.
-    expect(screen.queryByRole("group", { name: "Rango rápido" })).not.toBeInTheDocument();
+    // The range stays, because it is the window asked of the API: widen it to find data.
+    expect(screen.getByRole("group", { name: "Rango rápido" })).toBeInTheDocument();
+    expect(screen.getByText(/últimos 30 días/)).toBeInTheDocument();
+    // No legend without lines.
     expect(screen.queryByRole("group", { name: "Leyenda" })).not.toBeInTheDocument();
   });
 
@@ -280,22 +283,30 @@ describe("DumpDurationChart", () => {
     );
   });
 
-  it("says so when the visible range has no backups although older days do", () => {
-    // Data only in the first 40 days of the window; the default range is the last 30.
-    const days = ninetyDaysWithGap().map((point, index) =>
-      index < 40 ? point : day(point.date),
+  it("keeps the range control while loading and on error", () => {
+    for (const state of [{ isLoading: true }, { isError: true, error: new Error("boom") }]) {
+      mockAnalytics(state);
+      const { unmount } = render(<DumpDurationChart />);
+
+      expect(screen.getByRole("group", { name: "Rango rápido" })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("describes the latest day with backups when the newest days of the window have none", () => {
+    // Data only in the first 10 days; the rest of the window is quiet.
+    const days = monthWithGap().map((point, index) =>
+      index < 10 ? point : day(point.date),
     );
     mockAnalytics({ data: series(days) });
 
     render(<DumpDurationChart />);
 
     const label = screen.getByRole("img").getAttribute("aria-label");
-    expect(label).toContain("Sin respaldos completados en este rango");
-    expect(label).not.toContain("mediana");
-    // The chart is still there, and the legend has no values to show.
+    expect(label).toContain("mediana 1,2 s");
     const legend = screen.getByRole("group", { name: "Leyenda" });
-    expect(within(legend).getAllByText("—")).toHaveLength(3);
-    expect(within(legend).getByText("Sin respaldos en este rango")).toBeInTheDocument();
+    expect(within(legend).getByText("1,2 s")).toBeInTheDocument();
+    expect(within(legend).getByText(/Último día con respaldos: /)).toBeInTheDocument();
   });
 
   describe("legend", () => {
@@ -312,25 +323,25 @@ describe("DumpDurationChart", () => {
       }
     });
 
-    it("shows the latest day with data in the visible range", () => {
+    it("shows the latest day with data", () => {
       const days = rampingDays();
       // The newest day has no backup, so the legend falls back to the day before.
-      days[89] = day(days[89]!.date);
+      days[29] = day(days[29]!.date);
       mockAnalytics({ data: series(days) });
 
       render(<DumpDurationChart />);
 
       const legend = screen.getByRole("group", { name: "Leyenda" });
-      // Day 88: 1 + 8.8, 2 + 8.8, 3 + 8.8.
-      expect(within(legend).getByText("9,8 s")).toBeInTheDocument();
-      expect(within(legend).getByText("10,8 s")).toBeInTheDocument();
-      expect(within(legend).getByText("11,8 s")).toBeInTheDocument();
+      // Day 28: 1 + 2.8, 2 + 2.8, 3 + 2.8.
+      expect(within(legend).getByText("3,8 s")).toBeInTheDocument();
+      expect(within(legend).getByText("4,8 s")).toBeInTheDocument();
+      expect(within(legend).getByText("5,8 s")).toBeInTheDocument();
       expect(within(legend).getByText(/Último día con respaldos: /)).toBeInTheDocument();
     });
 
     it("shows an em dash for a series with no value that day", () => {
       const days = rampingDays();
-      days[89] = day(days[89]!.date, [2, null, null]);
+      days[29] = day(days[29]!.date, [2, null, null]);
       mockAnalytics({ data: series(days) });
 
       render(<DumpDurationChart />);
@@ -345,26 +356,35 @@ describe("DumpDurationChart", () => {
 
       const { container } = render(<DumpDurationChart />);
       const legend = screen.getByRole("group", { name: "Leyenda" });
-      // Day 89 is the newest: 1 + 8.9.
-      expect(within(legend).getByText("9,9 s")).toBeInTheDocument();
+      // Day 29 is the newest: 1 + 2.9.
+      expect(within(legend).getByText("3,9 s")).toBeInTheDocument();
 
-      // The left edge of the plot is the first visible day, index 60: 1 + 6.0.
+      // The left edge of the plot is the first day of the window, index 0: 1 + 0.0.
       // The chart only reacts to the pointer once its reveal animation is over.
       await waitFor(
         () => {
           hoverMainChart(container, 52);
-          expect(within(legend).getByText("7,0 s")).toBeInTheDocument();
+          expect(within(legend).getByText("1,0 s")).toBeInTheDocument();
         },
         { timeout: 5000 },
       );
-      expect(within(legend).queryByText("9,9 s")).not.toBeInTheDocument();
+      expect(within(legend).queryByText("3,9 s")).not.toBeInTheDocument();
       expect(within(legend).queryByText(/Último día con respaldos/)).not.toBeInTheDocument();
       // The caption names the hovered day instead.
-      expect(within(legend).getByText("mié, 30 sept 2026")).toBeInTheDocument();
+      expect(
+        within(legend).getByText(
+          new Intl.DateTimeFormat("es-AR", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }).format(new Date(2026, 7, 1)),
+        ),
+      ).toBeInTheDocument();
 
       fireEvent.mouseLeave(mainChartSurface(container));
       await waitFor(() => {
-        expect(within(legend).getByText("9,9 s")).toBeInTheDocument();
+        expect(within(legend).getByText("3,9 s")).toBeInTheDocument();
       });
     }, 10000);
 
@@ -457,7 +477,7 @@ describe("DumpDurationChart", () => {
   });
 
   it("filters by the selected connection", async () => {
-    mockAnalytics({ data: series(ninetyDaysWithGap()) });
+    mockAnalytics({ data: series(monthWithGap()) });
     // Radix Select relies on pointer capture and scrollIntoView, which jsdom lacks.
     Element.prototype.hasPointerCapture = () => false;
     Element.prototype.releasePointerCapture = () => undefined;
@@ -472,7 +492,28 @@ describe("DumpDurationChart", () => {
     await user.click(screen.getByRole("option", { name: "CRM" }));
 
     await waitFor(() => {
-      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(90, "conn-crm");
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(30, "conn-crm");
     });
+  });
+
+  it("keeps the picked window when the connection changes, and the connection when the window does", async () => {
+    mockAnalytics({ data: series(monthWithGap()) });
+    Element.prototype.hasPointerCapture = () => false;
+    Element.prototype.releasePointerCapture = () => undefined;
+    Element.prototype.scrollIntoView = () => undefined;
+    const user = userEvent.setup();
+
+    render(<DumpDurationChart />);
+    await user.click(screen.getByRole("button", { name: "7d" }));
+    await user.click(screen.getByRole("combobox", { name: "Conexión" }));
+    await user.click(await screen.findByRole("option", { name: "CRM" }));
+
+    await waitFor(() => {
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(7, "conn-crm");
+    });
+
+    await user.click(screen.getByRole("button", { name: "90d" }));
+
+    expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(90, "conn-crm");
   });
 });

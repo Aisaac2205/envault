@@ -67,7 +67,6 @@
   "duration.connection.all": "Todas las conexiones",
   "duration.legend.label": "Leyenda",
   "duration.legend.latest": "Último día con respaldos: {{date}}",
-  "duration.legend.empty": "Sin respaldos en este rango",
   "duration.range.label": "Rango rápido",
   "duration.range.option": "{{days}}d",
   "duration.series.p50": "Mediana (p50)",
@@ -75,10 +74,8 @@
   "duration.series.max": "Más lento (máx.)",
   "duration.loading": "Cargando duración de los respaldos",
   "duration.empty.title": "Sin respaldos completados en este período",
-  "duration.empty.description": "Las duraciones aparecerán aquí cuando se complete un respaldo dentro de los últimos 90 días.",
+  "duration.empty.description": "Las duraciones aparecerán aquí cuando se complete un respaldo dentro de los últimos {{days}} días.",
   "duration.error": "No se pudo cargar la duración de los respaldos: {{message}}",
   "duration.retry": "Reintentar",
-  "duration.brush.label": "Selector de rango de fechas",
-  "duration.chartLabel": "Duración de los respaldos por día del {{from}} al {{to}}. Último día con respaldos, {{date}}: mediana {{p50}}, percentil 95 {{p95}}, más lento {{max}}.",
-  "duration.chartLabelEmpty": "Duración de los respaldos por día del {{from}} al {{to}}. Sin respaldos completados en este rango."
+  "duration.chartLabel": "Duración de los respaldos por día del {{from}} al {{to}}. Último día con respaldos, {{date}}: mediana {{p50}}, percentil 95 {{p95}}, más lento {{max}}."
 }
