@@ -40,9 +40,58 @@ export function toDurationRows(days: DailyBackupPoint[]): DurationRow[] {
   }));
 }
 
-/** True when at least one day in the series has a completed backup. */
+/** True when the day has at least one of the three durations. */
+export function rowHasData(row: DurationRow): boolean {
+  return row.p50 !== null || row.p95 !== null || row.max !== null;
+}
+
+/** True when at least one day in the series has a duration. */
 export function hasDurationData(rows: DurationRow[]): boolean {
-  return rows.some((row) => row.p50 !== null);
+  return rows.some(rowHasData);
+}
+
+/** Quick range presets, in days counted back from the newest day. */
+export const QUICK_RANGE_DAYS = [7, 30, 90] as const;
+export type QuickRangeDays = (typeof QUICK_RANGE_DAYS)[number];
+
+/** The brush range that shows the last `days` days of the series. */
+export function quickRange(
+  rows: DurationRow[],
+  days: QuickRangeDays,
+): ChartBrushSelection | null {
+  return defaultBrushRange(rows, days);
+}
+
+/**
+ * The preset whose days a range shows, or `null` for a custom range. It compares
+ * the rows the range shows, not its timestamps: a dragged brush edge lands
+ * anywhere inside a day, and the chart draws the same days either way.
+ */
+export function activeQuickRange(
+  rows: DurationRow[],
+  range: ChartBrushSelection | null,
+): QuickRangeDays | null {
+  if (!range || rows.length === 0) {
+    return null;
+  }
+  const start = range.start.getTime();
+  const end = range.end.getTime();
+  let first = -1;
+  let last = -1;
+  rows.forEach((row, index) => {
+    const time = row.date.getTime();
+    if (time >= start && time <= end) {
+      first = first === -1 ? index : first;
+      last = index;
+    }
+  });
+  if (first === -1 || last !== rows.length - 1) {
+    return null;
+  }
+  return (
+    QUICK_RANGE_DAYS.find((days) => first === Math.max(0, rows.length - days)) ??
+    null
+  );
 }
 
 /** The last {@link DEFAULT_BRUSH_DAYS} days, or the whole series when it is shorter. */
@@ -58,14 +107,14 @@ export function defaultBrushRange(
   return { start: first.date, end: last.date };
 }
 
-/** Most recent day with a completed backup, optionally inside the visible range. */
+/** Most recent day with a duration, optionally inside the visible range. */
 export function findLatestDayWithData(
   rows: DurationRow[],
   range?: ChartBrushSelection | null,
 ): DurationRow | null {
   for (let index = rows.length - 1; index >= 0; index--) {
     const row = rows[index];
-    if (!row || row.p50 === null) {
+    if (!row || !rowHasData(row)) {
       continue;
     }
     if (

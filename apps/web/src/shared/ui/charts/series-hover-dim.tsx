@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import { useChartHover } from "./chart-context";
 import { useChartLegendHover } from "./chart-legend-hover";
@@ -31,7 +31,8 @@ interface SeriesHoverDimProps {
 export function SeriesHoverDim({
   enabled = true,
   dimOpacity = 0.5,
-  durationSec = 0.4,
+  // envault: 0.2 s, not 0.4 s. A legend click should answer at once.
+  durationSec = 0.2,
   seriesIndex,
   children,
 }: SeriesHoverDimProps) {
@@ -42,13 +43,18 @@ export function SeriesHoverDim({
     legendHoveredIndex !== null &&
     seriesIndex !== undefined &&
     legendHoveredIndex !== seriesIndex;
-  const opacity =
-    enabled && (isChartHovering || isLegendDimmed) ? dimOpacity : 1;
+  const reducedMotion = useReducedMotion();
+  // envault: the legend dims the other series even when `enabled` (the chart
+  // hover highlight) is off; only the chart hover dim still needs `enabled`.
+  const opacity = (enabled && isChartHovering) || isLegendDimmed ? dimOpacity : 1;
   return (
     <motion.g
       animate={{ opacity }}
       initial={{ opacity: 1 }}
-      transition={{ duration: durationSec, ease: "easeInOut" }}
+      transition={{
+        duration: reducedMotion ? 0 : durationSec,
+        ease: "easeInOut",
+      }}
     >
       {children}
     </motion.g>

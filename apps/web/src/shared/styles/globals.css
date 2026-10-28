@@ -130,9 +130,9 @@
   --chart-3: #0891B2;
   --chart-4: oklch(0.56 0.021 213.5);
   --chart-5: oklch(0 0 0);
-  --chart-duration-p50: #1E3A8A;
-  --chart-duration-p95: #1D4ED8;
-  --chart-duration-max: #3B82F6;
+  --chart-duration-p50: #1D4ED8;
+  --chart-duration-p95: #A855F7;
+  --chart-duration-max: #EA580C;
   --chart-positive: var(--color-success);
   --chart-negative: var(--color-error);
   --chart-background: var(--color-card);
@@ -163,6 +163,13 @@
   --chart-marker-badge-foreground: oklch(0.84 0 0);
   --chart-segment-background: oklch(0.756 0 0 / 0.06);
   --chart-segment-line: oklch(0.5 0 0 / 0.25);
+
+  /* Legend tokens (bklit legend), light values from the registry. */
+  --legend: oklch(1 0 0);
+  --legend-foreground: oklch(0.141 0.005 285.823);
+  --legend-muted: oklch(0.967 0.001 286.375);
+  --legend-muted-foreground: oklch(0.552 0.016 285.938);
+  --legend-track: oklch(0.92 0.004 286.32);
 }
 
 [data-theme="dark"] {
@@ -225,9 +232,9 @@
   --chart-2: #8B5CF6;
   --chart-3: #0891B2;
   --chart-5: oklch(1 0 0);
-  --chart-duration-p50: #BFDBFE;
-  --chart-duration-p95: #60A5FA;
-  --chart-duration-max: #2563EB;
+  --chart-duration-p50: #60A5FA;
+  --chart-duration-p95: #9333EA;
+  --chart-duration-max: #F97316;
   --chart-foreground: oklch(0.45 0 0);
   --chart-foreground-muted: oklch(0.65 0.01 260);
   --chart-crosshair: oklch(0.45 0 0);
@@ -245,6 +252,13 @@
   --chart-marker-badge-foreground: oklch(0.15 0 0);
   --chart-segment-background: oklch(0.41 0.0127 248.14 / 0.25);
   --chart-segment-line: oklch(1 0 0 / 0.25);
+
+  /* Legend tokens (bklit legend), dark values from the registry. */
+  --legend: oklch(0.21 0.006 285.885);
+  --legend-foreground: oklch(0.985 0 0);
+  --legend-muted: oklch(0.274 0.006 286.033);
+  --legend-muted-foreground: oklch(0.705 0.015 286.067);
+  --legend-track: oklch(0.274 0.006 286.033);
 }
 
 /* Login page floating animations (ported from Keycloak theme) */
@@ -504,4 +518,9 @@ select:not([multiple]):active {
   --color-chart-duration-p50: var(--chart-duration-p50);
   --color-chart-duration-p95: var(--chart-duration-p95);
   --color-chart-duration-max: var(--chart-duration-max);
+  --color-legend: var(--legend);
+  --color-legend-foreground: var(--legend-foreground);
+  --color-legend-muted: var(--legend-muted);
+  --color-legend-muted-foreground: var(--legend-muted-foreground);
+  --color-legend-track: var(--legend-track);
 }

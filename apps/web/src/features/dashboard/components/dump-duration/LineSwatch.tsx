@@ -14,8 +14,8 @@ export function LineSwatch({ series }: { series: DurationSeries }) {
       <line
         stroke={series.color}
         strokeDasharray={series.dasharray}
-        strokeLinecap="round"
-        strokeWidth={Math.max(series.strokeWidth, 2)}
+        strokeLinecap={series.linecap}
+        strokeWidth={series.strokeWidth}
         x1="2"
         x2="26"
         y1="5"

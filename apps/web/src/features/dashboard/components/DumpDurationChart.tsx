@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Timer } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useConnections } from "@/features/connections/hooks/useConnections";
@@ -10,14 +10,18 @@ import { LineChartLoading } from "@/shared/ui/charts/line-chart-loading";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { useDailyAnalytics } from "../hooks/useDailyAnalytics";
 import { ConnectionFilter } from "./dump-duration/ConnectionFilter";
-import { DumpDurationLegend } from "./dump-duration/DumpDurationLegend";
 import { DumpDurationPlot } from "./dump-duration/DumpDurationPlot";
+import { QuickRangeControl } from "./dump-duration/QuickRangeControl";
 import {
+  activeQuickRange,
   ALL_CONNECTIONS,
   ANALYTICS_WINDOW,
+  defaultBrushRange,
   hasDurationData,
+  quickRange,
   toConnectionId,
   toDurationRows,
+  type QuickRangeDays,
 } from "./dump-duration/dump-duration-data";
 
 /**
@@ -42,6 +46,8 @@ export function DumpDurationChart() {
   const [connectionValue, setConnectionValue] = useState(ALL_CONNECTIONS);
   // Lives here, not in the plot: the plot unmounts while a new connection loads.
   const [selection, setSelection] = useState<ChartBrushSelection | null>(null);
+  // Bumped by a preset so the brush remounts at the new range; a drag never bumps it.
+  const [brushEpoch, setBrushEpoch] = useState(0);
 
   const analytics = useDailyAnalytics(
     ANALYTICS_WINDOW,
@@ -55,6 +61,18 @@ export function DumpDurationChart() {
     [series],
   );
   const hasData = hasDurationData(rows);
+
+  const defaultRange = useMemo(() => defaultBrushRange(rows), [rows]);
+  const range = selection ?? defaultRange;
+  const activePreset = useMemo(() => activeQuickRange(rows, range), [rows, range]);
+
+  const selectPreset = useCallback(
+    (days: QuickRangeDays) => {
+      setSelection(quickRange(rows, days));
+      setBrushEpoch((epoch) => epoch + 1);
+    },
+    [rows],
+  );
 
   let body;
   if (analytics.isLoading) {
@@ -84,9 +102,10 @@ export function DumpDurationChart() {
   } else {
     body = (
       <DumpDurationPlot
-        onSelectionChange={setSelection}
+        brushEpoch={brushEpoch}
+        onRangeChange={setSelection}
+        range={range}
         rows={rows}
-        selection={selection}
       />
     );
   }
@@ -109,7 +128,7 @@ export function DumpDurationChart() {
             />
           </div>
           {hasData && !analytics.isLoading && !analytics.isError ? (
-            <DumpDurationLegend />
+            <QuickRangeControl onSelect={selectPreset} value={activePreset} />
           ) : null}
         </div>
         {body}

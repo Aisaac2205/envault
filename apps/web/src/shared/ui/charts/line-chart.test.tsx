@@ -1,5 +1,6 @@
 import { render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ChartLegendHoverProvider } from "./chart-legend-hover";
 import { Grid } from "./grid";
 import { Line } from "./line";
 import { LineChart } from "./line-chart";
@@ -81,6 +82,127 @@ describe("bklit LineChart", () => {
           "6 4"
         );
       });
+    });
+  });
+  describe("series halo", () => {
+    function renderHalo(props: Record<string, unknown> = {}) {
+      return render(
+        <LineChart animationDuration={0} aspectRatio="2 / 1" data={data}>
+          <Line
+            animate={false}
+            dataKey="value"
+            fadeEdges={false}
+            showHighlight={false}
+            stroke="#ff0000"
+            strokeWidth={2}
+            {...props}
+          />
+        </LineChart>
+      );
+    }
+
+    function strokes(container: HTMLElement) {
+      return Array.from(container.querySelectorAll<SVGPathElement>("svg path"))
+        .filter((path) => path.getAttribute("stroke-linecap"))
+        .map((path) => ({
+          stroke: path.getAttribute("stroke"),
+          width: path.getAttribute("stroke-width"),
+          dash: path.getAttribute("stroke-dasharray"),
+          cap: path.getAttribute("stroke-linecap"),
+        }));
+    }
+
+    it("draws nothing extra by default", async () => {
+      const { container } = renderHalo();
+
+      await waitFor(() => {
+        expect(strokes(container)).toHaveLength(1);
+      });
+    });
+
+    it("draws a wider stroke in the halo color behind the line, with the same dash pattern", async () => {
+      const { container } = renderHalo({
+        halo: { color: "#00ff00", extraWidth: 3 },
+        strokeDasharray: "6 4",
+        strokeLinecap: "butt",
+      });
+
+      await waitFor(() => {
+        expect(strokes(container)).toEqual([
+          { stroke: "#00ff00", width: "5", dash: "6 4", cap: "butt" },
+          { stroke: "#ff0000", width: "2", dash: "6 4", cap: "butt" },
+        ]);
+      });
+    });
+
+    it("defaults the halo to 3px wider than the line and keeps the round cap", async () => {
+      const { container } = renderHalo({ halo: { color: "#00ff00" } });
+
+      await waitFor(() => {
+        expect(strokes(container)).toEqual([
+          { stroke: "#00ff00", width: "5", dash: null, cap: "round" },
+          { stroke: "#ff0000", width: "2", dash: null, cap: "round" },
+        ]);
+      });
+    });
+  });
+
+  describe("legend hover linking", () => {
+    const twoSeries = data.map((row) => ({ ...row, other: row.value + 6 }));
+
+    /** Opacity of the group that wraps a series; motion writes it as an SVG attribute. */
+    function opacityOf(container: HTMLElement, stroke: string) {
+      const group = container
+        .querySelector<SVGPathElement>(`svg path[stroke="${stroke}"]`)
+        ?.closest("g");
+      return group ? Number(group.getAttribute("opacity") ?? 1) : null;
+    }
+
+    function renderLinked(hoveredIndex: number | null) {
+      return render(
+        <ChartLegendHoverProvider
+          hoveredIndex={hoveredIndex}
+          onHoverChange={() => undefined}
+        >
+          <LineChart animationDuration={0} aspectRatio="2 / 1" data={twoSeries}>
+            <Line
+              animate={false}
+              dataKey="value"
+              fadeEdges={false}
+              highlight={{ dimOpacity: 0.25 }}
+              showHighlight={false}
+              stroke="#ff0000"
+            />
+            <Line
+              animate={false}
+              dataKey="other"
+              fadeEdges={false}
+              highlight={{ dimOpacity: 0.25 }}
+              showHighlight={false}
+              stroke="#0000ff"
+            />
+          </LineChart>
+        </ChartLegendHoverProvider>
+      );
+    }
+
+    it("dims the other series, even with the chart hover highlight off", async () => {
+      const { container } = renderLinked(0);
+
+      await waitFor(() => {
+        expect(opacityOf(container, "#0000ff")).toBe(0.25);
+      });
+      expect(opacityOf(container, "#ff0000")).toBe(1);
+    });
+
+    it("leaves every series alone when nothing is highlighted", async () => {
+      const { container } = renderLinked(null);
+
+      await waitFor(() => {
+        expect(opacityOf(container, "#0000ff")).not.toBeNull();
+      });
+      expect(opacityOf(container, "#0000ff")).toBe(1);
+      expect(opacityOf(container, "#ff0000")).toBe(1);
     });
   });
 });

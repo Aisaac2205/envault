@@ -1,11 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { DailyBackupPoint } from "../../types";
 import {
+  activeQuickRange,
   ALL_CONNECTIONS,
   defaultBrushRange,
   findLatestDayWithData,
   hasDurationData,
   parseDay,
+  QUICK_RANGE_DAYS,
+  quickRange,
   toConnectionId,
   toDurationRows,
 } from "../dump-duration/dump-duration-data";
@@ -82,6 +85,12 @@ describe("hasDurationData", () => {
       hasDurationData(toDurationRows([day("2026-10-25"), day("2026-10-26", [1, 1, 1])])),
     ).toBe(true);
   });
+
+  it("counts a day with only some of the three durations", () => {
+    expect(hasDurationData(toDurationRows([day("2026-10-25", [null, 3, null])]))).toBe(true);
+    expect(hasDurationData(toDurationRows([day("2026-10-25", [null, null, 9])]))).toBe(true);
+    expect(hasDurationData(toDurationRows([day("2026-10-25", [2, null, null])]))).toBe(true);
+  });
 });
 
 describe("defaultBrushRange", () => {
@@ -128,6 +137,67 @@ describe("findLatestDayWithData", () => {
     ]);
 
     expect(findLatestDayWithData(rows, { start: rows[1]!.date, end: rows[2]!.date })).toBeNull();
+  });
+
+  it("counts a day with only some of the three durations", () => {
+    const rows = toDurationRows([
+      day("2026-10-24", [1, 2, 3]),
+      day("2026-10-25", [null, null, 9]),
+      day("2026-10-26"),
+    ]);
+
+    expect(findLatestDayWithData(rows)?.max).toBe(9);
+  });
+});
+
+describe("quickRange", () => {
+  it("offers 7, 30 and 90 days", () => {
+    expect(QUICK_RANGE_DAYS).toEqual([7, 30, 90]);
+  });
+
+  it("covers the last N days of the window", () => {
+    const rows = toDurationRows(ninetyDays());
+
+    const range = quickRange(rows, 7);
+
+    expect(range?.start).toEqual(rows[83]?.date);
+    expect(range?.end).toEqual(rows[89]?.date);
+  });
+
+  it("shows the whole window for 90 days", () => {
+    const rows = toDurationRows(ninetyDays());
+
+    const range = quickRange(rows, 90);
+
+    expect(range?.start).toEqual(rows[0]?.date);
+    expect(range?.end).toEqual(rows[89]?.date);
+  });
+});
+
+describe("activeQuickRange", () => {
+  const rows = toDurationRows(ninetyDays());
+
+  it("names the preset whose days the range shows", () => {
+    expect(activeQuickRange(rows, quickRange(rows, 7))).toBe(7);
+    expect(activeQuickRange(rows, quickRange(rows, 30))).toBe(30);
+    expect(activeQuickRange(rows, quickRange(rows, 90))).toBe(90);
+  });
+
+  it("matches the days the range shows, not its exact timestamps", () => {
+    // A dragged brush edge lands anywhere inside a day; the same days are shown.
+    const start = new Date(rows[83]!.date.getTime() - 3 * 60 * 60 * 1000);
+    const end = new Date(rows[89]!.date.getTime() + 5 * 60 * 60 * 1000);
+
+    expect(activeQuickRange(rows, { start, end })).toBe(7);
+  });
+
+  it("is null for a custom range", () => {
+    expect(activeQuickRange(rows, { start: rows[70]!.date, end: rows[85]!.date })).toBeNull();
+    expect(activeQuickRange(rows, { start: rows[60]!.date, end: rows[80]!.date })).toBeNull();
+  });
+
+  it("is null without a range", () => {
+    expect(activeQuickRange(rows, null)).toBeNull();
   });
 });
 
