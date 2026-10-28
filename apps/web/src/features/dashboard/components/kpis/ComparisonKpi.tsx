@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
-import { KpiCard } from "./KpiCard";
+import { KpiCard, type KpiPeriod } from "./KpiCard";
 import { KpiComparisonRow, type Comparison } from "./KpiDelta";
 import { KpiRetry } from "./KpiRetry";
 import type { DataStatus } from "./SeriesKpi";
 
 interface ComparisonKpiProps {
   label: string;
+  /** The window the figure covers. */
+  period: KpiPeriod;
   icon: ReactNode;
   accent: string;
   /** The headline figure, already formatted. */
@@ -24,6 +26,7 @@ interface ComparisonKpiProps {
  */
 export function ComparisonKpi({
   label,
+  period,
   icon,
   accent,
   value,
@@ -39,6 +42,7 @@ export function ComparisonKpi({
         caption={<KpiRetry onRetry={onRetry} />}
         icon={icon}
         label={label}
+        period={period}
         value="—"
       />
     );
@@ -50,6 +54,7 @@ export function ComparisonKpi({
       caption={caption}
       icon={icon}
       label={label}
+      period={period}
       loading={valueStatus === "loading"}
       value={value}
       visual={<KpiComparisonRow comparison={comparison} />}

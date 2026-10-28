@@ -9,6 +9,7 @@ import { formatCount, formatRate } from "./backup-stats";
 import { formatDuration } from "./dump-duration/format-duration";
 import { useDurationLocale } from "./dump-duration/use-duration-locale";
 import { ComparisonKpi } from "./kpis/ComparisonKpi";
+import type { KpiPeriod } from "./kpis/KpiCard";
 import { KpiDelta, type Comparison } from "./kpis/KpiDelta";
 import { LastRestoreKpi } from "./kpis/LastRestoreKpi";
 import { SeriesKpi, type DataStatus } from "./kpis/SeriesKpi";
@@ -107,6 +108,12 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
     }),
   );
   const weekChange = countChange(weekTotal, previousWeekTotal);
+  // Each window once, as a chip: the title stays a plain name.
+  const periodOf = (days: number): KpiPeriod => ({
+    chip: t("kpi.period.chip", { days }),
+    label: t("kpi.period.label", { count: days }),
+  });
+  const monthPeriod = periodOf(KPI_WINDOW_DAYS);
 
   return (
     <Stagger className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -125,6 +132,7 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
           icon={<ShieldCheck />}
           label={t("kpi.successRate")}
           onRetry={() => void health.refetch()}
+          period={monthPeriod}
           value={formatRate(overall?.successRate ?? null, locale)}
           valueStatus={healthStatus}
         />
@@ -143,6 +151,7 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
           icon={<CalendarCheck />}
           label={t("kpi.backups7d")}
           onRetry={() => void daily.refetch()}
+          period={periodOf(RECENT_BACKUP_DAYS)}
           series={weekSeries}
           seriesStatus={dailyStatus}
           value={formatCount(weekTotal, locale)}
@@ -161,6 +170,7 @@ export function KpiGrid({ restores, restoresLoading }: KpiGridProps) {
           icon={<Gauge />}
           label={t("kpi.p95")}
           onRetry={() => void health.refetch()}
+          period={monthPeriod}
           value={formatDuration(overall?.p95DurationSeconds, locale)}
           valueStatus={healthStatus}
         />

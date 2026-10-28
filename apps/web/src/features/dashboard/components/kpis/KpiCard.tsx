@@ -2,8 +2,16 @@ import { useId, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/shared/lib/cn";
 import { Skeleton } from "@/shared/ui/skeleton";
 
+/** The window a figure covers: `30d` for the eye, `last 30 days` for assistive technology. */
+export interface KpiPeriod {
+  chip: string;
+  label: string;
+}
+
 interface KpiCardProps {
   label: string;
+  /** The window of the figure, shown as a chip after the label. Omitted when the figure has none. */
+  period?: KpiPeriod;
   /** A 16px icon. It is decoration: the label names the card. */
   icon: ReactNode;
   /** A CSS color (`var(--chart-1)`) that tints the icon chip, the top wash and the hover border. */
@@ -26,6 +34,7 @@ interface KpiCardProps {
  */
 export function KpiCard({
   label,
+  period,
   icon,
   accent,
   value,
@@ -60,8 +69,21 @@ export function KpiCard({
         >
           {icon}
         </span>
-        <h3 className="min-w-0 text-sm font-medium leading-tight text-text-secondary" id={labelId}>
+        {/* Two lines of 18px fit the 36px row, chip included, so a wrapping title never moves the figure. */}
+        <h3 className="min-w-0 text-sm font-medium leading-[1.125rem] text-text-secondary" id={labelId}>
           {label}
+          {period ? (
+            <>
+              {" "}
+              <span
+                aria-hidden="true"
+                className="inline-flex h-[1.125rem] items-center rounded border border-border bg-muted/60 px-1.5 align-top text-[11px] font-medium leading-none tabular-nums text-text-secondary"
+              >
+                {period.chip}
+              </span>
+              <span className="sr-only"> {period.label}</span>
+            </>
+          ) : null}
         </h3>
       </div>
       <div className="relative mt-4">

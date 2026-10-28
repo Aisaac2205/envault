@@ -81,8 +81,9 @@ export function ConnectionsHealthCard() {
   } else {
     body = (
       <>
-        <HealthTable labelledBy={titleId} rows={rows} windowDays={windowDays} />
-        <HealthCardList labelledBy={titleId} rows={rows} windowDays={windowDays} />
+        {/* The column headings leave the window out: the range control beside the title shows it. */}
+        <HealthTable labelledBy={titleId} rows={rows} />
+        <HealthCardList labelledBy={titleId} rows={rows} />
       </>
     );
   }

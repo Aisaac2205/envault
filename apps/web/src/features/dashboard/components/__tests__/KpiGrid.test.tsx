@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import i18n from "@/i18n";
 import type { ConnectionsHealth, DailyBackupPoint, DailyBackupSeries, RestoreJob } from "../../types";
 import { KpiGrid } from "../KpiGrid";
 import { useEnglishLocale } from "./english-locale";
@@ -140,12 +141,45 @@ describe("KpiGrid", () => {
     render(<KpiGrid restoresLoading={false} restores={[restore()]} />);
 
     expect(screen.getAllByRole("group")).toHaveLength(4);
-    for (const label of ["Success rate (30d)", "Backups last 7 days", "p95 duration (30d)", "Last restore"]) {
+    for (const label of ["Success rate last 30 days", "Backups last 7 days", "p95 duration last 30 days", "Last restore"]) {
       expect(kpi(label)).toBeInTheDocument();
     }
     // The two KPIs the charts made redundant are gone.
     expect(screen.queryByText("Failed")).not.toBeInTheDocument();
     expect(screen.queryByText("Active connections")).not.toBeInTheDocument();
+  });
+
+  it("shows each window as a chip beside the title, never in brackets, and keeps it in the card's name", () => {
+    mockQueries(query({ data: HEALTH }), query({ data: month() }));
+
+    render(<KpiGrid restoresLoading={false} restores={[restore()]} />);
+
+    const cards = [
+      { name: "Success rate last 30 days", title: "Success rate", chip: "30d" },
+      { name: "Backups last 7 days", title: "Backups", chip: "7d" },
+      { name: "p95 duration last 30 days", title: "p95 duration", chip: "30d" },
+    ];
+    for (const { name, title, chip } of cards) {
+      const heading = within(kpi(name)).getByRole("heading", { level: 3 });
+      expect(heading).toHaveAccessibleName(name);
+      expect(heading.textContent?.startsWith(`${title} `)).toBe(true);
+      expect(heading.textContent).not.toMatch(/[()]/);
+      // The chip is for the eye; assistive technology hears the spelled-out window instead.
+      expect(within(heading).getByText(chip)).toHaveAttribute("aria-hidden", "true");
+    }
+    // The last restore has no window to show.
+    expect(within(kpi("Last restore")).getByRole("heading", { level: 3 }).textContent).toBe("Last restore");
+  });
+
+  it("spells the window out in Spanish too", async () => {
+    mockQueries(query({ data: HEALTH }), query({ data: month() }));
+    await act(() => i18n.changeLanguage("es"));
+
+    render(<KpiGrid restoresLoading={false} restores={[]} />);
+
+    for (const name of ["Tasa de éxito últimos 30 días", "Respaldos últimos 7 días", "Duración p95 últimos 30 días"]) {
+      expect(kpi(name)).toBeInTheDocument();
+    }
   });
 
   it("asks for the 30 day window, the one the charts open on, and for the 90 day one to compare with", () => {
@@ -175,8 +209,8 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
-      expect(kpi("Success rate (30d)")).toHaveTextContent("1,203 of 1,234 backups completed");
+      expect(figure("Success rate last 30 days")).toHaveTextContent("97.4%");
+      expect(kpi("Success rate last 30 days")).toHaveTextContent("1,203 of 1,234 backups completed");
     });
 
     it("compares it with the 90 day rate, in points, with a word as well as an arrow", () => {
@@ -184,7 +218,7 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      const group = kpi("Success rate (30d)");
+      const group = kpi("Success rate last 30 days");
       // 97.49% against 96.25% is 1.24 points up; the baseline is written the way every rate is.
       expect(group).toHaveTextContent("Higher: +1.2 pts");
       expect(group).toHaveTextContent("vs 90d: 96.2%");
@@ -197,7 +231,7 @@ describe("KpiGrid", () => {
         query({ data: month() }),
       );
       const { unmount } = render(<KpiGrid restoresLoading={false} restores={[]} />);
-      expect(kpi("Success rate (30d)")).toHaveTextContent("Lower: -6.3 pts");
+      expect(kpi("Success rate last 30 days")).toHaveTextContent("Lower: -6.3 pts");
       unmount();
 
       mockQueries(
@@ -205,7 +239,7 @@ describe("KpiGrid", () => {
         query({ data: month() }),
       );
       render(<KpiGrid restoresLoading={false} restores={[]} />);
-      expect(kpi("Success rate (30d)")).toHaveTextContent("Unchanged: 0.0 pts");
+      expect(kpi("Success rate last 30 days")).toHaveTextContent("Unchanged: 0.0 pts");
     });
 
     it("has a dash and a note when nothing finished in the window, and nothing to compare", () => {
@@ -214,10 +248,10 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("Success rate (30d)")).toHaveTextContent("—");
-      expect(kpi("Success rate (30d)")).toHaveTextContent("No backups in this period");
-      expect(kpi("Success rate (30d)")).toHaveTextContent("No 90d baseline yet");
-      expect(figure("p95 duration (30d)")).toHaveTextContent("—");
+      expect(figure("Success rate last 30 days")).toHaveTextContent("—");
+      expect(kpi("Success rate last 30 days")).toHaveTextContent("No backups in this period");
+      expect(kpi("Success rate last 30 days")).toHaveTextContent("No 90d baseline yet");
+      expect(figure("p95 duration last 30 days")).toHaveTextContent("—");
     });
 
     it("holds the row for the comparison while the 90 day answer loads, and keeps the figure", () => {
@@ -225,9 +259,9 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
-      expect(within(kpi("Success rate (30d)")).getByTestId("kpi-delta-skeleton")).toBeInTheDocument();
-      expect(within(kpi("p95 duration (30d)")).getByTestId("kpi-delta-skeleton")).toBeInTheDocument();
+      expect(figure("Success rate last 30 days")).toHaveTextContent("97.4%");
+      expect(within(kpi("Success rate last 30 days")).getByTestId("kpi-delta-skeleton")).toBeInTheDocument();
+      expect(within(kpi("p95 duration last 30 days")).getByTestId("kpi-delta-skeleton")).toBeInTheDocument();
     });
 
     it("keeps the figure and says there is no baseline when the 90 day answer fails", () => {
@@ -235,9 +269,9 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
-      expect(kpi("Success rate (30d)")).toHaveTextContent("No 90d baseline yet");
-      expect(kpi("Success rate (30d)")).not.toHaveTextContent("Could not load");
+      expect(figure("Success rate last 30 days")).toHaveTextContent("97.4%");
+      expect(kpi("Success rate last 30 days")).toHaveTextContent("No 90d baseline yet");
+      expect(kpi("Success rate last 30 days")).not.toHaveTextContent("Could not load");
     });
   });
 
@@ -321,8 +355,8 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("p95 duration (30d)")).toHaveTextContent("12.4 s");
-      expect(kpi("p95 duration (30d)")).toHaveTextContent("Median 4.2 s");
+      expect(figure("p95 duration last 30 days")).toHaveTextContent("12.4 s");
+      expect(kpi("p95 duration last 30 days")).toHaveTextContent("Median 4.2 s");
     });
 
     it("compares it with the 90 day p95, as a share of it", () => {
@@ -331,8 +365,8 @@ describe("KpiGrid", () => {
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
       // 12.4 s against 10 s is 24% slower.
-      expect(kpi("p95 duration (30d)")).toHaveTextContent("Higher: +24%");
-      expect(kpi("p95 duration (30d)")).toHaveTextContent("vs 90d: 10.0 s");
+      expect(kpi("p95 duration last 30 days")).toHaveTextContent("Higher: +24%");
+      expect(kpi("p95 duration last 30 days")).toHaveTextContent("vs 90d: 10.0 s");
     });
 
     it("reads a faster month as lower", () => {
@@ -340,7 +374,7 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(kpi("p95 duration (30d)")).toHaveTextContent("Lower: -25%");
+      expect(kpi("p95 duration last 30 days")).toHaveTextContent("Lower: -25%");
     });
 
     it("has nothing to compare when the 90 day window has no p95", () => {
@@ -352,8 +386,8 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("p95 duration (30d)")).toHaveTextContent("12.4 s");
-      expect(kpi("p95 duration (30d)")).toHaveTextContent("No 90d baseline yet");
+      expect(figure("p95 duration last 30 days")).toHaveTextContent("12.4 s");
+      expect(kpi("p95 duration last 30 days")).toHaveTextContent("No 90d baseline yet");
     });
   });
 
@@ -409,7 +443,7 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      for (const label of ["Success rate (30d)", "Backups last 7 days", "p95 duration (30d)"]) {
+      for (const label of ["Success rate last 30 days", "Backups last 7 days", "p95 duration last 30 days"]) {
         expect(kpi(label)).toHaveAttribute("aria-busy", "true");
       }
     });
@@ -421,13 +455,13 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      const group = kpi("Success rate (30d)");
-      expect(figure("Success rate (30d)")).toHaveTextContent("—");
+      const group = kpi("Success rate last 30 days");
+      expect(figure("Success rate last 30 days")).toHaveTextContent("—");
       expect(group).toHaveTextContent("Could not load");
       await user.click(within(group).getByRole("button", { name: "Retry" }));
       expect(health.refetch).toHaveBeenCalledTimes(1);
       // The p95 card reads the same answer, so it fails with it; the backups card does not.
-      expect(kpi("p95 duration (30d)")).toHaveTextContent("Could not load");
+      expect(kpi("p95 duration last 30 days")).toHaveTextContent("Could not load");
       expect(kpi("Backups last 7 days")).not.toHaveTextContent("Could not load");
     });
 
@@ -436,8 +470,8 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
-      expect(kpi("Success rate (30d)")).not.toHaveTextContent("Could not load");
+      expect(figure("Success rate last 30 days")).toHaveTextContent("97.4%");
+      expect(kpi("Success rate last 30 days")).not.toHaveTextContent("Could not load");
     });
 
     it("says the backups card could not load when the daily series fails, and keeps the health figures", () => {
@@ -445,7 +479,7 @@ describe("KpiGrid", () => {
 
       render(<KpiGrid restoresLoading={false} restores={[]} />);
 
-      expect(figure("Success rate (30d)")).toHaveTextContent("97.4%");
+      expect(figure("Success rate last 30 days")).toHaveTextContent("97.4%");
       expect(plots.byKey.size).toBe(0);
       expect(kpi("Backups last 7 days")).toHaveTextContent("Could not load");
     });

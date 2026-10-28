@@ -8,7 +8,6 @@ import { earliestNextRun } from "./health-data";
 
 interface HealthTableProps {
   rows: ConnectionHealth[];
-  windowDays: number;
   /** The id of the card's heading, which names the table. */
   labelledBy: string;
 }
@@ -17,7 +16,7 @@ const HEAD = "px-3 py-2 text-left align-bottom text-xs font-medium text-text-sec
 const CELL = "px-3 py-3 align-middle";
 
 /** The wide layout: one row per connection. It shows once the card is wide enough to hold every column. */
-export function HealthTable({ rows, windowDays, labelledBy }: HealthTableProps) {
+export function HealthTable({ rows, labelledBy }: HealthTableProps) {
   const { t } = useTranslation("dashboard");
 
   return (
@@ -38,7 +37,7 @@ export function HealthTable({ rows, windowDays, labelledBy }: HealthTableProps) 
             <th className={HEAD} scope="col">{t("health.column.freshness")}</th>
             <th className={HEAD} scope="col">{t("health.column.lastBackup")}</th>
             <th className={HEAD} scope="col">{t("column.nextRun")}</th>
-            <th className={HEAD} scope="col">{t("health.column.success", { days: windowDays })}</th>
+            <th className={HEAD} scope="col">{t("health.column.success")}</th>
             <th className={HEAD} scope="col">{t("health.column.schedule")}</th>
           </tr>
         </thead>

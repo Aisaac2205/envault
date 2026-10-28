@@ -175,7 +175,7 @@ describe("ConnectionsHealthCard", () => {
         "Freshness",
         "Last backup",
         "Next run",
-        "Success · p50 / p95 (30d)",
+        "Success · p50 / p95",
         "Schedule",
       ]);
     });
@@ -384,7 +384,9 @@ describe("ConnectionsHealthCard", () => {
 
       expect(hook.useConnectionsHealth).toHaveBeenLastCalledWith(7);
       expect(screen.getByRole("button", { name: "7d" })).toHaveAttribute("aria-pressed", "true");
-      expect(within(screen.getByRole("table")).getAllByRole("columnheader")[4]).toHaveTextContent("(7d)");
+      // The pressed control is what shows the window: the column headings do not repeat it.
+      expect(within(screen.getByRole("table")).getAllByRole("columnheader")[4]?.textContent).toBe("Success · p50 / p95");
+      expect(within(screen.getByRole("list", { name: "Connection status" })).getByText("Success · p50 / p95")).toBeInTheDocument();
     });
 
     it("names the control for what it changes", () => {

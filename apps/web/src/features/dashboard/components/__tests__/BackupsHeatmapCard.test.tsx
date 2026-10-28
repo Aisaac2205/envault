@@ -188,7 +188,7 @@ describe("BackupsHeatmapCard", () => {
 
       render(<BackupsHeatmapCard />);
 
-      const toggle = screen.getByText("Ver días con fallidos (2)");
+      const toggle = screen.getByText("Ver los 2 días con fallos");
       await user.click(toggle);
       const table = screen.getByRole("table", { name: "Días con fallidos" });
       const rows = within(table).getAllByRole("row").slice(1);
@@ -203,7 +203,15 @@ describe("BackupsHeatmapCard", () => {
 
       render(<BackupsHeatmapCard />);
 
-      expect(screen.queryByText(/Ver días con fallidos/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/con fallos/)).not.toBeInTheDocument();
+    });
+
+    it("counts a single day in the singular", () => {
+      mockAnalytics({ data: quarter({ "2026-10-27": [24, 1] }) });
+
+      render(<BackupsHeatmapCard />);
+
+      expect(screen.getByText("Ver 1 día con fallos")).toBeInTheDocument();
     });
   });
 

@@ -2,8 +2,10 @@ import type { DurationKey } from "./dump-duration-data";
 
 export interface DurationSeries {
   key: DurationKey;
-  /** i18n key (dashboard namespace) for the legend and tooltip label. */
-  labelKey: string;
+  /** i18n key (dashboard namespace) of the short term (`p50`): the legend label and the tooltip row. */
+  shortKey: string;
+  /** i18n key of what the term means (`median`): only the legend says it, the tooltip does not repeat it. */
+  hintKey: string;
   /** Series color: blue median, purple 95th percentile, orange slowest. */
   color: string;
   /** Main chart stroke width in px. The median is the most prominent. */
@@ -23,7 +25,8 @@ export interface DurationSeries {
 export const DURATION_SERIES: readonly DurationSeries[] = [
   {
     key: "p50",
-    labelKey: "duration.series.p50",
+    shortKey: "duration.series.p50.short",
+    hintKey: "duration.series.p50.hint",
     color: "var(--chart-duration-p50)",
     strokeWidth: 2.5,
     stripStrokeWidth: 1,
@@ -31,7 +34,8 @@ export const DURATION_SERIES: readonly DurationSeries[] = [
   },
   {
     key: "p95",
-    labelKey: "duration.series.p95",
+    shortKey: "duration.series.p95.short",
+    hintKey: "duration.series.p95.hint",
     color: "var(--chart-duration-p95)",
     strokeWidth: 2,
     stripStrokeWidth: 1,
@@ -40,7 +44,8 @@ export const DURATION_SERIES: readonly DurationSeries[] = [
   },
   {
     key: "max",
-    labelKey: "duration.series.max",
+    shortKey: "duration.series.max.short",
+    hintKey: "duration.series.max.hint",
     color: "var(--chart-duration-max)",
     strokeWidth: 2,
     stripStrokeWidth: 1,

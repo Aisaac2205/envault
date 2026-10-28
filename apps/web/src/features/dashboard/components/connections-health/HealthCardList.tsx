@@ -8,13 +8,12 @@ import { earliestNextRun } from "./health-data";
 
 interface HealthCardListProps {
   rows: ConnectionHealth[];
-  windowDays: number;
   /** The id of the card's heading, which names the list. */
   labelledBy: string;
 }
 
 /** The narrow layout: each connection is a card, so nothing scrolls sideways. */
-export function HealthCardList({ rows, windowDays, labelledBy }: HealthCardListProps) {
+export function HealthCardList({ rows, labelledBy }: HealthCardListProps) {
   const { t } = useTranslation("dashboard");
 
   return (
@@ -48,7 +47,7 @@ export function HealthCardList({ rows, windowDays, labelledBy }: HealthCardListP
             <dd>
               <NextRunCell nextRunAt={earliestNextRun(row.schedules)} />
             </dd>
-            <dt className="text-xs text-text-secondary">{t("health.column.success", { days: windowDays })}</dt>
+            <dt className="text-xs text-text-secondary">{t("health.column.success")}</dt>
             <dd>
               <RateCell connection={row} />
             </dd>
