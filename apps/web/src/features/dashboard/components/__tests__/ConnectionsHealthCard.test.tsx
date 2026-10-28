@@ -163,11 +163,11 @@ describe("ConnectionsHealthCard", () => {
 
       const names = within(table())
         .getAllByRole("rowheader")
-        .map((header) => header.querySelector("[title]")?.textContent);
+        .map((header) => header.querySelector("[title]:not(img)")?.textContent);
       expect(names).toEqual(["Store", "Blog", "Legacy", "Shop"]);
     });
 
-    it("marks each engine with a one-color icon named for it, in the table and in the cards", () => {
+    it("marks each engine with its official logo named for it, in the table and in the cards", () => {
       mockHealth({ data: health([SHOP, STORE]) });
 
       renderCard();
