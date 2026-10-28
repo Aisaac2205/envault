@@ -125,9 +125,11 @@
      bare HSL triplets and not valid colors on their own, so the chart tokens point at
      the hex --color-* tokens instead. data-theme is set on <html>, the same element as
      :root, so these references follow the dark theme override. */
-  --chart-1: #5B8C00;
-  --chart-2: #7C3AED;
-  --chart-3: #0891B2;
+  /* Vivid categorical steps (dataviz validator: CVD and normal-vision pass). Lime and
+     cyan sit below 3:1 on white, so every use carries a visible label or value. */
+  --chart-1: #84CC16;
+  --chart-2: #8B5CF6;
+  --chart-3: #06B6D4;
   --chart-4: oklch(0.56 0.021 213.5);
   --chart-5: oklch(0 0 0);
   --chart-duration-p50: #1D4ED8;
