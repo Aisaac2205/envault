@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import { EngineChip } from "./HealthCells";
 import { ENGINE_NAMES, knownEngine } from "./health-data";
 
@@ -74,4 +74,29 @@ export function EngineMark({ dbType }: { dbType: string }) {
   if (engine === "postgresql") return <PostgresIcon />;
   if (engine === "mysql") return <MySqlIcon />;
   return <EngineChip dbType={dbType} />;
+}
+
+/**
+ * A connection name with its engine beside it. The icon leads, so in a table the
+ * icons form one column and in a narrow card it never wraps onto a line of its
+ * own; the text chip of an unknown engine trails, since a word read before the
+ * name would push every name out of line. The mark sits in a box one line of the
+ * name tall (`text-sm leading-snug`, as every name here is set), so it stays
+ * level with the first line when a long name wraps.
+ */
+export function EngineName({ dbType, children }: { dbType: string; children: ReactNode }) {
+  const leads = knownEngine(dbType) !== null;
+  const mark = (
+    <span className="flex h-[1lh] shrink-0 items-center text-sm leading-snug">
+      <EngineMark dbType={dbType} />
+    </span>
+  );
+
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      {leads && mark}
+      {children}
+      {!leads && mark}
+    </div>
+  );
 }

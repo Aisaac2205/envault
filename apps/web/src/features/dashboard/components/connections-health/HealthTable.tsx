@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
 import type { ConnectionHealth } from "../../types";
 import { FreshnessBadge } from "./FreshnessBadge";
-import { EngineMark } from "./EngineIcon";
+import { EngineName } from "./EngineIcon";
 import { LastBackupCell, NextRunCell, RateCell, ScheduleCell } from "./HealthCells";
 import { FRESHNESS_META } from "./freshness-meta";
 import { earliestNextRun } from "./health-data";
@@ -52,7 +52,7 @@ export function HealthTable({ rows, labelledBy }: HealthTableProps) {
               key={row.connectionId}
             >
               <th className={cn(CELL, "text-left font-normal")} scope="row">
-                <div className="flex min-w-0 items-center gap-2">
+                <EngineName dbType={row.dbType}>
                   {/* Two lines before it gives up (a name with no spaces breaks anywhere), so a long name is still readable; the full name is on hover. */}
                   <span
                     className="line-clamp-2 min-w-0 text-sm font-medium leading-snug text-text-primary [overflow-wrap:anywhere]"
@@ -60,8 +60,7 @@ export function HealthTable({ rows, labelledBy }: HealthTableProps) {
                   >
                     {row.connectionName}
                   </span>
-                  <EngineMark dbType={row.dbType} />
-                </div>
+                </EngineName>
               </th>
               <td className={CELL}>
                 <FreshnessBadge freshness={row.freshness} />

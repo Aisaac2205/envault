@@ -178,13 +178,34 @@ describe("ConnectionsHealthCard", () => {
       }
     });
 
-    it("keeps the text chip for an engine without an icon", () => {
+    it("leads each name with its engine icon, in the table and in the cards", () => {
+      mockHealth({ data: health([SHOP, STORE]) });
+
+      renderCard();
+
+      const list = screen.getByRole("list", { name: "Connection status" });
+      for (const scope of [table(), list]) {
+        for (const [name, engine] of [
+          ["Shop", "PostgreSQL"],
+          ["Store", "MySQL"],
+        ]) {
+          const label = within(scope).getByTitle(name);
+          const icon = within(scope).getByRole("img", { name: engine });
+          // The icon comes first, so the icons line up in a column and never wrap onto a line of their own.
+          expect(icon.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        }
+      }
+    });
+
+    it("keeps the text chip for an engine without an icon, after the name", () => {
       mockHealth({ data: health([connection("Wiki", "ok", { dbType: "mariadb" })]) });
 
       renderCard();
 
-      expect(within(table()).getByText("MARIADB")).toBeInTheDocument();
+      const chip = within(table()).getByText("MARIADB");
+      expect(chip).toBeInTheDocument();
       expect(within(table()).queryByRole("img")).not.toBeInTheDocument();
+      expect(within(table()).getByTitle("Wiki").compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it("names the columns", () => {

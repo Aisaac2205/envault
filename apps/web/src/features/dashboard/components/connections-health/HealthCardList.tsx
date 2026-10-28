@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
 import type { ConnectionHealth } from "../../types";
 import { FreshnessBadge } from "./FreshnessBadge";
-import { EngineMark } from "./EngineIcon";
+import { EngineName } from "./EngineIcon";
 import { LastBackupCell, NextRunCell, RateCell, ScheduleCell } from "./HealthCells";
 import { FRESHNESS_META } from "./freshness-meta";
 import { earliestNextRun } from "./health-data";
@@ -28,15 +28,14 @@ export function HealthCardList({ rows, labelledBy }: HealthCardListProps) {
           key={row.connectionId}
         >
           <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <EngineName dbType={row.dbType}>
               <h3
                 className="line-clamp-2 min-w-0 text-sm font-semibold leading-snug text-text-primary [overflow-wrap:anywhere]"
                 title={row.connectionName}
               >
                 {row.connectionName}
               </h3>
-              <EngineMark dbType={row.dbType} />
-            </div>
+            </EngineName>
             <FreshnessBadge className="shrink-0" freshness={row.freshness} />
           </div>
           <dl className="mt-3 grid grid-cols-[minmax(5.5rem,auto)_minmax(0,1fr)] items-start gap-x-4 gap-y-2.5">
