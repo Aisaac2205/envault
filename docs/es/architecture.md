@@ -82,7 +82,7 @@ El frontend sigue la arquitectura **Vertical Slice**: cada pantalla (feature) es
 
 | Feature | Ruta | Descripción |
 |---------|------|-------------|
-| `dashboard` | `src/features/dashboard/` | Vista general: última ejecución de cada job, espacio en R2, conexiones activas |
+| `dashboard` | `src/features/dashboard/` | Vista general: KPIs, duración de los dumps por día, calendario de respaldos de 90 días, almacenamiento por conexión, últimos respaldos y estado de las conexiones |
 | `dumps` | `src/features/dumps/` | Listado, descarga y ejecución manual de backups |
 | `restore` | `src/features/restore/` | Selección de dump y restauración en una conexión destino |
 | `cronjobs` | `src/features/cronjobs/` | Alta, baja y modificación de schedules de backup automático |
