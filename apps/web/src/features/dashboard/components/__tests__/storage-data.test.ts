@@ -7,9 +7,10 @@ import {
   toStorageSlices,
 } from "../storage-by-connection/storage-data";
 
+/** The Spanish strings, with the same singular/plural split as `storage.other_one` and `storage.other_other`. */
 const LABELS = {
   deleted: "Conexión eliminada",
-  other: (count: number) => `${count} otras`,
+  other: (count: number) => (count === 1 ? `${count} otra` : `${count} otras`),
 };
 
 function row(id: string, name: string | null, sizeMb: number, count = 1): ConnectionStorage {
@@ -60,6 +61,16 @@ describe("toStorageSlices", () => {
       isOther: true,
     });
     expect(OTHER_COLOR).toBe("var(--chart-4)");
+  });
+
+  it("folds a single leftover connection under the singular label", () => {
+    const slices = toStorageSlices(
+      [row("a", "Shop", 500), row("b", "CRM", 400), row("c", "Blog", 300), row("d", "Wiki", 90, 3)],
+      LABELS,
+    );
+
+    expect(slices).toHaveLength(4);
+    expect(slices[3]).toMatchObject({ id: "other", label: "1 otra", value: 90, backupCount: 3, isOther: true });
   });
 
   it("does not change the total when it folds", () => {

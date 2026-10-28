@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import i18n from "@/i18n";
 import type { ConnectionStorage } from "../../types";
 import { StorageByConnectionChart } from "../StorageByConnectionChart";
 
@@ -139,6 +140,28 @@ describe("StorageByConnectionChart", () => {
       expect(within(legend()).queryByText(/\(\d+\)/)).not.toBeInTheDocument();
       expect(within(centerOf(container)).getByText("40.00 GB")).toBeInTheDocument();
       expect(screen.queryByText("Wiki")).not.toBeInTheDocument();
+    });
+
+    // The size follows the label with no space between them in the text, hence the lookahead.
+    it.each([
+      ["es", /^1 otra(?!s)/],
+      ["en", /^1 other(?!s)/],
+    ])("names a single folded connection in the singular, in %s", async (language, singular) => {
+      mockStorage({ data: fiveConnections().slice(0, 4) });
+      const previous = i18n.language;
+      await i18n.changeLanguage(language);
+      try {
+        render(<StorageByConnectionChart />);
+
+        const buttons = within(screen.getByRole("group", { name: language === "es" ? "Leyenda" : "Legend" }))
+          .getAllByRole("button");
+        expect(buttons).toHaveLength(4);
+        expect(buttons[3]).toHaveTextContent(singular);
+        expect(buttons[3]).toHaveTextContent("3.00 GB");
+      } finally {
+        cleanup();
+        await i18n.changeLanguage(previous);
+      }
     });
 
     it("has a hole, so the center can carry the total", () => {
