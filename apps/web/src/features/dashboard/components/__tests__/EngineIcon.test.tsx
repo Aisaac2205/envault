@@ -19,10 +19,10 @@ describe("EngineMark", () => {
     expect(icon).toHaveAttribute("title", name);
   });
 
-  it("draws the logo at icon size, so a name keeps its width on a phone", () => {
+  it("uses the size the connection screens give the same logos", () => {
     render(<EngineMark dbType="postgres" />);
 
-    expect(screen.getByRole("img", { name: "PostgreSQL" })).toHaveClass("size-4", "shrink-0");
+    expect(screen.getByRole("img", { name: "PostgreSQL" })).toHaveClass("size-5", "shrink-0");
   });
 
   it("keeps the text chip for an engine it has no logo for", () => {

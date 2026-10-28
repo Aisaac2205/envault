@@ -4,7 +4,7 @@ import PostgresSQL from "@/shared/assets/PostgresSQL.svg";
 import { EngineChip } from "./HealthCells";
 import { ENGINE_NAMES, knownEngine } from "./health-data";
 
-/** The official engine logos the connection screens use, at icon size so a name keeps its two lines on a phone. */
+/** The official engine logos, the same files and size the connection screens use. */
 const ENGINE_LOGOS = {
   postgresql: PostgresSQL,
   mysql: MySQL,
@@ -21,7 +21,7 @@ export function EngineMark({ dbType }: { dbType: string }) {
   return (
     <img
       alt={ENGINE_NAMES[engine]}
-      className="size-4 shrink-0"
+      className="size-5 shrink-0"
       src={ENGINE_LOGOS[engine]}
       title={ENGINE_NAMES[engine]}
     />
