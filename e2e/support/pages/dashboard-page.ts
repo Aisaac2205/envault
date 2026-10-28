@@ -26,7 +26,7 @@ export class DashboardPage {
   }
 
   /**
-   * A panel's title (for example "Backup calendar" or "Connections health"), found as
+   * A panel's title (for example "Backup calendar" or "Connection status"), found as
    * plain text in a card. The chart cards render it as an h2 and the older ones
    * as a div, so this stays on text until every card has a real heading.
    */

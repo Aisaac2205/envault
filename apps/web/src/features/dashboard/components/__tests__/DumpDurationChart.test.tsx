@@ -242,6 +242,21 @@ describe("DumpDurationChart", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
+  it("shows the legend, inert, while the data loads, so the card keeps its height", () => {
+    mockAnalytics({ isLoading: true });
+
+    render(<DumpDurationChart />);
+
+    const status = screen.getByRole("status", { name: "Cargando duración de los respaldos" });
+    const legend = status.querySelector("[role=\"group\"]");
+    expect(legend).not.toBeNull();
+    expect(legend).toHaveTextContent("Mediana (p50)");
+    expect(legend).toHaveTextContent("Percentil 95 (p95)");
+    expect(legend).toHaveTextContent("Más lento (máx.)");
+    // Nothing to click or tab to until there is a chart to emphasize.
+    expect(legend?.closest("[inert]")).not.toBeNull();
+  });
+
   it("renders the empty state when no backup completed in the window", () => {
     mockAnalytics({
       data: series(Array.from({ length: 30 }, (_, index) => day(dateOf(index)))),
@@ -304,9 +319,10 @@ describe("DumpDurationChart", () => {
 
     const label = screen.getByRole("img").getAttribute("aria-label");
     expect(label).toContain("mediana 1,2 s");
+    // The legend no longer repeats the figures: the summary above and the tooltip have them.
     const legend = screen.getByRole("group", { name: "Leyenda" });
-    expect(within(legend).getByText("1,2 s")).toBeInTheDocument();
-    expect(within(legend).getByText(/Último día con respaldos: /)).toBeInTheDocument();
+    expect(within(legend).queryByText("1,2 s")).not.toBeInTheDocument();
+    expect(within(legend).queryByText(/Último día con respaldos/)).not.toBeInTheDocument();
   });
 
   describe("legend", () => {
@@ -323,69 +339,43 @@ describe("DumpDurationChart", () => {
       }
     });
 
-    it("shows the latest day with data", () => {
+    it("is compact: a swatch and a word per series, with no per-day values and no caption", () => {
       const days = rampingDays();
-      // The newest day has no backup, so the legend falls back to the day before.
+      // The newest day has no backup, which used to make the legend fall back to the day before.
       days[29] = day(days[29]!.date);
       mockAnalytics({ data: series(days) });
 
       render(<DumpDurationChart />);
 
       const legend = screen.getByRole("group", { name: "Leyenda" });
-      // Day 28: 1 + 2.8, 2 + 2.8, 3 + 2.8.
-      expect(within(legend).getByText("3,8 s")).toBeInTheDocument();
-      expect(within(legend).getByText("4,8 s")).toBeInTheDocument();
-      expect(within(legend).getByText("5,8 s")).toBeInTheDocument();
-      expect(within(legend).getByText(/Último día con respaldos: /)).toBeInTheDocument();
+      // The three words and nothing else: no figures, no date.
+      expect(legend.textContent).toBe("Mediana (p50)Percentil 95 (p95)Más lento (máx.)");
+      expect(within(legend).queryByText("—")).not.toBeInTheDocument();
+      expect(within(legend).queryByText(/Último día con respaldos/)).not.toBeInTheDocument();
+      // Each entry is the sample of its line plus the word, nothing else.
+      for (const button of within(legend).getAllByRole("button")) {
+        expect(button.querySelectorAll("svg")).toHaveLength(1);
+      }
     });
 
-    it("shows an em dash for a series with no value that day", () => {
-      const days = rampingDays();
-      days[29] = day(days[29]!.date, [2, null, null]);
-      mockAnalytics({ data: series(days) });
-
-      render(<DumpDurationChart />);
-
-      const legend = screen.getByRole("group", { name: "Leyenda" });
-      expect(within(legend).getByText("2,0 s")).toBeInTheDocument();
-      expect(within(legend).getAllByText("—")).toHaveLength(2);
-    });
-
-    it("shows the values of the hovered day, then goes back to the latest day", async () => {
+    it("does not change while the pointer moves over the chart: the tooltip has the values", async () => {
       mockAnalytics({ data: series(rampingDays()) });
 
       const { container } = render(<DumpDurationChart />);
       const legend = screen.getByRole("group", { name: "Leyenda" });
-      // Day 29 is the newest: 1 + 2.9.
-      expect(within(legend).getByText("3,9 s")).toBeInTheDocument();
+      const before = legend.textContent;
 
-      // The left edge of the plot is the first day of the window, index 0: 1 + 0.0.
       // The chart only reacts to the pointer once its reveal animation is over.
       await waitFor(
         () => {
           hoverMainChart(container, 52);
-          expect(within(legend).getByText("1,0 s")).toBeInTheDocument();
+          expect(screen.getByText("1,0 s")).toBeInTheDocument();
         },
         { timeout: 5000 },
       );
-      expect(within(legend).queryByText("3,9 s")).not.toBeInTheDocument();
-      expect(within(legend).queryByText(/Último día con respaldos/)).not.toBeInTheDocument();
-      // The caption names the hovered day instead.
-      expect(
-        within(legend).getByText(
-          new Intl.DateTimeFormat("es-AR", {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          }).format(new Date(2026, 7, 1)),
-        ),
-      ).toBeInTheDocument();
 
-      fireEvent.mouseLeave(mainChartSurface(container));
-      await waitFor(() => {
-        expect(within(legend).getByText("3,9 s")).toBeInTheDocument();
-      });
+      expect(within(legend).queryByText("1,0 s")).not.toBeInTheDocument();
+      expect(legend.textContent).toBe(before);
     }, 10000);
 
     it("emphasizes a series on click and resets on the second click", async () => {

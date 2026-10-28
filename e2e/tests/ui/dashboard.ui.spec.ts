@@ -22,7 +22,7 @@ const PANELS = [
   'Backup calendar',
   'Recent backups',
   'Storage by connection',
-  'Connections health',
+  'Connection status',
 ];
 
 // Every request the dashboard makes for its data, in the paths the browser uses.
@@ -58,7 +58,7 @@ test.describe('dashboard with the real stack', () => {
 
   // About defect D4: /api/health is not part of the public API (health is
   // internal, see health.api.spec.ts) and the dashboard has no client for it.
-  // The "Connections health" panel reads /api/jobs/analytics/connections-health.
+  // The "Connection status" panel reads /api/jobs/analytics/connections-health.
   // If a screen starts calling /api/health, this test fails on that 404.
   test('makes only requests that succeed', async ({ page }) => {
     const answered = new Set<string>();

@@ -9,6 +9,7 @@ import { LineChartLoading } from "@/shared/ui/charts/line-chart-loading";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { useDailyAnalytics } from "../hooks/useDailyAnalytics";
 import { ConnectionFilter } from "./dump-duration/ConnectionFilter";
+import { DumpDurationLegend } from "./dump-duration/DumpDurationLegend";
 import { DumpDurationPlot } from "./dump-duration/DumpDurationPlot";
 import { QuickRangeControl } from "./dump-duration/QuickRangeControl";
 import {
@@ -20,16 +21,26 @@ import {
   type QuickRangeDays,
 } from "./dump-duration/dump-duration-data";
 
+const NO_HOVER = () => undefined;
+
 /**
- * About the height of the loaded chart plus its legend, so the card does not
- * jump when the data arrives.
+ * The loaded card without its data: the real (inert) legend, which needs none,
+ * above a loading chart of the same height as the live one, so the card does not
+ * jump when the data arrives at any width.
  */
 function DurationLoading({ label }: { label: string }) {
   return (
     <div aria-label={label} aria-live="polite" role="status">
+      <DumpDurationLegend
+        highlightedIndex={null}
+        inert
+        onHoverChange={NO_HOVER}
+        onTogglePinned={NO_HOVER}
+        pinnedKey={null}
+      />
       <LineChartLoading
         aspectRatio=""
-        className="h-[400px] md:h-[370px]"
+        className="h-[220px] md:h-[280px]"
         label={label}
       />
     </div>

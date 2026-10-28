@@ -246,13 +246,14 @@
   --chart-marker-border: oklch(0.4 0.01 260);
   --chart-marker-foreground: oklch(0.9 0 0);
   --chart-label: oklch(0.75 0.01 260);
-  /* Dark values of the failures scale: more failures is brighter. The reds pass
-     validate_palette.js --ordinal on #1C1C20. */
+  /* Dark values of the failures scale: more failures is brighter, and the worst step is the
+     most saturated red (a pale pink end read as the mildest). The reds pass
+     validate_palette.js --ordinal on #1C1C20; the lime to brick step is told apart by lightness. */
   --chart-scale-01: #26262C;
   --chart-scale-02: #33420E;
-  --chart-scale-03: #D93B3B;
-  --chart-scale-04: #FF7A7A;
-  --chart-scale-05: #FFD0D0;
+  --chart-scale-03: #873E3E;
+  --chart-scale-04: #CC3C44;
+  --chart-scale-05: #FC4351;
   --chart-scale-pattern-color: #5A5A64;
   --chart-indicator-color: oklch(1 0 0);
   --chart-indicator-secondary-color: oklch(0.145 0 0);
