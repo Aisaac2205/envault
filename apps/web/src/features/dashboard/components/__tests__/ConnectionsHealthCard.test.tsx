@@ -161,8 +161,30 @@ describe("ConnectionsHealthCard", () => {
 
       const names = within(table())
         .getAllByRole("rowheader")
-        .map((header) => header.textContent);
-      expect(names).toEqual(["StoreMySQL", "Blog" + "MySQL", "LegacyPG", "ShopPG"]);
+        .map((header) => header.querySelector("[title]")?.textContent);
+      expect(names).toEqual(["Store", "Blog", "Legacy", "Shop"]);
+    });
+
+    it("marks each engine with a one-color icon named for it, in the table and in the cards", () => {
+      mockHealth({ data: health([SHOP, STORE]) });
+
+      renderCard();
+
+      const list = screen.getByRole("list", { name: "Connection status" });
+      for (const scope of [table(), list]) {
+        expect(within(scope).getByRole("img", { name: "PostgreSQL" })).toBeInTheDocument();
+        expect(within(scope).getByRole("img", { name: "MySQL" })).toBeInTheDocument();
+        expect(within(scope).queryByText("PG")).not.toBeInTheDocument();
+      }
+    });
+
+    it("keeps the text chip for an engine without an icon", () => {
+      mockHealth({ data: health([connection("Wiki", "ok", { dbType: "mariadb" })]) });
+
+      renderCard();
+
+      expect(within(table()).getByText("MARIADB")).toBeInTheDocument();
+      expect(within(table()).queryByRole("img")).not.toBeInTheDocument();
     });
 
     it("names the columns", () => {

@@ -109,3 +109,20 @@ export function engineLabel(dbType: string): string {
   if (engine === "mysql") return "MySQL";
   return dbType.toUpperCase();
 }
+
+/** The engines the dashboard draws an icon for. */
+export type KnownEngine = "postgresql" | "mysql";
+
+/** The full name of each engine with an icon: the icon's accessible name and its hover text. */
+export const ENGINE_NAMES: Record<KnownEngine, string> = {
+  postgresql: "PostgreSQL",
+  mysql: "MySQL",
+};
+
+/** Which known engine a connection speaks, or `null` for one without an icon (it keeps the text chip). */
+export function knownEngine(dbType: string): KnownEngine | null {
+  const engine = dbType.toLowerCase();
+  if (engine === "postgres" || engine === "postgresql") return "postgresql";
+  if (engine === "mysql") return "mysql";
+  return null;
+}

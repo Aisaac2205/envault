@@ -10,7 +10,7 @@ import { describeInterval, engineLabel, tightestSchedule } from "./health-data";
 
 const MISSING = "—";
 
-/** `PG` / `MySQL`: which engine the connection speaks. Not a status, so it stays neutral. */
+/** The engine as text (`MARIADB`), for an engine the dashboard has no icon for. Not a status, so it stays neutral. */
 export function EngineChip({ dbType }: { dbType: string }) {
   return (
     <span className="inline-flex shrink-0 items-center rounded border border-border bg-muted/60 px-1.5 py-px text-[11px] font-medium leading-4 text-text-secondary">
