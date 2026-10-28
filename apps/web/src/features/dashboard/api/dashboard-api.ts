@@ -10,9 +10,10 @@ import type {
 } from "../types";
 
 export const dashboardApi = {
-  getRecentBackups: (limit = 5) =>
+  /** The latest failed backups, newest first. */
+  getRecentFailures: (limit = 5) =>
     apiClient
-      .get<BackupJob[]>("/jobs/backups", { params: { limit } })
+      .get<BackupJob[]>("/jobs/backups", { params: { status: "failed", limit } })
       .then((r) => r.data),
 
   getRecentRestores: (limit = 5) =>

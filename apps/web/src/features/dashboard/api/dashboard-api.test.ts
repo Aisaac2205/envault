@@ -48,6 +48,34 @@ describe("dashboardApi", () => {
     expect(paths.filter((path) => /^\/(api\/)?health(\/|$)/i.test(path))).toEqual([]);
   });
 
+  describe("recent failures", () => {
+    it("getRecentFailures asks the backups list for the five latest failed ones", async () => {
+      const jobs = [{ id: "backup-1", status: "failed" }];
+      mockApiClient.get.mockResolvedValue({ data: jobs });
+
+      const result = await dashboardApi.getRecentFailures();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/backups", {
+        params: { status: "failed", limit: 5 },
+      });
+      expect(result).toBe(jobs);
+    });
+
+    it("getRecentFailures passes a different limit through", async () => {
+      mockApiClient.get.mockResolvedValue({ data: [] });
+
+      await dashboardApi.getRecentFailures(3);
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/backups", {
+        params: { status: "failed", limit: 3 },
+      });
+    });
+
+    it("no longer reads the unfiltered backups list", () => {
+      expect(dashboardApi).not.toHaveProperty("getRecentBackups");
+    });
+  });
+
   describe("analytics", () => {
     const CONNECTION_ID = "6c1f2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b";
 
