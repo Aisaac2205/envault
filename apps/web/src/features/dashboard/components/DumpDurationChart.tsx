@@ -6,9 +6,10 @@ import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
 import { LineChartLoading } from "@/shared/ui/charts/line-chart-loading";
-import { EmptyState } from "@/shared/ui/empty-state";
 import { useDailyAnalytics } from "../hooks/useDailyAnalytics";
 import { DURATION_RANGE_KEY, useStoredRange } from "../hooks/useStoredRange";
+import { CardEmpty } from "./empty-states/CardEmpty";
+import { type DataPresence, isNothingYet } from "./empty-states/data-presence";
 import { ConnectionFilter } from "./dump-duration/ConnectionFilter";
 import { DumpDurationLegend } from "./dump-duration/DumpDurationLegend";
 import { DumpDurationPlot } from "./dump-duration/DumpDurationPlot";
@@ -16,38 +17,51 @@ import { QuickRangeControl } from "./dump-duration/QuickRangeControl";
 import {
   ALL_CONNECTIONS,
   hasDurationData,
+  QUICK_RANGE_DAYS,
   toConnectionId,
   toDurationRows,
 } from "./dump-duration/dump-duration-data";
 
 const NO_HOVER = () => undefined;
+/** The widest quick range: what an empty range can widen to. */
+const WIDEST_RANGE = QUICK_RANGE_DAYS[QUICK_RANGE_DAYS.length - 1];
+/** The plot's height, which the loading chart and the empty message take too. */
+const PLOT_HEIGHT = "h-[220px] md:h-[280px]";
+
+/** The real legend, inert: it needs no data, and it keeps the card's height before there is a chart. */
+function InertLegend() {
+  return (
+    <DumpDurationLegend
+      highlightedIndex={null}
+      inert
+      onHoverChange={NO_HOVER}
+      onTogglePinned={NO_HOVER}
+      pinnedKey={null}
+    />
+  );
+}
 
 /**
- * The loaded card without its data: the real (inert) legend, which needs none,
- * above a loading chart of the same height as the live one, so the card does not
- * jump when the data arrives at any width.
+ * The loaded card without its data: the inert legend above a loading chart of
+ * the same height as the live one, so the card does not jump when the data
+ * arrives at any width.
  */
 function DurationLoading({ label }: { label: string }) {
   return (
     <div aria-label={label} aria-live="polite" role="status">
-      <DumpDurationLegend
-        highlightedIndex={null}
-        inert
-        onHoverChange={NO_HOVER}
-        onTogglePinned={NO_HOVER}
-        pinnedKey={null}
-      />
-      <LineChartLoading
-        aspectRatio=""
-        className="h-[220px] md:h-[280px]"
-        label={label}
-      />
+      <InertLegend />
+      <LineChartLoading aspectRatio="" className={PLOT_HEIGHT} label={label} />
     </div>
   );
 }
 
+interface DumpDurationChartProps {
+  /** What the dashboard has to show, from the page; it picks what an empty chart says. */
+  presence?: DataPresence;
+}
+
 /** Per day dump duration (median, 95th percentile, slowest) over 7, 30 or 90 days. */
-export function DumpDurationChart() {
+export function DumpDurationChart({ presence = "unknown" }: DumpDurationChartProps) {
   const { t } = useTranslation("dashboard");
   const [connectionValue, setConnectionValue] = useState(ALL_CONNECTIONS);
   // The window asked of the API, and the chart shows all of it. It opens on the one it was left on.
@@ -80,13 +94,24 @@ export function DumpDurationChart() {
       </Alert>
     );
   } else if (!hasData) {
+    // Before the first backup there is no range to blame; after it, the range may be the reason.
+    const nothingYet = isNothingYet(presence);
     body = (
-      <EmptyState
-        className="min-h-[220px] py-6 md:min-h-[280px]"
-        description={t("duration.empty.description", { days: rangeDays })}
-        icon={<Timer />}
-        title={t("duration.empty.title")}
-      />
+      <div>
+        <InertLegend />
+        <CardEmpty
+          action={
+            !nothingYet && rangeDays < WIDEST_RANGE ? (
+              <Button onClick={() => setRangeDays(WIDEST_RANGE)} size="sm" variant="outline">
+                {t("duration.empty.showAll", { days: WIDEST_RANGE })}
+              </Button>
+            ) : undefined
+          }
+          className={PLOT_HEIGHT}
+          icon={<Timer />}
+          message={nothingYet ? t("duration.empty.noBackups") : t("duration.empty.range", { days: rangeDays })}
+        />
+      </div>
     );
   } else {
     body = <DumpDurationPlot rows={rows} />;

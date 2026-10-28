@@ -4,11 +4,16 @@ import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
-import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useStorageByConnection } from "../hooks/useStorageByConnection";
+import { CardEmpty } from "./empty-states/CardEmpty";
 import { PIE_SIZE, StoragePie } from "./storage-by-connection/StoragePie";
 import { toStorageSlices } from "./storage-by-connection/storage-data";
+
+/** The drawn donut's diameter: the chart leaves room around it for a slice to grow on hover. */
+const RING_SIZE = PIE_SIZE - 16;
+/** Three legend rows of the loading state: 3 × 36px and two 12px gaps. */
+const LEGEND_HEIGHT = "min-h-[8.25rem]";
 
 /** A donut and three legend rows' worth of placeholder, so the card does not jump. */
 function StorageLoading({ label }: { label: string }) {
@@ -22,13 +27,34 @@ function StorageLoading({ label }: { label: string }) {
       {/* A ring, like the donut it stands in for. */}
       <div
         className="shrink-0 animate-pulse rounded-full border-[26px] border-muted motion-reduce:animate-none"
-        style={{ width: PIE_SIZE - 16, height: PIE_SIZE - 16 }}
+        style={{ width: RING_SIZE, height: RING_SIZE }}
       />
       <div className="w-full space-y-3 @sm:max-w-72">
         <Skeleton className="h-9 w-full" />
         <Skeleton className="h-9 w-full" />
         <Skeleton className="h-9 w-full" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Nothing stored: the loading ring standing still, in the track color and no data
+ * color, a muted drive where the total goes, and one line where the legend goes.
+ * Same place and size as the loading state, so the card keeps its frame.
+ */
+function StorageEmpty({ message }: { message: string }) {
+  return (
+    <div className="flex w-full flex-col items-center gap-5 @sm:flex-row @sm:justify-center">
+      <div
+        aria-hidden="true"
+        className="flex shrink-0 items-center justify-center rounded-full border-[26px] border-muted text-muted-foreground"
+        data-testid="storage-empty-ring"
+        style={{ width: RING_SIZE, height: RING_SIZE }}
+      >
+        <HardDrive className="size-6" />
+      </div>
+      <CardEmpty className={`w-full @sm:max-w-72 ${LEGEND_HEIGHT}`} message={message} />
     </div>
   );
 }
@@ -64,14 +90,7 @@ export function StorageByConnectionChart() {
       </Alert>
     );
   } else if (slices.length === 0) {
-    body = (
-      <EmptyState
-        className="py-6"
-        description={t("storage.empty.description")}
-        icon={<HardDrive />}
-        title={t("storage.empty.title")}
-      />
-    );
+    body = <StorageEmpty message={t("storage.empty")} />;
   } else {
     body = <StoragePie slices={slices} />;
   }

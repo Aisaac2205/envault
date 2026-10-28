@@ -267,24 +267,68 @@ describe("DumpDurationChart", () => {
     expect(legend?.closest("[inert]")).not.toBeNull();
   });
 
-  it("renders the empty state when no backup completed in the window", () => {
-    mockAnalytics({
-      data: series(Array.from({ length: 30 }, (_, index) => day(dateOf(index)))),
+  describe("empty states", () => {
+    function emptyMonth() {
+      mockAnalytics({ data: series(Array.from({ length: 30 }, (_, index) => day(dateOf(index)))) });
+    }
+
+    function emptyState() {
+      return screen.getByTestId("card-empty");
+    }
+
+    it("keeps the frame when the range has no completed backup: the controls, the inert legend and a plot-sized message", () => {
+      emptyMonth();
+
+      render(<DumpDurationChart />);
+
+      expect(screen.queryByRole("img")).not.toBeInTheDocument();
+      // The selector stays so the user can go back to all connections.
+      expect(screen.getByRole("combobox", { name: "Conexión" })).toBeInTheDocument();
+      // The range stays, because it is the window asked of the API: widen it to find data.
+      expect(screen.getByRole("group", { name: "Rango rápido" })).toBeInTheDocument();
+      // The legend says what will be drawn, inert as while loading, so the card does not change height.
+      const legend = screen.getByRole("group", { name: "Leyenda" });
+      expect(legend.closest("[inert]")).not.toBeNull();
+      // The message takes the plot's place and its height.
+      expect(emptyState()).toHaveClass("h-[220px]", "md:h-[280px]");
     });
 
-    render(<DumpDurationChart />);
+    it("says the selected range is empty and offers the 90 days when there are backups elsewhere", async () => {
+      emptyMonth();
+      const user = userEvent.setup();
 
-    expect(
-      screen.getByText("Sin respaldos completados en este período"),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("img")).not.toBeInTheDocument();
-    // The selector stays so the user can go back to all connections.
-    expect(screen.getByRole("combobox", { name: "Conexión" })).toBeInTheDocument();
-    // The range stays, because it is the window asked of the API: widen it to find data.
-    expect(screen.getByRole("group", { name: "Rango rápido" })).toBeInTheDocument();
-    expect(screen.getByText(/últimos 30 días/)).toBeInTheDocument();
-    // No legend without lines.
-    expect(screen.queryByRole("group", { name: "Leyenda" })).not.toBeInTheDocument();
+      render(<DumpDurationChart presence="active" />);
+
+      expect(within(emptyState()).getByText("Sin respaldos completados en los últimos 30 días")).toBeInTheDocument();
+      await user.click(within(emptyState()).getByRole("button", { name: "Ver 90 días" }));
+
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(90, undefined);
+      // It is the range control's own choice, so it is remembered like one.
+      expect(localStorage.getItem("vaultly:dashboard:duration-range")).toBe("90");
+    });
+
+    it("offers no wider range once it shows the 90 days", () => {
+      localStorage.setItem("vaultly:dashboard:duration-range", "90");
+      emptyMonth();
+
+      render(<DumpDurationChart presence="active" />);
+
+      expect(within(emptyState()).getByText("Sin respaldos completados en los últimos 90 días")).toBeInTheDocument();
+      expect(within(emptyState()).queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    it.each(["no-connections", "no-backups"] as const)(
+      "says durations come with the first backup when there is none yet (%s), with nothing to click",
+      (presence) => {
+        emptyMonth();
+
+        render(<DumpDurationChart presence={presence} />);
+
+        expect(within(emptyState()).getByText("Las duraciones aparecen cuando se completa un respaldo")).toBeInTheDocument();
+        expect(within(emptyState()).queryByRole("button")).not.toBeInTheDocument();
+        expect(screen.queryByText(/últimos 30 días/)).not.toBeInTheDocument();
+      },
+    );
   });
 
   it("renders the error state with the reason", () => {

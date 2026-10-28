@@ -35,4 +35,12 @@ export class DashboardPage {
   panelTitle(title: string): Locator {
     return this.page.getByRole('main').getByText(title, { exact: true });
   }
+
+  /**
+   * The one line a card shows in place of its data (`CardEmpty`, marked
+   * `data-testid="card-empty"`), for example "No stored backups yet".
+   */
+  emptyMessage(message: string): Locator {
+    return this.page.getByRole('main').getByTestId('card-empty').getByText(message, { exact: true });
+  }
 }

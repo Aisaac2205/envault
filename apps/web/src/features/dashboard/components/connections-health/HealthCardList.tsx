@@ -27,7 +27,9 @@ export function HealthCardList({ rows, labelledBy }: HealthCardListProps) {
           )}
           key={row.connectionId}
         >
-          <div className="flex items-start justify-between gap-3">
+          {/* The badge sits under the name, not beside it: a wide badge such as the
+              Spanish "Sin programación" would squeeze the name into a narrow column. */}
+          <div className="flex flex-col items-start gap-2">
             <EngineName dbType={row.dbType}>
               <h3
                 className="line-clamp-2 min-w-0 text-sm font-semibold leading-snug text-text-primary [overflow-wrap:anywhere]"
@@ -36,7 +38,7 @@ export function HealthCardList({ rows, labelledBy }: HealthCardListProps) {
                 {row.connectionName}
               </h3>
             </EngineName>
-            <FreshnessBadge className="shrink-0" freshness={row.freshness} />
+            <FreshnessBadge freshness={row.freshness} />
           </div>
           <dl className="mt-3 grid grid-cols-[minmax(5.5rem,auto)_minmax(0,1fr)] items-start gap-x-4 gap-y-2.5">
             <dt className="text-xs text-text-secondary">{t("health.column.lastBackup")}</dt>
