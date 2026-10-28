@@ -55,23 +55,11 @@ describe("BackupTimeline", () => {
     );
   }
 
-  it("renders Entorno column header", () => {
-    renderTimeline();
-    expect(screen.getByText("Entorno")).toBeInTheDocument();
-  });
-
-  it("renders environment as clean formatted text", () => {
+  it("has no environment column, since only production connections are backed up", () => {
     renderTimeline();
 
-    expect(screen.getByText("Producción")).toBeInTheDocument();
-    expect(screen.getByText("Desarrollo")).toBeInTheDocument();
-  });
-
-  it("uses muted-foreground styling for environment", () => {
-    renderTimeline();
-
-    const prodElement = screen.getByText("Producción");
-    expect(prodElement.classList.contains("text-muted-foreground")).toBe(true);
+    expect(screen.queryByRole("columnheader", { name: "Entorno" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Producción")).not.toBeInTheDocument();
   });
 
   it("renders connection names without environment badge", () => {
@@ -101,6 +89,54 @@ describe("BackupTimeline", () => {
     }));
     renderTimeline(manyBackups, 15);
     expect(screen.getByText("+5 más")).toBeInTheDocument();
+  });
+
+  describe("recent backups card", () => {
+    const eightBackups = Array.from({ length: 8 }, (_, i) => ({
+      ...mockBackups[0]!,
+      id: `backup-${i}`,
+      connectionName: `Conexión ${i}`,
+    }));
+
+    it("has a real heading", () => {
+      renderTimeline();
+
+      expect(
+        screen.getByRole("heading", { level: 2, name: "Últimos respaldos" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows five rows by default and says how many more there are", () => {
+      render(
+        <MemoryRouter>
+          <BackupTimeline backups={eightBackups} />
+        </MemoryRouter>,
+      );
+
+      // One header row plus five backups.
+      expect(screen.getAllByRole("row")).toHaveLength(6);
+      expect(screen.getByText("Conexión 4")).toBeInTheDocument();
+      expect(screen.queryByText("Conexión 5")).not.toBeInTheDocument();
+      expect(screen.getByText("+3 más")).toBeInTheDocument();
+    });
+
+    it("keeps its columns", () => {
+      renderTimeline();
+
+      for (const header of ["Conexión", "Estado", "Fecha"]) {
+        expect(screen.getByRole("columnheader", { name: header })).toBeInTheDocument();
+      }
+    });
+
+    it("scrolls a wide table inside the card, not the page", () => {
+      const { container } = renderTimeline();
+
+      // The card may shrink below the table's width (min-w-0), and the table sits in
+      // an overflow-x-auto wrapper, so a narrow screen scrolls the table, not the page.
+      const card = container.firstElementChild as HTMLElement;
+      expect(card).toHaveClass("min-w-0");
+      expect(screen.getByRole("table").parentElement).toHaveClass("overflow-x-auto");
+    });
   });
 
   it("renders empty state when no backups", () => {

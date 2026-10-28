@@ -1,11 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Timer } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useConnections } from "@/features/connections/hooks/useConnections";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
-import type { ChartBrushSelection } from "@/shared/ui/charts/chart-brush";
 import { LineChartLoading } from "@/shared/ui/charts/line-chart-loading";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { useDailyAnalytics } from "../hooks/useDailyAnalytics";
@@ -13,46 +12,38 @@ import { ConnectionFilter } from "./dump-duration/ConnectionFilter";
 import { DumpDurationPlot } from "./dump-duration/DumpDurationPlot";
 import { QuickRangeControl } from "./dump-duration/QuickRangeControl";
 import {
-  activeQuickRange,
   ALL_CONNECTIONS,
-  ANALYTICS_WINDOW,
-  defaultBrushRange,
+  DEFAULT_RANGE_DAYS,
   hasDurationData,
-  quickRange,
   toConnectionId,
   toDurationRows,
   type QuickRangeDays,
 } from "./dump-duration/dump-duration-data";
 
 /**
- * Same footprint as the loaded chart (plot + brush strip), so the card does
- * not jump when the data arrives.
+ * About the height of the loaded chart plus its legend, so the card does not
+ * jump when the data arrives.
  */
 function DurationLoading({ label }: { label: string }) {
   return (
     <div aria-label={label} aria-live="polite" role="status">
       <LineChartLoading
         aspectRatio=""
-        className="h-[300px] md:h-[360px]"
+        className="h-[400px] md:h-[370px]"
         label={label}
       />
     </div>
   );
 }
 
-/** Per day dump duration (median, 95th percentile, slowest) with a brush over 90 days. */
+/** Per day dump duration (median, 95th percentile, slowest) over 7, 30 or 90 days. */
 export function DumpDurationChart() {
   const { t } = useTranslation("dashboard");
   const [connectionValue, setConnectionValue] = useState(ALL_CONNECTIONS);
-  // Lives here, not in the plot: the plot unmounts while a new connection loads.
-  const [selection, setSelection] = useState<ChartBrushSelection | null>(null);
-  // Bumped by a preset so the brush remounts at the new range; a drag never bumps it.
-  const [brushEpoch, setBrushEpoch] = useState(0);
+  // The window asked of the API, and the chart shows all of it.
+  const [rangeDays, setRangeDays] = useState<QuickRangeDays>(DEFAULT_RANGE_DAYS);
 
-  const analytics = useDailyAnalytics(
-    ANALYTICS_WINDOW,
-    toConnectionId(connectionValue),
-  );
+  const analytics = useDailyAnalytics(rangeDays, toConnectionId(connectionValue));
   const { data: connections = [] } = useConnections();
 
   const series = analytics.data;
@@ -61,18 +52,6 @@ export function DumpDurationChart() {
     [series],
   );
   const hasData = hasDurationData(rows);
-
-  const defaultRange = useMemo(() => defaultBrushRange(rows), [rows]);
-  const range = selection ?? defaultRange;
-  const activePreset = useMemo(() => activeQuickRange(rows, range), [rows, range]);
-
-  const selectPreset = useCallback(
-    (days: QuickRangeDays) => {
-      setSelection(quickRange(rows, days));
-      setBrushEpoch((epoch) => epoch + 1);
-    },
-    [rows],
-  );
 
   let body;
   if (analytics.isLoading) {
@@ -94,20 +73,13 @@ export function DumpDurationChart() {
     body = (
       <EmptyState
         className="min-h-[220px] py-6 md:min-h-[280px]"
-        description={t("duration.empty.description")}
+        description={t("duration.empty.description", { days: rangeDays })}
         icon={<Timer />}
         title={t("duration.empty.title")}
       />
     );
   } else {
-    body = (
-      <DumpDurationPlot
-        brushEpoch={brushEpoch}
-        onRangeChange={setSelection}
-        range={range}
-        rows={rows}
-      />
-    );
+    body = <DumpDurationPlot rows={rows} />;
   }
 
   return (
@@ -127,9 +99,8 @@ export function DumpDurationChart() {
               value={connectionValue}
             />
           </div>
-          {hasData && !analytics.isLoading && !analytics.isError ? (
-            <QuickRangeControl onSelect={selectPreset} value={activePreset} />
-          ) : null}
+          {/* The range is the window asked of the API, so it stays whatever the body shows. */}
+          <QuickRangeControl onSelect={setRangeDays} value={rangeDays} />
         </div>
         {body}
       </CardContent>

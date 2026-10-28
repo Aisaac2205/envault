@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Legend, LegendItem, LegendLabel, LegendValue } from "./index";
+import {
+  Legend,
+  LegendItem,
+  LegendLabel,
+  LegendValue,
+  type LegendItemData,
+} from "./index";
 
 const items = [
   { label: "Median", value: 1.5, color: "#1D4ED8" },
@@ -55,6 +61,57 @@ describe("Legend", () => {
     await user.click(buttons[1]!);
 
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  describe("keys", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("renders items that share a label, without a duplicate key warning", () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      render(
+        <Legend
+          items={[
+            { label: "Other", value: 3, color: "#0891B2" },
+            { label: "Other", value: 5, color: "#7C3AED" },
+          ]}
+        >
+          <LegendItem>
+            <LegendLabel />
+            <LegendValue />
+          </LegendItem>
+        </Legend>,
+      );
+
+      expect(screen.getAllByText("Other")).toHaveLength(2);
+      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText("5")).toBeInTheDocument();
+      expect(consoleError).not.toHaveBeenCalled();
+    });
+
+    it("keeps an item's element when the order changes, if it has an id", () => {
+      // Same label on purpose: only the id can tell the two apart.
+      const first = { id: "shop", label: "Backups", value: 1, color: "#5B8C00" };
+      const second = { id: "crm", label: "Backups", value: 2, color: "#7C3AED" };
+      const renderLegend = (list: LegendItemData[]) => (
+        <Legend items={list}>
+          <LegendItem>
+            <LegendLabel />
+          </LegendItem>
+        </Legend>
+      );
+      const { container, rerender } = render(renderLegend([first, second]));
+      const [shopNode, crmNode] = Array.from(
+        container.querySelectorAll(".legend-container > div"),
+      );
+
+      rerender(renderLegend([second, first]));
+
+      const reordered = Array.from(container.querySelectorAll(".legend-container > div"));
+      expect(reordered[0]).toBe(crmNode);
+      expect(reordered[1]).toBe(shopNode);
+    });
   });
 
   it("reports hover through onHoverChange and marks the hovered item", async () => {

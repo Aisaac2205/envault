@@ -667,9 +667,11 @@ export function Line({
         paintStops={paintStops}
       />
 
+      {/* envault: the legend emphasis dims the other lines even when the chart
+          hover highlight is off (`showHighlight={false}`). */}
       <SeriesHoverDim
+        dimOnChartHover={effectiveShowHighlight}
         dimOpacity={highlightPaint.dimOpacity}
-        enabled={effectiveShowHighlight}
         seriesIndex={seriesIndex}
       >
         {/* envault: halo first, so the line and every later series draw over it. */}

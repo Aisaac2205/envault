@@ -2,7 +2,7 @@
 
 // Vendored from the @bklit registry (ui.bklit.com/r/legend.json), MIT, bklit/bklit-ui.
 // Copied from the registry with curl, because the shadcn CLI ignores the project aliases.
-// Copied verbatim.
+// Change: `LegendItemData.id` (tagged "envault:" below) is an optional stable key.
 
 import { createContext, useContext } from "react";
 
@@ -16,6 +16,12 @@ export const legendCssVars = {
 };
 
 export interface LegendItemData {
+  /**
+   * Stable identity of the item, used as its React key. Falls back to the
+   * item's position, so items may share a label.
+   * (envault: added on top of the vendored bklit source.)
+   */
+  id?: string;
   /** Display label */
   label: string;
   /** Current value */

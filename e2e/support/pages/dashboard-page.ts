@@ -25,7 +25,11 @@ export class DashboardPage {
       .locator('xpath=../following-sibling::div[1]/p[1]');
   }
 
-  /** A panel's title (for example "Recent backups"), which is plain text in a card. */
+  /**
+   * A panel's title (for example "Backups per day" or "System health"), found as
+   * plain text in a card. The chart cards render it as an h2 and the older ones
+   * as a div, so this stays on text until every card has a real heading.
+   */
   panelTitle(title: string): Locator {
     return this.page.getByRole('main').getByText(title, { exact: true });
   }

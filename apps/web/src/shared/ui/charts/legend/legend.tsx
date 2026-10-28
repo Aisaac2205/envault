@@ -2,7 +2,8 @@
 
 // Vendored from the @bklit registry (ui.bklit.com/r/legend.json), MIT, bklit/bklit-ui.
 // Copied from the registry with curl, because the shadcn CLI ignores the project aliases.
-// Only change: the `cn` import points at @/shared/lib/cn.
+// Changes: the `cn` import points at @/shared/lib/cn, and items are keyed by
+// `item.id ?? index` instead of the label (tagged "envault:" below).
 
 import {
   cloneElement,
@@ -92,7 +93,8 @@ export function Legend({
           // Clone the child element for each item
           if (isValidElement(children)) {
             return (
-              <LegendItemProvider key={item.label} value={itemContext}>
+              // envault: key by `id`, then by position. Two items may share a label.
+              <LegendItemProvider key={item.id ?? index} value={itemContext}>
                 {cloneElement(children)}
               </LegendItemProvider>
             );

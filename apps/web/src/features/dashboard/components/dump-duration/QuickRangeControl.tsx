@@ -3,15 +3,14 @@ import { cn } from "@/shared/lib/cn";
 import { QUICK_RANGE_DAYS, type QuickRangeDays } from "./dump-duration-data";
 
 interface QuickRangeControlProps {
-  /** The preset the chart is showing, or `null` for a custom (brushed) range. */
-  value: QuickRangeDays | null;
+  /** The range the chart is showing: the pressed button. */
+  value: QuickRangeDays;
   onSelect: (days: QuickRangeDays) => void;
 }
 
 /**
- * 7d / 30d / 90d: the keyboard way to set the brush range. 90d shows the whole
- * window, so it doubles as the reset. Dragging the brush to another range
- * leaves every button unpressed.
+ * 7d / 30d / 90d: how many days a chart shows. The chart asks the API for that
+ * window, so the pressed button is plain state, not derived from the data.
  */
 export function QuickRangeControl({ value, onSelect }: QuickRangeControlProps) {
   const { t } = useTranslation("dashboard");

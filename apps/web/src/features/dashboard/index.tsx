@@ -6,9 +6,9 @@ import { DashboardHeader } from "./components/DashboardHeader";
 import { KpiGrid } from "./components/KpiGrid";
 import { SystemHealthCard } from "./components/SystemHealthCard";
 import { BackupTimeline } from "./components/BackupTimeline";
-import { RestoreTimeline } from "./components/RestoreTimeline";
-import { BackupAreaChart } from "./components/BackupAreaChart";
+import { BackupsPerDayChart } from "./components/BackupsPerDayChart";
 import { DumpDurationChart } from "./components/DumpDurationChart";
+import { StorageByConnectionChart } from "./components/StorageByConnectionChart";
 import { UpcomingCronjobsCard } from "./components/UpcomingCronjobsCard";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { buttonVariants } from "@/shared/ui/button";
@@ -117,11 +117,11 @@ export default function Dashboard() {
 
           <DumpDurationChart />
 
-          <BackupAreaChart data={dailyCounts} />
+          <BackupsPerDayChart />
 
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 lg:items-stretch">
             <BackupTimeline backups={recentBackups} />
-            <RestoreTimeline restores={recentRestores} />
+            <StorageByConnectionChart />
           </div>
 
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 lg:items-stretch">

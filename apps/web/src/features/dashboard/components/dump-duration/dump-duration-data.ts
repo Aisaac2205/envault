@@ -1,11 +1,4 @@
-import type { ChartBrushSelection } from "@/shared/ui/charts/chart-brush";
-import type { AnalyticsWindow, DailyBackupPoint } from "../../types";
-
-/** The chart always asks the API for the widest window; the brush narrows it. */
-export const ANALYTICS_WINDOW: AnalyticsWindow = 90;
-
-/** Days shown before the user touches the brush. */
-export const DEFAULT_BRUSH_DAYS = 30;
+import type { DailyBackupPoint } from "../../types";
 
 /** Select value for "no connection filter". Radix Select rejects an empty value. */
 export const ALL_CONNECTIONS = "all";
@@ -50,81 +43,23 @@ export function hasDurationData(rows: DurationRow[]): boolean {
   return rows.some(rowHasData);
 }
 
-/** Quick range presets, in days counted back from the newest day. */
+/**
+ * Quick range presets: how many days the chart shows. Each one is the window
+ * asked of the API, so the chart draws every day it gets back.
+ */
 export const QUICK_RANGE_DAYS = [7, 30, 90] as const;
 export type QuickRangeDays = (typeof QUICK_RANGE_DAYS)[number];
 
-/** The brush range that shows the last `days` days of the series. */
-export function quickRange(
-  rows: DurationRow[],
-  days: QuickRangeDays,
-): ChartBrushSelection | null {
-  return defaultBrushRange(rows, days);
-}
+/** The range selected until the user picks another one. */
+export const DEFAULT_RANGE_DAYS: QuickRangeDays = 30;
 
-/**
- * The preset whose days a range shows, or `null` for a custom range. It compares
- * the rows the range shows, not its timestamps: a dragged brush edge lands
- * anywhere inside a day, and the chart draws the same days either way.
- */
-export function activeQuickRange(
-  rows: DurationRow[],
-  range: ChartBrushSelection | null,
-): QuickRangeDays | null {
-  if (!range || rows.length === 0) {
-    return null;
-  }
-  const start = range.start.getTime();
-  const end = range.end.getTime();
-  let first = -1;
-  let last = -1;
-  rows.forEach((row, index) => {
-    const time = row.date.getTime();
-    if (time >= start && time <= end) {
-      first = first === -1 ? index : first;
-      last = index;
-    }
-  });
-  if (first === -1 || last !== rows.length - 1) {
-    return null;
-  }
-  return (
-    QUICK_RANGE_DAYS.find((days) => first === Math.max(0, rows.length - days)) ??
-    null
-  );
-}
-
-/** The last {@link DEFAULT_BRUSH_DAYS} days, or the whole series when it is shorter. */
-export function defaultBrushRange(
-  rows: DurationRow[],
-  days = DEFAULT_BRUSH_DAYS,
-): ChartBrushSelection | null {
-  const first = rows[Math.max(0, rows.length - days)];
-  const last = rows.at(-1);
-  if (!first || !last || rows.length < 2) {
-    return null;
-  }
-  return { start: first.date, end: last.date };
-}
-
-/** Most recent day with a duration, optionally inside the visible range. */
-export function findLatestDayWithData(
-  rows: DurationRow[],
-  range?: ChartBrushSelection | null,
-): DurationRow | null {
+/** Most recent day with a duration, or `null` when no day has one. */
+export function findLatestDayWithData(rows: DurationRow[]): DurationRow | null {
   for (let index = rows.length - 1; index >= 0; index--) {
     const row = rows[index];
-    if (!row || !rowHasData(row)) {
-      continue;
+    if (row && rowHasData(row)) {
+      return row;
     }
-    if (
-      range &&
-      (row.date.getTime() < range.start.getTime() ||
-        row.date.getTime() > range.end.getTime())
-    ) {
-      continue;
-    }
-    return row;
   }
   return null;
 }

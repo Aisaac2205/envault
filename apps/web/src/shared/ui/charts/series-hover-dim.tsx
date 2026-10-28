@@ -6,8 +6,13 @@ import { useChartHover } from "./chart-context";
 import { useChartLegendHover } from "./chart-legend-hover";
 
 interface SeriesHoverDimProps {
-  /** Skip the dim entirely. */
+  /** Master switch: `false` skips every dim, legend emphasis included. */
   enabled?: boolean;
+  /**
+   * Dim on chart hover and brush drags. Default: true. `false` keeps only the
+   * legend emphasis. (envault: added on top of the vendored bklit source.)
+   */
+  dimOnChartHover?: boolean;
   /** Opacity to fade to while the chart is being hovered. */
   dimOpacity?: number;
   /** Tween duration in seconds. */
@@ -30,6 +35,7 @@ interface SeriesHoverDimProps {
  */
 export function SeriesHoverDim({
   enabled = true,
+  dimOnChartHover = true,
   dimOpacity = 0.5,
   // envault: 0.2 s, not 0.4 s. A legend click should answer at once.
   durationSec = 0.2,
@@ -44,9 +50,12 @@ export function SeriesHoverDim({
     seriesIndex !== undefined &&
     legendHoveredIndex !== seriesIndex;
   const reducedMotion = useReducedMotion();
-  // envault: the legend dims the other series even when `enabled` (the chart
-  // hover highlight) is off; only the chart hover dim still needs `enabled`.
-  const opacity = (enabled && isChartHovering) || isLegendDimmed ? dimOpacity : 1;
+  // envault: `enabled` turns every dim off. A chart can keep the legend dim
+  // without the chart hover dim through `dimOnChartHover={false}`.
+  const opacity =
+    enabled && ((dimOnChartHover && isChartHovering) || isLegendDimmed)
+      ? dimOpacity
+      : 1;
   return (
     <motion.g
       animate={{ opacity }}

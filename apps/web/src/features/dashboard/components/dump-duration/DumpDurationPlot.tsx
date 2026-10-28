@@ -3,10 +3,8 @@ import { curveMonotoneX } from "@visx/curve";
 import { useReducedMotion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { formatDate } from "@/lib/format";
-import { ChartBrush, type ChartBrushSelection } from "@/shared/ui/charts/chart-brush";
 import { ChartLegendHoverProvider } from "@/shared/ui/charts/chart-legend-hover";
 import { chartCssVars, useChartHover } from "@/shared/ui/charts/chart-context";
-import { filterDataByXDomain } from "@/shared/ui/charts/filter-data-by-x-domain";
 import { Grid } from "@/shared/ui/charts/grid";
 import { Line, LineChart } from "@/shared/ui/charts/line-chart";
 import { ChartTooltip } from "@/shared/ui/charts/tooltip";
@@ -29,15 +27,8 @@ import { DumpDurationTooltip } from "./DumpDurationTooltip";
 import { formatAxisDuration, formatDuration } from "./format-duration";
 import { useCanHover } from "./use-can-hover";
 import { useDurationLocale } from "./use-duration-locale";
-import { useTouchBrush } from "./use-touch-brush";
 
-const MAIN_MARGIN = { top: 12, right: 12, bottom: 32, left: 52 };
-/** Same left/right margins as the main chart, so the brush lines up with its x axis. */
-const STRIP_MARGIN = { top: 6, right: 12, bottom: 6, left: 52 };
-/** Tall enough that the brush body is far above the 44px touch target size. */
-const STRIP_HEIGHT = 72;
-/** Invisible drag target, centred on each brush edge, sized for a finger. */
-const BRUSH_HANDLE_PX = 44;
+const MARGIN = { top: 12, right: 12, bottom: 32, left: 52 };
 
 /** Halo in the card color: a line that crosses another one stays separable. */
 const HALO = { color: chartCssVars.background, extraWidth: HALO_EXTRA_WIDTH };
@@ -46,15 +37,8 @@ const DIMMED = { dimOpacity: DIMMED_OPACITY };
 const NO_HOVER_LINKING = () => undefined;
 
 interface DumpDurationPlotProps {
+  /** Every day of the window, oldest first. The chart draws them all. */
   rows: DurationRow[];
-  /** The days the chart shows, or `null` when there are too few to brush. */
-  range: ChartBrushSelection | null;
-  /**
-   * Changes whenever a preset moves the range. The brush only reads its start
-   * position when it mounts, so a new value remounts it at the new range.
-   */
-  brushEpoch: number;
-  onRangeChange: (range: ChartBrushSelection | null) => void;
 }
 
 /** Reports the row under the pointer, so the legend can show that day's values. */
@@ -75,7 +59,6 @@ function HoverRowReporter({
 
 interface DurationLinesProps {
   rows: DurationRow[];
-  range: ChartBrushSelection | null;
   /** Chart line index (draw order) to emphasize, or `null` for none. */
   emphasizedDrawIndex: number | null;
   onHoverRowChange: (row: DurationRow | null) => void;
@@ -87,34 +70,21 @@ interface DurationLinesProps {
  */
 const DurationLines = memo(function DurationLines({
   rows,
-  range,
   emphasizedDrawIndex,
   onHoverRowChange,
 }: DurationLinesProps) {
   const locale = useDurationLocale();
   const reducedMotion = useReducedMotion();
 
-  const xDomain = useMemo<[Date, Date] | undefined>(
-    () => (range ? [range.start, range.end] : undefined),
-    [range],
-  );
-
-  // The date axis and the hover pill read one label per visible row, so they
-  // are formatted here with the active language instead of the chart's en-US.
+  // The date axis and the hover pill read one label per row, so they are
+  // formatted here with the active language instead of the chart's en-US.
   const labels = useMemo(() => {
-    const visible = range
-      ? filterDataByXDomain(
-          rows,
-          [range.start, range.end],
-          (row) => row.date as Date,
-        )
-      : rows;
     const dayMonth = new Intl.DateTimeFormat(locale, {
       day: "numeric",
       month: "short",
     });
-    return visible.map((row) => dayMonth.format(row.date as Date));
-  }, [rows, range, locale]);
+    return rows.map((row) => dayMonth.format(row.date));
+  }, [rows, locale]);
 
   const formatTick = useMemo(
     () => (seconds: number) => formatAxisDuration(seconds, locale),
@@ -131,14 +101,11 @@ const DurationLines = memo(function DurationLines({
         aspectRatio=""
         className="h-[220px] md:h-[280px]"
         data={rows}
-        margin={MAIN_MARGIN}
+        margin={MARGIN}
         // pan-y keeps the page scrollable with a finger on the chart; the
         // default "none" would trap vertical scrolling over the whole card.
         style={{ touchAction: "pan-y" }}
-        tweenYDomainOnXDomainChange={!reducedMotion}
         xDataKey="date"
-        xDomain={xDomain}
-        xDomainSlotCount={rows.length}
         yDomainTweenDuration={reducedMotion ? 0 : undefined}
       >
         <Grid horizontal />
@@ -170,68 +137,11 @@ const DurationLines = memo(function DurationLines({
   );
 });
 
-interface DurationBrushProps {
-  rows: DurationRow[];
-  range: ChartBrushSelection | null;
-  brushEpoch: number;
-  onRangeChange: (range: ChartBrushSelection | null) => void;
-}
-
-/** The overview strip with the brush that picks which days the main chart shows. */
-const DurationBrush = memo(function DurationBrush({
-  rows,
-  range,
-  brushEpoch,
-  onRangeChange,
-}: DurationBrushProps) {
-  const touchBrush = useTouchBrush();
-
-  return (
-    <LineChart
-      animationDuration={0}
-      aspectRatio=""
-      data={rows}
-      margin={STRIP_MARGIN}
-      style={{ height: STRIP_HEIGHT }}
-      xDataKey="date"
-      yDomainTween={false}
-    >
-      {DRAW_ORDER.map((series) => (
-        <Line
-          animate={false}
-          curve={curveMonotoneX}
-          dataKey={series.key}
-          fadeEdges={false}
-          key={series.key}
-          showHighlight={false}
-          stroke={series.color}
-          strokeDasharray={series.dasharray}
-          strokeLinecap={series.linecap}
-          strokeWidth={series.stripStrokeWidth}
-        />
-      ))}
-      <ChartBrush
-        handleSize={BRUSH_HANDLE_PX}
-        initialSelection={range}
-        key={brushEpoch}
-        onSelectionChange={onRangeChange}
-        useWindowMoveEvents={!touchBrush}
-      />
-    </LineChart>
-  );
-});
-
 /**
- * Legend with values, the duration lines and the brush strip. Hovering the
- * chart shows that day's values in the legend; clicking a legend item
- * emphasizes its line.
+ * Legend with values and the duration lines. Hovering the chart shows that
+ * day's values in the legend; clicking a legend item emphasizes its line.
  */
-export function DumpDurationPlot({
-  rows,
-  range,
-  brushEpoch,
-  onRangeChange,
-}: DumpDurationPlotProps) {
+export function DumpDurationPlot({ rows }: DumpDurationPlotProps) {
   const { t } = useTranslation("dashboard");
   const locale = useDurationLocale();
   const canHover = useCanHover();
@@ -253,7 +163,7 @@ export function DumpDurationPlot({
   // The pointer wins over the pinned series while it is over a legend item.
   const highlightedIndex = (canHover ? legendHoverIndex : null) ?? pinnedIndex;
 
-  const latest = useMemo(() => findLatestDayWithData(rows, range), [rows, range]);
+  const latest = useMemo(() => findLatestDayWithData(rows), [rows]);
   const legendRow = hoveredRow ?? latest;
 
   const caption = useMemo(() => {
@@ -274,17 +184,16 @@ export function DumpDurationPlot({
         }),
       });
     }
-    return t("duration.legend.empty");
+    return "";
   }, [hoveredRow, latest, t]);
 
   const summary = useMemo(() => {
-    const first = range?.start ?? rows[0]?.date;
-    const last = range?.end ?? rows.at(-1)?.date;
     const day = { day: "numeric", month: "short", year: "numeric" } as const;
-    const from = formatDate(first, day);
-    const to = formatDate(last, day);
+    const from = formatDate(rows[0]?.date, day);
+    const to = formatDate(rows.at(-1)?.date, day);
+    // The plot only mounts for a window with data, so there is always a latest day.
     if (!latest) {
-      return t("duration.chartLabelEmpty", { from, to });
+      return "";
     }
     return t("duration.chartLabel", {
       from,
@@ -294,7 +203,7 @@ export function DumpDurationPlot({
       p95: formatDuration(latest.p95, locale),
       max: formatDuration(latest.max, locale),
     });
-  }, [rows, range, latest, locale, t]);
+  }, [rows, latest, locale, t]);
 
   return (
     <div className="min-w-0">
@@ -318,20 +227,6 @@ export function DumpDurationPlot({
         <DurationLines
           emphasizedDrawIndex={drawIndexOf(highlightedIndex)}
           onHoverRowChange={setHoveredRow}
-          range={range}
-          rows={rows}
-        />
-      </div>
-
-      <div
-        aria-label={t("duration.brush.label")}
-        className="mt-2"
-        role="group"
-      >
-        <DurationBrush
-          brushEpoch={brushEpoch}
-          onRangeChange={onRangeChange}
-          range={range}
           rows={rows}
         />
       </div>
