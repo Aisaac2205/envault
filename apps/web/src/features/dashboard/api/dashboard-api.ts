@@ -9,6 +9,10 @@ import type {
   R2Object,
   DashboardStats,
   DailyBackupCount,
+  AnalyticsWindow,
+  DailyBackupSeries,
+  ConnectionStorage,
+  RestoreStatusCounts,
 } from "../types";
 
 export const dashboardApi = {
@@ -44,4 +48,21 @@ export const dashboardApi = {
 
   getDailyCounts: () =>
     apiClient.get<DailyBackupCount[]>("/jobs/daily-counts").then((r) => r.data),
+
+  getDailyAnalytics: (window: AnalyticsWindow = 30, connectionId?: string) =>
+    apiClient
+      .get<DailyBackupSeries>("/jobs/analytics/daily", {
+        params: { window, ...(connectionId ? { connectionId } : {}) },
+      })
+      .then((r) => r.data),
+
+  getStorageByConnection: () =>
+    apiClient
+      .get<ConnectionStorage[]>("/jobs/analytics/storage-by-connection")
+      .then((r) => r.data),
+
+  getRestoreStatus: () =>
+    apiClient
+      .get<RestoreStatusCounts>("/jobs/analytics/restore-status")
+      .then((r) => r.data),
 };

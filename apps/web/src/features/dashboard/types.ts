@@ -85,3 +85,43 @@ export interface DailyBackupCount {
   scheduled: number;
   manual: number;
 }
+
+export type AnalyticsWindow = 7 | 30 | 90;
+
+export interface DailyBackupPoint {
+  /** UTC calendar day, `YYYY-MM-DD`. */
+  date: string;
+  completed: number;
+  failed: number;
+  /** `null` when no backup completed that day. */
+  p50DurationSeconds: number | null;
+  p95DurationSeconds: number | null;
+  maxDurationSeconds: number | null;
+  totalSizeMb: number;
+}
+
+export interface DailyBackupSeries {
+  window: AnalyticsWindow;
+  from: string;
+  to: string;
+  timezone: "UTC";
+  /** The connection the series is scoped to, or `null` when it covers every connection. */
+  connectionId: string | null;
+  /** Zero-filled: one entry per calendar day of the window. */
+  days: DailyBackupPoint[];
+}
+
+export interface ConnectionStorage {
+  connectionId: string;
+  connectionName: string | null;
+  totalSizeMb: number;
+  backupCount: number;
+}
+
+export interface RestoreStatusCounts {
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  total: number;
+}

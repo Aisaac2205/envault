@@ -15,6 +15,9 @@ const SERVED_ENDPOINTS = [
   "/jobs/restores",
   "/jobs/stats",
   "/jobs/daily-counts",
+  "/jobs/analytics/daily",
+  "/jobs/analytics/storage-by-connection",
+  "/jobs/analytics/restore-status",
   "/connections",
   "/cronjobs",
   "/audit",
@@ -48,5 +51,63 @@ describe("dashboardApi", () => {
     const paths = await requestedPaths();
 
     expect(paths.filter((path) => /health/i.test(path))).toEqual([]);
+  });
+
+  describe("analytics", () => {
+    const CONNECTION_ID = "6c1f2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+
+    it("getDailyAnalytics requests the daily series with the window and connection filter", async () => {
+      const series = { window: 90, days: [] };
+      mockApiClient.get.mockResolvedValue({ data: series });
+
+      const result = await dashboardApi.getDailyAnalytics(90, CONNECTION_ID);
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/daily", {
+        params: { window: 90, connectionId: CONNECTION_ID },
+      });
+      expect(result).toBe(series);
+    });
+
+    it("getDailyAnalytics does not send connectionId when it is undefined", async () => {
+      mockApiClient.get.mockResolvedValue({ data: { days: [] } });
+
+      await dashboardApi.getDailyAnalytics(7);
+
+      const [, config] = mockApiClient.get.mock.calls[0];
+      expect(config?.params).toEqual({ window: 7 });
+      expect(config?.params).not.toHaveProperty("connectionId");
+    });
+
+    it("getDailyAnalytics defaults to the 30 day window", async () => {
+      mockApiClient.get.mockResolvedValue({ data: { days: [] } });
+
+      await dashboardApi.getDailyAnalytics();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/daily", {
+        params: { window: 30 },
+      });
+    });
+
+    it("getStorageByConnection requests the per-connection storage totals", async () => {
+      const rows = [
+        { connectionId: CONNECTION_ID, connectionName: "prod", totalSizeMb: 12.5, backupCount: 3 },
+      ];
+      mockApiClient.get.mockResolvedValue({ data: rows });
+
+      const result = await dashboardApi.getStorageByConnection();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/storage-by-connection");
+      expect(result).toBe(rows);
+    });
+
+    it("getRestoreStatus requests the restore status counts", async () => {
+      const counts = { pending: 0, running: 1, completed: 4, failed: 2, total: 7 };
+      mockApiClient.get.mockResolvedValue({ data: counts });
+
+      const result = await dashboardApi.getRestoreStatus();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith("/jobs/analytics/restore-status");
+      expect(result).toBe(counts);
+    });
   });
 });

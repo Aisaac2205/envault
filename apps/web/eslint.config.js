@@ -44,4 +44,21 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Vendored bklit chart components (shadcn registry code, copied rather than
+    // authored here). They export helpers next to components, read refs during
+    // render and use hand-tuned effect deps, so the style rules that would force
+    // a restructure are off for this folder only. Type checking and the rest of
+    // the lint rules still apply.
+    files: ["src/shared/ui/charts/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "react-hooks/refs": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
 );
