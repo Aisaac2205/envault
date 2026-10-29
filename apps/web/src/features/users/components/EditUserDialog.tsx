@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pencil } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -17,27 +18,44 @@ import { useUpdateUser } from "../hooks/useUsers";
 interface EditUserDialogProps {
   userId: string;
   currentName: string;
+  /** Controlled open state, for a second way in such as the phone row menu. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function EditUserDialog({ userId, currentName }: EditUserDialogProps) {
-  const [open, setOpen] = useState(false);
+export function EditUserDialog({
+  userId,
+  currentName,
+  open: openProp,
+  onOpenChange,
+}: EditUserDialogProps) {
+  const { t } = useTranslation("users");
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
   const [name, setName] = useState(currentName);
+  const [wasOpen, setWasOpen] = useState(open);
+
+  // Every opening starts from the current name, whichever way it was opened.
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setName(currentName);
+  }
 
   const mutation = useUpdateUser();
 
-  function handleOpenChange(next: boolean) {
-    setOpen(next);
-    if (next) setName(currentName);
+  function setOpen(next: boolean) {
+    if (openProp === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          title="Editar nombre"
-          aria-label={`Editar nombre de ${currentName}`}
+          title={t("actions.editName")}
+          aria-label={t("actions.editNameAria", { name: currentName })}
         >
           <Pencil className="h-4 w-4" />
         </Button>

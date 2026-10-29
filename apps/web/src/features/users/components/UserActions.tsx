@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
-import { Shield, Trash2, MoreHorizontal } from "lucide-react";
+import { Shield, Trash2, MoreHorizontal, Pencil, KeyRound } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { useAuth } from "@/shared/hooks/useAuth";
 import { useToggleRole, useDeleteUser } from "../hooks/useUsers";
@@ -20,12 +20,9 @@ const NEXT_ROLE: Record<UserRole, UserRole> = {
 };
 
 /**
- * Per-row actions. Desktop shows 4 icon buttons; mobile collapses to a
- * dropdown with the 2 most critical actions (toggle role, delete).
- *
- * Edit name and change password are desktop-only on this iteration — admin
- * work that happens almost exclusively on larger screens. Documented as a
- * deviation in the users-ui spec.
+ * Per-row actions. Desktop shows 4 icon buttons; mobile collapses them into a
+ * dropdown with the same 4 actions under the same rules. Both open the same
+ * edit and password dialogs, whose state lives here.
  */
 export function UserActions({ user }: UserActionsProps) {
   const { t } = useTranslation("users");
@@ -33,6 +30,8 @@ export function UserActions({ user }: UserActionsProps) {
   const toggleRole = useToggleRole();
   const deleteUser = useDeleteUser();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const nextRole = NEXT_ROLE[user.role];
   const isSelf = currentUser?.id === user.id;
@@ -58,8 +57,18 @@ export function UserActions({ user }: UserActionsProps) {
         >
           <Shield className="h-4 w-4" />
         </Button>
-        <EditUserDialog userId={user.id} currentName={user.name} />
-        <ChangePasswordDialog userId={user.id} userName={user.name} />
+        <EditUserDialog
+          userId={user.id}
+          currentName={user.name}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+        <ChangePasswordDialog
+          userId={user.id}
+          userName={user.name}
+          open={passwordOpen}
+          onOpenChange={setPasswordOpen}
+        />
         <Button
           variant="ghost"
           size="icon"
@@ -73,7 +82,7 @@ export function UserActions({ user }: UserActionsProps) {
         </Button>
       </div>
 
-      {/* Mobile: dropdown with the 2 most critical actions */}
+      {/* Mobile: dropdown with the same actions */}
       <div className="flex items-center justify-end sm:hidden">
         <DropdownMenuPrimitive.Root>
           <DropdownMenuPrimitive.Trigger asChild>
@@ -99,6 +108,20 @@ export function UserActions({ user }: UserActionsProps) {
               >
                 <Shield className="h-4 w-4" />
                 {t("actions.changeRole", { role: nextRole })}
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent focus:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                onSelect={() => setEditOpen(true)}
+              >
+                <Pencil className="h-4 w-4" />
+                {t("actions.editName")}
+              </DropdownMenuPrimitive.Item>
+              <DropdownMenuPrimitive.Item
+                className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent focus:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                onSelect={() => setPasswordOpen(true)}
+              >
+                <KeyRound className="h-4 w-4" />
+                {t("changePassword.title")}
               </DropdownMenuPrimitive.Item>
               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
               <DropdownMenuPrimitive.Item

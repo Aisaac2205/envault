@@ -48,6 +48,8 @@
   "deleteUser.button.confirming": "Eliminando…",
   "actions.changeRole": "Cambiar a {{role}}",
   "actions.changeRoleAria": "Cambiar rol de {{name}} a {{role}}",
+  "actions.editName": "Editar nombre",
+  "actions.editNameAria": "Editar nombre de {{name}}",
   "actions.actionsAria": "Acciones de {{name}}",
   "actions.deleteAria": "Eliminar a {{name}}",
   "actions.deleteSelf": "No puedes eliminar tu propia cuenta de usuario",
