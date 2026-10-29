@@ -103,8 +103,8 @@ describe("DumpDurationChart", () => {
     vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(240);
     connections.useConnections.mockReturnValue({
       data: [
-        { id: "conn-shop", name: "Shop" },
-        { id: "conn-crm", name: "CRM" },
+        { id: "conn-shop", name: "Shop", environment: "prod" },
+        { id: "conn-crm", name: "CRM", environment: "prod" },
       ],
       isLoading: false,
     });
@@ -541,6 +541,61 @@ describe("DumpDurationChart", () => {
 
     await waitFor(() => {
       expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(30, "conn-crm");
+    });
+  });
+
+  describe("connection filter", () => {
+    beforeEach(() => {
+      // Radix Select relies on pointer capture and scrollIntoView, which jsdom lacks.
+      Element.prototype.hasPointerCapture = () => false;
+      Element.prototype.releasePointerCapture = () => undefined;
+      Element.prototype.scrollIntoView = () => undefined;
+    });
+
+    // The API backs up production only, so a dev or qa connection would always draw an empty chart.
+    it("offers only production connections, after all of them, sorted by name", async () => {
+      mockAnalytics({ data: series(monthWithGap()) });
+      connections.useConnections.mockReturnValue({
+        data: [
+          { id: "conn-shop", name: "Shop", environment: "prod" },
+          { id: "conn-sandbox", name: "Sandbox", environment: "dev" },
+          { id: "conn-crm", name: "CRM", environment: "prod" },
+          { id: "conn-mirror", name: "Mirror", environment: "qa" },
+        ],
+        isLoading: false,
+      });
+      const user = userEvent.setup();
+
+      render(<DumpDurationChart />);
+      await user.click(screen.getByRole("combobox", { name: "Conexión" }));
+
+      const options = await screen.findAllByRole("option");
+      expect(options.map((option) => option.textContent)).toEqual(["Todas las conexiones", "CRM", "Shop"]);
+    });
+
+    it("goes back to all connections when the selected one is no longer offered", async () => {
+      mockAnalytics({ data: series(monthWithGap()) });
+      const user = userEvent.setup();
+
+      const { rerender } = render(<DumpDurationChart />);
+      await user.click(screen.getByRole("combobox", { name: "Conexión" }));
+      await user.click(await screen.findByRole("option", { name: "CRM" }));
+      await waitFor(() => {
+        expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(30, "conn-crm");
+      });
+
+      // The connection moves out of production (or is deleted) while it is selected.
+      connections.useConnections.mockReturnValue({
+        data: [
+          { id: "conn-shop", name: "Shop", environment: "prod" },
+          { id: "conn-crm", name: "CRM", environment: "qa" },
+        ],
+        isLoading: false,
+      });
+      rerender(<DumpDurationChart />);
+
+      expect(analytics.useDailyAnalytics).toHaveBeenLastCalledWith(30, undefined);
+      expect(screen.getByRole("combobox", { name: "Conexión" })).toHaveTextContent("Todas las conexiones");
     });
   });
 
