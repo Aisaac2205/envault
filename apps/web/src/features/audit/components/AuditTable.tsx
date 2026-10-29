@@ -1,4 +1,5 @@
-import { DataTable, type Column } from "@/shared/ui/data-table";
+import { ClampText, DataTable, type Column } from "@/shared/ui/data-table";
+import { cn } from "@/shared/lib/cn";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { ConnectionLabel } from "@/shared/components/ConnectionLabel";
 import {
@@ -60,41 +61,67 @@ const METHOD_ICONS: Record<
   DELETE: Trash2,
 };
 
-function ActionCell({ action }: { action: string }) {
-  const Icon =
-    AUTH_ACTION_ICONS[action] ?? METHOD_ICONS[action.split(" ")[0]] ?? FileText;
-  return (
-    <div className="inline-flex items-center justify-center gap-2 max-w-full @max-2xl/table:items-start">
-      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground @max-2xl/table:mt-[3px]" aria-hidden="true" />
-      {/* As a card title the path wraps to two lines instead of losing its end. */}
-      <span className="text-xs text-text-primary font-medium truncate @max-2xl/table:line-clamp-2 @max-2xl/table:whitespace-normal @max-2xl/table:text-sm @max-2xl/table:[overflow-wrap:anywhere]">
-        {action}
-      </span>
-    </div>
-  );
-}
-
 function formatResourceType(type: string): string {
   if (!type) return "";
   return type.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
-function MetadataCell({ log }: { log: AuditLog }) {
+function metadataNameOf(log: AuditLog): string | undefined {
   const meta = log.metadata ?? {};
-  const metaName =
+  return (
     (typeof meta.name === "string" && meta.name) ||
     (typeof meta.connectionName === "string" && meta.connectionName) ||
-    undefined;
+    undefined
+  );
+}
 
+function hasResource(log: AuditLog): boolean {
+  return Boolean(
+    log.resourceType === "connection" ||
+      metadataNameOf(log) ||
+      (log.resourceId && log.resourceId !== "unknown") ||
+      formatResourceType(log.resourceType),
+  );
+}
+
+function ActionCell({ log }: { log: AuditLog }) {
+  const { action } = log;
+  const Icon =
+    AUTH_ACTION_ICONS[action] ?? METHOD_ICONS[action.split(" ")[0]] ?? FileText;
+  return (
+    // In a card the wrapper steps aside and the action is the card's title;
+    // in the table the resource follows it as a muted second line.
+    <div className="flex min-w-0 flex-col gap-0.5 @max-2xl/table:contents">
+      <div className="inline-flex min-w-0 items-start justify-start gap-2 max-w-full">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground mt-px @max-2xl/table:mt-[3px]" aria-hidden="true" />
+        {/* The path wraps to two lines instead of losing its end. */}
+        <ClampText
+          text={action}
+          className="text-xs text-text-primary font-medium truncate @max-2xl/table:line-clamp-2 @max-2xl/table:whitespace-normal @max-2xl/table:text-sm @max-2xl/table:[overflow-wrap:anywhere]"
+        />
+      </div>
+      {hasResource(log) ? (
+        <div className="flex min-w-0 pl-[22px] @max-2xl/table:hidden">
+          <MetadataCell log={log} muted />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MetadataCell({ log, muted = false }: { log: AuditLog; muted?: boolean }) {
+  const metaName = metadataNameOf(log);
   const showId = log.resourceId && log.resourceId !== "unknown";
   const formattedType = formatResourceType(log.resourceType);
+  // The second line of the table layout is secondary: muted, and left-aligned under the action.
+  const nameTone = muted ? "font-normal text-muted-foreground" : "font-medium text-text-primary";
 
   return (
-    <div className="inline-flex items-center justify-center gap-2 max-w-full py-0.5">
+    <div className={cn("inline-flex items-center justify-center gap-2 max-w-full py-0.5", muted && "min-w-0 justify-start py-0")}>
       {log.resourceType === "connection" ? (
-        <ConnectionLabel id={log.resourceId} name={metaName} className="text-xs truncate font-medium" />
+        <ConnectionLabel id={log.resourceId} name={metaName} className={cn("text-xs truncate font-medium", muted && nameTone)} />
       ) : metaName ? (
-        <span className="text-xs font-medium text-text-primary truncate" title={`${metaName} (${log.resourceId})`}>
+        <span className={cn("text-xs truncate", nameTone)} title={`${metaName} (${log.resourceId})`}>
           {metaName}
         </span>
       ) : showId ? (
@@ -213,6 +240,8 @@ export default function AuditTable({
   // Narrower than 42rem each entry becomes a card: the action is the title,
   // the environment a badge beside it, then the time and the actor, then the
   // resource. The time is the key field of an audit log, so it never hides.
+  // From 42rem the table has fixed columns: the action takes what the others
+  // leave, with the resource as its second line instead of a column.
   const columns: Column<AuditLog>[] = [
     {
       header: t('column.date'),
@@ -224,26 +253,28 @@ export default function AuditTable({
           {formatDateTimeShort(log.createdAt)}
         </time>
       ),
-      className: "w-44 text-center",
-      headerClassName: "w-44 text-center",
+      width: "w-42",
+      align: "left",
       stack: "meta",
     },
     {
       header: t('column.user'),
       accessor: (log) => (
-        <span className="text-sm font-medium text-text-primary truncate block text-center @max-2xl/table:text-xs">
+        <span
+          className="text-sm font-medium text-text-primary truncate block @max-2xl/table:text-xs"
+          title={log.username}
+        >
           {log.username}
         </span>
       ),
-      className: "w-36 text-center",
-      headerClassName: "w-36 text-center",
+      width: "w-40 @4xl/table:w-56",
+      align: "left",
       stack: "meta",
     },
     {
       header: t('column.action'),
-      accessor: (log) => <ActionCell action={log.action} />,
-      className: "text-center",
-      headerClassName: "text-center",
+      accessor: (log) => <ActionCell log={log} />,
+      align: "left",
       stack: "title",
     },
     {
@@ -253,16 +284,15 @@ export default function AuditTable({
           {formatEnvironment(log.environment)}
         </span>
       ),
-      className: "w-28 text-center",
-      headerClassName: "w-28 text-center",
+      width: "w-28",
+      align: "left",
       stack: "badge",
     },
     {
       header: t('column.metadata'),
       accessor: (log) => <MetadataCell log={log} />,
-      className: "text-center",
-      headerClassName: "text-center",
       stack: "field",
+      stackOnly: true,
     },
   ];
 
@@ -274,6 +304,7 @@ export default function AuditTable({
         loading={isLoading}
         caption={t('page.subtitle')}
         narrowLayout="stack"
+        layout="fixed"
         emptyMessage={t('empty.title')}
         emptyContent={
           <EmptyState
