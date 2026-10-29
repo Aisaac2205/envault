@@ -1,6 +1,16 @@
 import type { Dictionary } from '../types';
 
 export const en: Dictionary = {
+  hero: {
+    title: 'Scheduled backups for PostgreSQL and MySQL',
+    subtitle:
+      'Every backup goes to Cloudflare R2 or any S3-compatible store, and every restore can start with a dry run. Self-hosted with Docker and free for internal use.',
+    installCta: 'Install with Docker',
+    docsCta: 'Read the docs',
+    sampleDataBadge: 'Sample data',
+    screenshotAlt:
+      'EnVault Management dashboard showing the success rate, this week’s backups, how long each backup took, and the latest restore',
+  },
   features: {
     title: 'Backups that just work, without the babysitting',
     subtitle:

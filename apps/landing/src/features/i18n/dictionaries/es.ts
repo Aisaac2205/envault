@@ -1,6 +1,16 @@
 import type { Dictionary } from '../types';
 
 export const es: Dictionary = {
+  hero: {
+    title: 'Respaldos programados para PostgreSQL y MySQL',
+    subtitle:
+      'Cada respaldo va a Cloudflare R2 o a otro almacenamiento compatible con S3, y cada restauración admite una simulación previa. Lo instalas con Docker y es gratis para uso interno.',
+    installCta: 'Instalar con Docker',
+    docsCta: 'Ver documentación',
+    sampleDataBadge: 'Datos de ejemplo',
+    screenshotAlt:
+      'Panel de EnVault Management con la tasa de éxito, los respaldos de la semana, cuánto tardó cada uno y la última restauración',
+  },
   features: {
     title: 'Copias de seguridad que simplemente funcionan, sin que tengas que estar encima',
     subtitle:

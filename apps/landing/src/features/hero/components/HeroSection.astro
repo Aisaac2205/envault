@@ -1,0 +1,165 @@
+---
+import { getImage } from 'astro:assets';
+import { getDictionary } from '../../i18n/get-dictionary';
+import type { Locale } from '../../i18n/types';
+import { getDashboardScreenshots } from '../screenshots';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'es' } = Astro.props;
+const isEn = locale === 'en';
+const hero = getDictionary(locale).hero;
+const { desktop, mobile } = getDashboardScreenshots(locale);
+
+// The install section is the documentation block further down this page.
+const installHref = '#documentation';
+const docsHref = isEn ? '/en/docs' : '/docs';
+// Where a default Docker Compose install serves the app: the web container on port 5173, the dashboard at "/".
+const appAddress = 'localhost:5173';
+
+// Art direction: the desktop capture inside the browser frame from Tailwind's `md` breakpoint up,
+// the phone mockup (it brings its own frame) below it. Every <source> carries its own width and
+// height so neither aspect ratio shifts the layout.
+const desktopMedia = '(min-width: 48rem)';
+// The frame spans the max-w-7xl container minus its px-6 gutters (1232px from 1280px wide up).
+const desktopSizes = '(min-width: 80rem) 77rem, calc(100vw - 3rem)';
+const mobileSizes = '18rem';
+
+const [desktopAvif, desktopWebp, mobileAvif, mobileWebp] = await Promise.all([
+  getImage({ src: desktop, format: 'avif', widths: [800, 1200, desktop.width] }),
+  getImage({ src: desktop, format: 'webp', widths: [800, 1200, desktop.width] }),
+  getImage({ src: mobile, format: 'avif', widths: [576, mobile.width] }),
+  getImage({ src: mobile, format: 'webp', widths: [576, mobile.width] }),
+]);
+
+const buttonBase =
+  'inline-flex h-11 w-full items-center justify-center rounded-lg px-5 text-sm font-semibold whitespace-nowrap select-none sm:w-auto ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ' +
+  'motion-safe:transition-[background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.97]';
+---
+
+<section id="hero" class="pt-32 pb-24 font-sans md:pt-40 md:pb-32" aria-labelledby="hero-heading">
+  {/* Same container as the header (max-w-7xl with px-6), so the frame lines up with the logo and the action bar */}
+  <div class="mx-auto max-w-7xl px-6">
+    <div class="mx-auto max-w-4xl text-center">
+      <h1
+        id="hero-heading"
+        class="hero-reveal text-balance text-[clamp(2rem,0.9rem+4.4vw,4.5rem)] font-semibold leading-[1.05] tracking-[-0.035em] text-white"
+      >
+        {hero.title}
+      </h1>
+      <p
+        class="hero-reveal mx-auto mt-6 max-w-3xl text-balance text-base leading-relaxed text-zinc-400 sm:text-lg"
+        style="--reveal-order: 1"
+      >
+        {hero.subtitle}
+      </p>
+      <div class="hero-reveal mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row" style="--reveal-order: 2">
+        <a href={installHref} class:list={[buttonBase, 'bg-zinc-100 text-zinc-950 hover:bg-white']}>
+          {hero.installCta}
+        </a>
+        <a
+          href={docsHref}
+          class:list={[buttonBase, 'border border-white/15 bg-zinc-950 text-zinc-100 hover:border-white/25 hover:bg-zinc-900']}
+        >
+          {hero.docsCta}
+        </a>
+      </div>
+    </div>
+
+    <div class="hero-rise mt-16 md:mt-20">
+      {/* Browser window around the desktop capture; on phones the capture's own iPhone frame replaces it */}
+      <div data-ui class="md:overflow-hidden md:rounded-xl md:border md:border-white/10 md:bg-zinc-950">
+        <div class="hidden h-11 grid-cols-[1fr_auto_1fr] items-center gap-4 bg-zinc-900 px-4 md:grid">
+          <div class="flex items-center gap-2" aria-hidden="true">
+            <span class="size-3 rounded-full bg-[#ff5f57]"></span>
+            <span class="size-3 rounded-full bg-[#febc2e]"></span>
+            <span class="size-3 rounded-full bg-[#28c840]"></span>
+          </div>
+          <div
+            class="flex h-7 w-72 items-center justify-center rounded-md bg-white/[0.06] px-3 text-xs text-zinc-400 tabular-nums lg:w-96"
+            aria-hidden="true"
+          >
+            {appAddress}
+          </div>
+          <span class="justify-self-end rounded-md border border-white/10 px-2 py-0.5 text-xs text-zinc-300">
+            {hero.sampleDataBadge}
+          </span>
+        </div>
+
+        <picture>
+          <source
+            media={desktopMedia}
+            type="image/avif"
+            srcset={desktopAvif.srcSet.attribute}
+            sizes={desktopSizes}
+            width={desktopAvif.attributes.width}
+            height={desktopAvif.attributes.height}
+          />
+          <source
+            media={desktopMedia}
+            type="image/webp"
+            srcset={desktopWebp.srcSet.attribute}
+            sizes={desktopSizes}
+            width={desktopWebp.attributes.width}
+            height={desktopWebp.attributes.height}
+          />
+          <source
+            type="image/avif"
+            srcset={mobileAvif.srcSet.attribute}
+            sizes={mobileSizes}
+            width={mobileAvif.attributes.width}
+            height={mobileAvif.attributes.height}
+          />
+          <img
+            src={mobileWebp.src}
+            srcset={mobileWebp.srcSet.attribute}
+            sizes={mobileSizes}
+            alt={hero.screenshotAlt}
+            width={mobileWebp.attributes.width}
+            height={mobileWebp.attributes.height}
+            class="mx-auto block h-auto w-full max-w-72 md:max-w-none"
+            loading="eager"
+            fetchpriority="high"
+            decoding="async"
+          />
+        </picture>
+      </div>
+
+      {/* The phone capture shows the same seeded data, so it carries the same label below it */}
+      <p class="mt-5 flex justify-center md:hidden">
+        <span class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-zinc-300">{hero.sampleDataBadge}</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* One entrance on load: the copy rises in order while the screenshot, already painted, settles into place.
+     The screenshot never starts transparent, so it is painted (and counted for LCP) immediately. */
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-reveal {
+      animation: hero-reveal 700ms cubic-bezier(0.23, 1, 0.32, 1) both;
+      animation-delay: calc(var(--reveal-order, 0) * 80ms);
+    }
+
+    .hero-rise {
+      animation: hero-rise 900ms cubic-bezier(0.23, 1, 0.32, 1) 160ms both;
+    }
+  }
+
+  @keyframes hero-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+  }
+
+  @keyframes hero-rise {
+    from {
+      transform: translateY(24px);
+    }
+  }
+</style>
