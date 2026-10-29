@@ -114,7 +114,7 @@ export default function AuditDetailPage() {
       ) : null}
 
       {log ? (
-        <article className="space-y-8 rounded-xl bg-card p-6 shadow-sm">
+        <article className="space-y-8 rounded-xl bg-card p-4 shadow-sm sm:p-6">
           <header className="space-y-3">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-lg font-semibold text-text-primary">

@@ -46,3 +46,32 @@ describe("ConnectionForm: environment choices", () => {
     expect(environmentOptions()).toEqual(["dev", "qa"]);
   });
 });
+
+describe("ConnectionForm: phone layout", () => {
+  // Three nowrap buttons need more than a 360 px card, so below sm they stack
+  // full width with the submit on top, like DialogFooter; from sm up they sit
+  // in a right-aligned row. jsdom ignores CSS, so this pins the class contract.
+  it("stacks the footer actions below sm and keeps the row from sm", () => {
+    render(
+      <ConnectionForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        isLoading={false}
+        testRaw={vi.fn()}
+      />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Crear conexión" });
+    const footer = submit.parentElement;
+
+    expect(footer).toBe(screen.getByRole("button", { name: "Probar conexión" }).parentElement);
+    expect(footer).toHaveClass(
+      "flex",
+      "flex-col-reverse",
+      "items-stretch",
+      "sm:flex-row",
+      "sm:items-center",
+      "sm:justify-end",
+    );
+  });
+});

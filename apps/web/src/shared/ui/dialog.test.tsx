@@ -50,6 +50,32 @@ describe('Dialog', () => {
     expect(closeButton).toBeInTheDocument();
   });
 
+  // On a phone with the keyboard open a long dialog is taller than the
+  // viewport, so the content caps its height and scrolls; one minmax(0, 1fr)
+  // column keeps long unbreakable text from widening it past the screen.
+  // jsdom ignores CSS, so this pins the class contract.
+  it('caps its height to the viewport and scrolls long content', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Dialog>
+        <DialogTrigger>Open</DialogTrigger>
+        <DialogContent>
+          <DialogTitle>Long dialog</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+
+    expect(screen.getByRole('dialog')).toHaveClass(
+      'grid',
+      'grid-cols-1',
+      'max-h-[calc(100dvh-2rem)]',
+      'overflow-y-auto',
+    );
+  });
+
   it('hides close button when showCloseButton is false', async () => {
     const user = userEvent.setup();
 
