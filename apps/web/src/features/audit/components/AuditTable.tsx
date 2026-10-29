@@ -64,9 +64,12 @@ function ActionCell({ action }: { action: string }) {
   const Icon =
     AUTH_ACTION_ICONS[action] ?? METHOD_ICONS[action.split(" ")[0]] ?? FileText;
   return (
-    <div className="inline-flex items-center justify-center gap-2 max-w-full">
-      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="text-xs text-text-primary font-medium truncate">{action}</span>
+    <div className="inline-flex items-center justify-center gap-2 max-w-full @max-2xl/table:items-start">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground @max-2xl/table:mt-[3px]" aria-hidden="true" />
+      {/* As a card title the path wraps to two lines instead of losing its end. */}
+      <span className="text-xs text-text-primary font-medium truncate @max-2xl/table:line-clamp-2 @max-2xl/table:whitespace-normal @max-2xl/table:text-sm @max-2xl/table:[overflow-wrap:anywhere]">
+        {action}
+      </span>
     </div>
   );
 }
@@ -156,11 +159,12 @@ function AuditPagination({
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex w-full items-center justify-between gap-4">
-      <p className="text-xs text-muted-foreground whitespace-nowrap">
+    // On a phone the range takes its own line and the controls stay whole.
+    <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <p className="text-xs text-muted-foreground sm:whitespace-nowrap">
         {t('showing', { start: startItem, end: endItem, total })}
       </p>
-      <Pagination className="mx-0 w-auto">
+      <Pagination className="mx-0 ml-auto w-auto">
         <PaginationContent>
           <PaginationItem>
             <PaginationPrevious
@@ -206,48 +210,59 @@ export default function AuditTable({
 }: AuditTableProps) {
   const { t } = useTranslation('audit');
 
+  // Narrower than 42rem each entry becomes a card: the action is the title,
+  // the environment a badge beside it, then the time and the actor, then the
+  // resource. The time is the key field of an audit log, so it never hides.
   const columns: Column<AuditLog>[] = [
     {
       header: t('column.date'),
       accessor: (log) => (
-        <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+        <time
+          dateTime={log.createdAt}
+          className="text-xs text-muted-foreground whitespace-nowrap tabular-nums"
+        >
           {formatDateTimeShort(log.createdAt)}
-        </span>
+        </time>
       ),
-      className: "w-44 text-center hidden sm:table-cell",
-      headerClassName: "w-44 text-center hidden sm:table-cell",
+      className: "w-44 text-center",
+      headerClassName: "w-44 text-center",
+      stack: "meta",
     },
     {
       header: t('column.user'),
       accessor: (log) => (
-        <span className="text-sm font-medium text-text-primary truncate block text-center">
+        <span className="text-sm font-medium text-text-primary truncate block text-center @max-2xl/table:text-xs">
           {log.username}
         </span>
       ),
       className: "w-36 text-center",
       headerClassName: "w-36 text-center",
+      stack: "meta",
     },
     {
       header: t('column.action'),
       accessor: (log) => <ActionCell action={log.action} />,
       className: "text-center",
       headerClassName: "text-center",
+      stack: "title",
     },
     {
       header: t('column.environment'),
       accessor: (log) => (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground @max-2xl/table:rounded-md @max-2xl/table:bg-muted @max-2xl/table:px-2 @max-2xl/table:py-0.5">
           {formatEnvironment(log.environment)}
         </span>
       ),
-      className: "w-28 text-center hidden sm:table-cell",
-      headerClassName: "w-28 text-center hidden sm:table-cell",
+      className: "w-28 text-center",
+      headerClassName: "w-28 text-center",
+      stack: "badge",
     },
     {
       header: t('column.metadata'),
       accessor: (log) => <MetadataCell log={log} />,
       className: "text-center",
       headerClassName: "text-center",
+      stack: "field",
     },
   ];
 
@@ -257,6 +272,8 @@ export default function AuditTable({
         columns={columns}
         data={logs}
         loading={isLoading}
+        caption={t('page.subtitle')}
+        narrowLayout="stack"
         emptyMessage={t('empty.title')}
         emptyContent={
           <EmptyState
