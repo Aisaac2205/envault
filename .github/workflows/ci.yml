@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+# Read-only by default; release and publish-images widen it for themselves.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
@@ -150,6 +154,9 @@ jobs:
       issues: write
       pull-requests: write
       id-token: write
+    outputs:
+      published: ${{ steps.released.outputs.published }}
+      version: ${{ steps.released.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -168,7 +175,50 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # semantic-release reports nothing to later steps, but it creates the
+      # release tag on HEAD in this checkout. A tag that is on HEAD after the run
+      # and was not before it is the version this run released.
+      - name: Record release tags on HEAD
+        id: tags-before
+        run: echo "tags=$(git tag --points-at HEAD --list 'v*' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
       - name: Run Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm exec semantic-release --ci
+
+      - name: Detect the released version
+        id: released
+        env:
+          TAGS_BEFORE: ${{ steps.tags-before.outputs.tags }}
+        run: |
+          new_tag=""
+          for tag in $(git tag --points-at HEAD --list 'v*' | sort -V); do
+            case " $TAGS_BEFORE " in
+              *" $tag "*) ;;
+              *) new_tag="$tag" ;;
+            esac
+          done
+          if [ -z "$new_tag" ]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "No new release: the images are not published."
+            exit 0
+          fi
+          if ! [[ "$new_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected release tag '$new_tag'."
+            exit 1
+          fi
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          echo "version=${new_tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Released $new_tag."
+
+  publish-images:
+    name: Publish container images
+    needs: [release]
+    if: needs.release.outputs.published == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish-images.yml
+    with:
+      version: ${{ needs.release.outputs.version }}

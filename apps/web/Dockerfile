@@ -34,7 +34,10 @@ ENV VITE_API_URL=$VITE_API_URL
 RUN pnpm --filter @vaultly-control/web build
 
 # ── Stage 4: Production (nginx) ────────────────────────────────
-FROM nginx:alpine AS production
+# Mainline nginx on Alpine (the image `nginx:alpine` pointed to), pinned by tag
+# and digest so a rebuild of the same commit gets the same base. Dependabot
+# bumps both together.
+FROM nginx:1.31.8-alpine@sha256:785835ea65db4bba6f021acc0f3be91b0fef76a53fe41f8588c6698d2aed0606 AS production
 
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 

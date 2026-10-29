@@ -1,0 +1,38 @@
+version: 2
+
+# Commit messages follow docs/en/conventions.md: `chore: ...`, no scope. Do not
+# add `include: scope`, it turns them into `chore(deps): ...`.
+updates:
+  # Base images of the published api and web images (node, nginx), pinned by
+  # tag and digest in their Dockerfiles.
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/web
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    groups:
+      docker-base-images:
+        patterns:
+          - "*"
+    ignore:
+      # Node stays on the 22 line. A Node bump must also update .nvmrc and
+      # engines.node to the same release.
+      - dependency-name: node
+        update-types:
+          - version-update:semver-major
+
+  # Actions used by the workflows, pinned to commit SHAs with the version in a
+  # comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    groups:
+      github-actions:
+        patterns:
+          - "*"
