@@ -57,7 +57,7 @@ export function ConnectionsStats({
           label={t('stats.byEnvironment')}
           value={
             topEnv ? (
-              <span className="flex items-baseline gap-1">
+              <span className="flex items-baseline gap-1 max-sm:flex-wrap">
                 {topEnv[1]}
                 <span className="text-sm font-normal text-muted-foreground">
                   {topEnv[0]}
@@ -78,7 +78,7 @@ export function ConnectionsStats({
         <StatCard
           label={t('stats.byType')}
           value={
-            <span className="flex items-center gap-3">
+            <span className="flex items-center gap-3 max-sm:flex-wrap max-sm:gap-y-1">
               <span className="inline-flex items-center gap-1.5">
                 <img src={postgresSvg} alt="PostgreSQL" className="h-5 w-5 shrink-0" />
                 {postgres}

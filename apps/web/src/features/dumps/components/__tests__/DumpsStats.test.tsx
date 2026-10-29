@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { DumpsStats } from "../DumpsStats";
 import type { BackupJob } from "../../types";
 
@@ -29,5 +29,13 @@ describe("DumpsStats", () => {
     for (const item of Array.from(grid.children)) {
       expect(item).toHaveClass("h-full");
     }
+  });
+
+  it("clamps the most backed up connection name, free text of any length, to two lines on a phone", () => {
+    render(<DumpsStats dumps={[dump]} />);
+
+    expect(screen.getByText("Orders DB")).toHaveClass("max-sm:line-clamp-2", "sm:truncate");
+    // Short figures wrap instead.
+    expect(screen.getByText("1")).not.toHaveClass("max-sm:line-clamp-2");
   });
 });

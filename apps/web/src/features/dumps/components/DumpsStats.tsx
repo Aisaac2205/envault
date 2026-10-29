@@ -67,6 +67,7 @@ export function DumpsStats({ dumps }: DumpsStatsProps) {
           variant="outlined"
           label={t('label.mostBacked')}
           value={topConn?.[0] ?? "N/A"}
+          truncate
           icon={<Server className="h-4 w-4" />}
         />
       </StaggerItem>

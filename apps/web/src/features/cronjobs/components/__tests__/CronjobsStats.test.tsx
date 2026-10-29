@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { CronjobsStats } from "../CronjobsStats";
 import type { Cronjob } from "../../types";
 
@@ -35,5 +35,12 @@ describe("CronjobsStats", () => {
     for (const item of Array.from(grid.children)) {
       expect(item).toHaveClass("h-full");
     }
+  });
+
+  it("lets a status name drop under its count on a phone instead of being cut", () => {
+    render(<CronjobsStats cronjobs={cronjobs} />);
+
+    const status = screen.getByText(/^(Completado|Completed)$/);
+    expect(status.parentElement).toHaveClass("max-sm:flex-wrap");
   });
 });

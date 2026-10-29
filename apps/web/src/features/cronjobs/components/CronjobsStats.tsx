@@ -7,7 +7,7 @@ import { nextRunParts } from "@/lib/format";
 
 function ValueWithUnit({ value, unit }: { value: string; unit: string }) {
   return (
-    <span className="flex items-baseline gap-1">
+    <span className="flex items-baseline gap-1 max-sm:flex-wrap">
       {value}
       {unit && (
         <span className="text-sm font-normal text-muted-foreground">{unit}</span>

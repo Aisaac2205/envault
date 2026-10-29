@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { ConnectionsStats } from "../components/ConnectionsStats";
 import type { Connection } from "../types";
 
@@ -33,5 +33,16 @@ describe("ConnectionsStats", () => {
     for (const item of Array.from(grid.children)) {
       expect(item).toHaveClass("h-full");
     }
+  });
+
+  it("lets the engine counts and the environment drop to a second line on a phone instead of being cut", () => {
+    render(<ConnectionsStats connections={connections} />);
+
+    const engineCounts = screen.getByAltText("PostgreSQL").parentElement?.parentElement;
+    expect(engineCounts).toContainElement(screen.getByAltText("MySQL"));
+    expect(engineCounts).toHaveClass("max-sm:flex-wrap", "max-sm:gap-y-1");
+
+    const topEnvironment = screen.getByText("prod").parentElement;
+    expect(topEnvironment).toHaveClass("max-sm:flex-wrap");
   });
 });
