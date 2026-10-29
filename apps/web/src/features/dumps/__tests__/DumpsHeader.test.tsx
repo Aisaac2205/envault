@@ -27,11 +27,9 @@ describe("Dumps page header on phones", () => {
   it("truncates the picked connection inside the picker instead of pushing its chevron out", () => {
     renderPage();
 
-    // Radix drops the className given to Select.Value, so the trigger styles it.
-    expect(screen.getByRole("combobox")).toHaveClass(
-      "*:data-[slot=select-value]:min-w-0",
-      "*:data-[slot=select-value]:truncate",
-    );
+    // The shared SelectValue is the trigger's shrinkable, truncating flex item.
+    const value = screen.getByRole("combobox").querySelector(':scope > [data-slot="select-value"]');
+    expect(value).toHaveClass("min-w-0", "truncate");
   });
 
   it("moves the create button under the picker when both do not fit on one line", () => {

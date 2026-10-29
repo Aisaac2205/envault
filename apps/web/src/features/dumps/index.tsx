@@ -133,8 +133,7 @@ export default function Dumps() {
                 onValueChange={setSelectedConnectionId}
                 disabled={isCreatingBackup || connections.length === 0}
               >
-                {/* Radix drops the className given to Select.Value, so the trigger truncates it. */}
-                <SelectTrigger className="flex-[1_1_13.5rem] sm:w-[13.5rem] sm:flex-none lg:w-[280px] *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate">
+                <SelectTrigger className="flex-[1_1_13.5rem] sm:w-[13.5rem] sm:flex-none lg:w-[280px]">
                   <SelectValue
                     placeholder={
                       connections.length === 0
