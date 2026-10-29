@@ -17,6 +17,8 @@ import { useTheme } from "@/shared/hooks/useTheme";
 
 export interface AnimatedThemeTogglerProps {
   sound?: boolean;
+  /** Extra classes for the button, e.g. a larger invisible touch target. The look stays inline. */
+  className?: string;
 }
 
 /* ── Audio ── */
@@ -73,6 +75,7 @@ function tick(last: React.MutableRefObject<number>) {
 
 export function AnimatedThemeToggler({
   sound = true,
+  className,
 }: AnimatedThemeTogglerProps) {
   const rawId = useId();
   const maskId = `att${rawId.replace(/:/g, "")}`;
@@ -99,6 +102,7 @@ export function AnimatedThemeToggler({
 
   return (
     <motion.button
+      className={className}
       onClick={handleToggle}
       whileHover={{ scale: 1.1 }}
       whileTap={{ scale: 0.86 }}

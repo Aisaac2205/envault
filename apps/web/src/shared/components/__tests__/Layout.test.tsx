@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Layout } from "../Layout";
 import type { AuthUser } from "@/shared/hooks/useAuth";
@@ -62,12 +62,35 @@ describe("Layout", () => {
     expect(toaster ?? true).toBeTruthy();
   });
 
-  it("matches the page background on the mobile header and shows only the menu button", () => {
+  it("matches the page background on the mobile header, with no logo or product name", () => {
     renderLayout();
     const mobileHeader = document.querySelector("header");
-    expect(mobileHeader).toHaveClass("bg-bg");
+    expect(mobileHeader).toHaveClass("bg-bg", "md:hidden");
     expect(mobileHeader).not.toHaveClass("bg-sidebar");
     expect(mobileHeader?.querySelector("img")).toBeNull();
     expect(mobileHeader).not.toHaveTextContent("EnVault Management");
+  });
+
+  it("puts the menu button on the left and the language and theme toggles on the right of the mobile header", () => {
+    renderLayout();
+    // jsdom ignores CSS, so the desktop topbar's toggles are in the DOM too: scope to the mobile header.
+    const mobileHeader = document.querySelector("header") as HTMLElement;
+    expect(mobileHeader).toHaveClass("md:hidden");
+    const header = within(mobileHeader);
+
+    const menu = header.getByRole("button", { name: "Open menu" });
+    const language = header.getByRole("button", { name: /idioma|language/i });
+    const theme = header.getByRole("button", { name: "Toggle theme" });
+    expect(header.getAllByRole("button")).toEqual([menu, language, theme]);
+
+    // The toggles share one group pushed to the right edge, like the desktop topbar pair.
+    const toggles = language.parentElement;
+    expect(theme.parentElement).toBe(toggles);
+    expect(toggles).toHaveClass("ml-auto", "flex", "items-center", "gap-2");
+
+    // A transparent inset grows each 32px toggle to a 44px tall touch target without restyling it.
+    for (const toggle of [language, theme]) {
+      expect(toggle).toHaveClass("relative", "after:absolute", "after:-inset-x-1", "after:-inset-y-1.5");
+    }
   });
 });
