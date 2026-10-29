@@ -8,6 +8,8 @@ import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { Badge } from "@/shared/ui/badge";
 import { TableScrollRegion } from "@/shared/ui/table";
+import { StackFieldLabel, stackedTableClasses as stacked } from "@/shared/ui/data-table";
+import { cn } from "@/shared/lib/cn";
 import { Stagger, StaggerItem } from "@/shared/ui/motion/Stagger";
 import { useStorageOverview } from "../hooks/useMaintenance";
 import { useConnections } from "@/features/connections/hooks/useConnections";
@@ -177,12 +179,18 @@ export function StoragePanel() {
         ) : (
           <Card variant="outlined" className="overflow-hidden">
             <CardContent className="p-0">
-              <TableScrollRegion aria-labelledby={captionId} className="overflow-x-auto">
-                <table className="w-full text-sm">
+              {/*
+                Below 42rem of card width each connection is a card: the name
+                (with its engine and slug) first, then the dumps, the size and
+                the oldest dump as labelled lines, then the retention button
+                across the card.
+              */}
+              <TableScrollRegion aria-labelledby={captionId} className={cn("overflow-x-auto", stacked.container)}>
+                <table className={cn("w-full text-sm", stacked.table)}>
                   <caption id={captionId} className="sr-only">
                     {t("table.caption")}
                   </caption>
-                  <thead>
+                  <thead className={stacked.header}>
                     <tr className="border-b border-border bg-muted/25 text-left text-xs font-medium text-muted-foreground">
                       <th className="px-5 py-3" scope="col">
                         {t("table.connection")}
@@ -201,17 +209,22 @@ export function StoragePanel() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/60">
+                  <tbody className={cn("divide-y divide-border/60", stacked.body)}>
                     {connectionRows.map((conn) => (
                       <tr
                         key={conn.slug}
-                        className="transition-colors duration-150 hover:bg-muted/30"
+                        className={cn(
+                          "transition-colors duration-150 hover:bg-muted/30",
+                          stacked.row,
+                          // The card's own border closes the last row.
+                          "@max-2xl/table:last:border-b-0",
+                        )}
                       >
-                        <td className="px-5 py-3.5">
+                        <td className={cn("px-5 py-3.5", stacked.cell("title"))}>
                           <EngineName dbType={conn.dbType}>
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-text-primary">
+                              <div className="flex items-center gap-2 @max-2xl/table:flex-wrap @max-2xl/table:gap-y-1">
+                                <span className="font-medium text-text-primary @max-2xl/table:[overflow-wrap:anywhere]">
                                   {conn.name}
                                 </span>
                                 {conn.environment && (
@@ -227,22 +240,25 @@ export function StoragePanel() {
                                   </Badge>
                                 )}
                               </div>
-                              <span className="font-mono text-[11px] text-muted-foreground">
+                              <span className="font-mono text-[11px] text-muted-foreground @max-2xl/table:[overflow-wrap:anywhere]">
                                 {conn.slug}
                               </span>
                             </div>
                           </EngineName>
                         </td>
-                        <td className="px-5 py-3.5 text-right text-xs font-medium tabular-nums text-text-secondary">
-                          {conn.count}
+                        <td className={cn("px-5 py-3.5 text-right text-xs font-medium tabular-nums text-text-secondary", stacked.cell("field"))}>
+                          <StackFieldLabel>{t("table.dumps")}</StackFieldLabel>
+                          <span>{conn.count}</span>
                         </td>
-                        <td className="px-5 py-3.5 text-right text-xs font-medium tabular-nums text-text-secondary">
-                          {conn.sizeMb.toLocaleString()} MB
+                        <td className={cn("px-5 py-3.5 text-right text-xs font-medium tabular-nums text-text-secondary", stacked.cell("field"))}>
+                          <StackFieldLabel>{t("table.size")}</StackFieldLabel>
+                          <span>{conn.sizeMb.toLocaleString()} MB</span>
                         </td>
-                        <td className="px-5 py-3.5 text-right text-xs tabular-nums text-muted-foreground">
-                          {conn.oldest ? formatDate(conn.oldest) : "-"}
+                        <td className={cn("px-5 py-3.5 text-right text-xs tabular-nums text-muted-foreground", stacked.cell("field"))}>
+                          <StackFieldLabel>{t("table.oldest")}</StackFieldLabel>
+                          <span>{conn.oldest ? formatDate(conn.oldest) : "-"}</span>
                         </td>
-                        <td className="px-5 py-3.5 text-right">
+                        <td className={cn("px-5 py-3.5 text-right", stacked.cell("footer"))}>
                           <Button
                             type="button"
                             variant="outline"
@@ -254,7 +270,7 @@ export function StoragePanel() {
                                 environment: conn.environment,
                               })
                             }
-                            className="h-8 gap-1.5 text-xs active:scale-[0.98] transition-transform duration-150 ease-out"
+                            className="h-8 gap-1.5 text-xs active:scale-[0.98] transition-transform duration-150 ease-out @max-2xl/table:h-11 @max-2xl/table:w-full"
                           >
                             <SlidersHorizontal className="size-3 text-muted-foreground" aria-hidden="true" />
                             {t("retention.configure")}
