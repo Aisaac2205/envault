@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DryRunResult } from "../DryRunResult";
 import type { DryRunResult as DryRunResultType } from "../../types";
@@ -130,5 +130,76 @@ describe("DryRunResult: target-only view", () => {
 
     const actions = screen.getByRole("button", { name: "Confirmar restauración" }).parentElement;
     expect(actions).toHaveClass("flex", "flex-col-reverse", "sm:flex-row", "sm:justify-end");
+  });
+});
+
+describe("DryRunResult: connection cards on phones", () => {
+  // Below sm the cards share one minmax(0, 1fr) column so a long name cannot
+  // widen them past the result card; names wrap there and truncate from sm.
+  it("keeps the cards inside one shrinkable column and wraps long names below sm", () => {
+    renderResult(withManifest);
+
+    const name = screen.getByText("Orders QA");
+    const card = name.parentElement?.parentElement;
+    expect(card?.parentElement).toHaveClass("grid", "grid-cols-1", "sm:grid-cols-2");
+    expect(name).toHaveClass("[overflow-wrap:anywhere]", "sm:truncate");
+    expect(name).not.toHaveClass("truncate");
+    expect(screen.getByText("orders_qa")).toHaveClass("[overflow-wrap:anywhere]", "sm:truncate");
+  });
+});
+
+describe("DryRunResult: horizontal scroll hint", () => {
+  // jsdom has no layout, so the scroller's geometry is stubbed and a scroll
+  // event drives the same measurement the browser does.
+  function stubGeometry(el: HTMLElement, geometry: { clientWidth: number; scrollWidth: number; scrollLeft: number }) {
+    for (const [key, value] of Object.entries(geometry)) {
+      Object.defineProperty(el, key, { configurable: true, value });
+    }
+    fireEvent.scroll(el);
+  }
+
+  function fades(region: HTMLElement) {
+    const wrapper = region.parentElement as HTMLElement;
+    return {
+      start: wrapper.querySelector('[data-scroll-fade="start"]'),
+      end: wrapper.querySelector('[data-scroll-fade="end"]'),
+    };
+  }
+
+  it("fades the edge that still has columns to scroll to", () => {
+    renderResult(withManifest);
+    const region = screen.getByRole("region", { name: "Comparación de tablas" });
+
+    stubGeometry(region, { clientWidth: 294, scrollWidth: 464, scrollLeft: 0 });
+    expect(fades(region).start).toHaveAttribute("data-visible", "false");
+    expect(fades(region).end).toHaveAttribute("data-visible", "true");
+
+    stubGeometry(region, { clientWidth: 294, scrollWidth: 464, scrollLeft: 80 });
+    expect(fades(region).start).toHaveAttribute("data-visible", "true");
+    expect(fades(region).end).toHaveAttribute("data-visible", "true");
+
+    stubGeometry(region, { clientWidth: 294, scrollWidth: 464, scrollLeft: 170 });
+    expect(fades(region).start).toHaveAttribute("data-visible", "true");
+    expect(fades(region).end).toHaveAttribute("data-visible", "false");
+  });
+
+  it("shows no fade when the table fits", () => {
+    renderResult(withManifest);
+    const region = screen.getByRole("region", { name: "Comparación de tablas" });
+
+    stubGeometry(region, { clientWidth: 1102, scrollWidth: 1102, scrollLeft: 0 });
+
+    expect(fades(region).start).toHaveAttribute("data-visible", "false");
+    expect(fades(region).end).toHaveAttribute("data-visible", "false");
+    expect(fades(region).end).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("gives the target-only table the same hint", () => {
+    renderResult(targetOnly);
+    const region = screen.getByRole("region", { name: "Destino actual" });
+
+    stubGeometry(region, { clientWidth: 294, scrollWidth: 400, scrollLeft: 0 });
+
+    expect(fades(region).end).toHaveAttribute("data-visible", "true");
   });
 });
