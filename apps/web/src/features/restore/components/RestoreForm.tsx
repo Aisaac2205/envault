@@ -15,6 +15,7 @@ import { cn } from "@/shared/lib/cn";
 import cloudflareSvg from "@/shared/assets/Cloudflare.svg";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
 import { FileText, ArrowRight } from "lucide-react";
 
 interface BackupInfo {
@@ -149,7 +150,7 @@ export function RestoreForm({
                   <img
                     src={DB_LOGOS[effectiveDbType]}
                     alt={DB_LABELS[effectiveDbType] ?? effectiveDbType}
-                    className="h-4 w-4"
+                    className={cn("h-4 w-4", engineLogoClass(effectiveDbType))}
                   />
                 ) : (
                   <FileText className="h-4 w-4 text-muted-foreground" />
@@ -161,7 +162,7 @@ export function RestoreForm({
                   <img
                     src={DB_LOGOS[effectiveDbType]}
                     alt={DB_LABELS[effectiveDbType] ?? effectiveDbType}
-                    className="h-6 w-6 shrink-0"
+                    className={cn("h-6 w-6 shrink-0", engineLogoClass(effectiveDbType))}
                   />
                 ) : (
                   <FileText className="h-6 w-6 shrink-0 text-muted-foreground" />

@@ -5,6 +5,7 @@ import { Button } from "@/shared/ui/button";
 import { formatNumber } from "@/lib/format";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
 import { Check, X } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { useId, useLayoutEffect, useRef, useState } from "react";
@@ -119,7 +120,7 @@ function ConnectionCard({ conn, label }: { conn: DryRunConnectionInfo; label: st
         <img
           src={DB_LOGOS[conn.dbType]}
           alt={DB_LABELS[conn.dbType] ?? conn.dbType}
-          className="h-5 w-5 shrink-0"
+          className={cn("h-5 w-5 shrink-0", engineLogoClass(conn.dbType))}
         />
       )}
       <div className="min-w-0 flex-1">

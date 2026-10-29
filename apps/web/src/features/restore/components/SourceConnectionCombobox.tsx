@@ -19,6 +19,7 @@ import {
 } from "@/shared/ui/popover";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
 
 const DB_LOGOS: Record<string, string> = {
   postgres: postgresSvg as string,
@@ -36,7 +37,7 @@ interface SourceConnectionComboboxProps {
 function DbTypeLogo({ dbType }: { dbType: string }) {
   const logo = DB_LOGOS[dbType];
   if (!logo) return null;
-  return <img src={logo} alt={dbType} className="size-5 shrink-0" />;
+  return <img src={logo} alt={dbType} className={cn("size-5 shrink-0", engineLogoClass(dbType))} />;
 }
 
 export function SourceConnectionCombobox({

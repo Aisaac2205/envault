@@ -25,6 +25,8 @@ import {
 } from "@/shared/ui/select";
 import postgresIcon from "@/shared/assets/PostgresSQL.svg";
 import mysqlIcon from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
+import { cn } from "@/shared/lib/cn";
 import {
   Pagination,
   PaginationContent,
@@ -149,7 +151,7 @@ export default function Dumps() {
                         <img
                           src={c.dbType?.toLowerCase().includes("mysql") ? mysqlIcon : postgresIcon}
                           alt={c.dbType}
-                          className="h-4 w-4 shrink-0 object-contain"
+                          className={cn("h-4 w-4 shrink-0 object-contain", engineLogoClass(c.dbType))}
                         />
                         <span className="truncate">{c.name}</span>
                       </div>
@@ -266,7 +268,7 @@ export default function Dumps() {
               <img
                 src={selectedConnection.dbType?.toLowerCase().includes("mysql") ? mysqlIcon : postgresIcon}
                 alt={selectedConnection.dbType}
-                className="h-5 w-5 shrink-0 object-contain"
+                className={cn("h-5 w-5 shrink-0 object-contain", engineLogoClass(selectedConnection.dbType))}
               />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-text-primary truncate">

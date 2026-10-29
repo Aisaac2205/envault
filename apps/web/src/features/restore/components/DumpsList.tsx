@@ -6,6 +6,7 @@ import { formatSize } from "@/shared/lib/format";
 import { formatDateTimeShort as formatDate } from "@/lib/format";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
 
 const DB_LOGOS: Record<string, string> = {
   postgres: postgresSvg as string,
@@ -85,7 +86,7 @@ export function DumpsList({
                 <img
                   src={logo}
                   alt={dbLabel}
-                  className="size-4 shrink-0"
+                  className={cn("size-4 shrink-0", engineLogoClass(dump.dbType))}
                 />
               )}
               <div className="flex min-w-0 flex-1 flex-col">

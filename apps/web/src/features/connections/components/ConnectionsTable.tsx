@@ -4,9 +4,10 @@ import { Button } from "@/shared/ui/button";
 import { DataTable, type Column } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
 import TestConnectionBadge from "./TestConnectionBadge";
-import { EngineName } from "@/shared/components/EngineIcon";
+import { EngineName, engineLogoClass } from "@/shared/components/EngineIcon";
 import PostgresSQL from "@/shared/assets/PostgresSQL.svg";
 import MySQL from "@/shared/assets/MySQL.svg";
+import { cn } from "@/shared/lib/cn";
 import { useTranslation } from "react-i18next";
 import { formatEnvironment } from "@/lib/format";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
@@ -70,7 +71,7 @@ export default function ConnectionsTable({
           <img
             src={DB_ICONS[c.dbType]}
             alt={c.dbType}
-            className="h-5 w-5"
+            className={cn("h-5 w-5", engineLogoClass(c.dbType))}
           />
           <span className="text-xs text-muted-foreground capitalize">
             {c.dbType}

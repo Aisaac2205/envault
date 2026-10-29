@@ -5,6 +5,8 @@ import type { Connection } from "../types";
 import { useTranslation } from "react-i18next";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
+import { cn } from "@/shared/lib/cn";
 
 interface ConnectionsStatsProps {
   connections: Connection[];
@@ -84,7 +86,7 @@ export function ConnectionsStats({
                 {postgres}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <img src={mysqlSvg} alt="MySQL" className="h-5 w-5 shrink-0" />
+                <img src={mysqlSvg} alt="MySQL" className={cn("h-5 w-5 shrink-0", engineLogoClass("mysql"))} />
                 {mysql}
               </span>
             </span>
