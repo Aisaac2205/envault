@@ -1,0 +1,18 @@
+# ── Build api and web from this checkout ───────────────────────
+# Layer it on the base file to run the stack from source instead of the images
+# published to GHCR:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+#   pnpm docker:prod       # same, attached
+#
+# `pull_policy: build` rebuilds on every `up` (BuildKit reuses unchanged
+# layers) and never pulls. The local image names keep a source build from
+# taking the published ghcr.io/aisaac2205/envault-* tags.
+
+services:
+  api:
+    image: envault-management-api:local
+    pull_policy: build
+
+  web:
+    image: envault-management-web:local
+    pull_policy: build

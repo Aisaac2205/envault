@@ -14,6 +14,11 @@
 
 services:
   api:
+    # The base file names the published GHCR image. Without a local name and
+    # `pull_policy: build`, Compose would pull that production image and run
+    # the dev command in it, or tag this dev build with the published name.
+    image: envault-management-api:dev
+    pull_policy: build
     build:
       target: dev
     volumes:
@@ -30,6 +35,9 @@ services:
       disable: true
 
   web:
+    # Same reason as api above.
+    image: envault-management-web:dev
+    pull_policy: build
     build:
       target: dev
     env_file: .env

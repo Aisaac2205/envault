@@ -15,14 +15,44 @@ Si querés un template de PaaS gestionada, usá [deployment-railway.md](deployme
 
 ## 1. Las dos imágenes
 
-EnVault Management se distribuye como dos imágenes Docker:
+EnVault Management se distribuye como dos imágenes Docker. Cada versión publica ambas en GitHub Container Registry para `linux/amd64` y `linux/arm64`.
 
-| Imagen | Built desde | Propósito | Escucha en |
-|--------|-------------|-----------|------------|
-| API | [`apps/api/Dockerfile`](../../apps/api/Dockerfile) | Backend NestJS, corre migrations, sirve REST + SSE | `3000` (HTTP) |
-| Web | [`apps/web/Dockerfile`](../../apps/web/Dockerfile) | nginx sirviendo el SPA React buildeado | `80` (HTTP) |
+| Imagen | Publicada como | Construida desde | Propósito | Escucha en |
+|--------|----------------|------------------|-----------|------------|
+| API | `ghcr.io/aisaac2205/envault-api` | [`apps/api/Dockerfile`](../../apps/api/Dockerfile) | Backend NestJS que ejecuta las migraciones y sirve REST y SSE | `3000` (HTTP) |
+| Web | `ghcr.io/aisaac2205/envault-web` | [`apps/web/Dockerfile`](../../apps/web/Dockerfile) | nginx que sirve la SPA de React compilada | `80` (HTTP) |
 
-Buildealas vos desde el repo, o pulleá desde tu registry cuando tu CI las publique.
+Cada versión se etiqueta como `X.Y.Z`, `X.Y` (el parche más reciente de esa versión menor) y `latest`. En producción fije `X.Y.Z`, así una actualización solo ocurre cuando usted la decide. Ambas imágenes incluyen atestaciones de SBOM y de procedencia.
+
+### Docker Compose con las imágenes publicadas
+
+El `docker-compose.yml` de la raíz ejecuta la API, el Web, PostgreSQL y Redis a partir de las imágenes publicadas. Solo necesita ese archivo y un `.env` junto a él, por lo que no hace falta clonar el repositorio completo.
+
+```bash
+cp .env.example .env
+# Complete .env con los secretos y las contraseñas, REDIS_HOST=redis, el almacenamiento R2
+# y ENVAULT_VERSION (por ejemplo 1.57.0; con latest sigue cada versión).
+docker compose pull
+docker compose up -d
+```
+
+El Web responde en `http://localhost:5173` y reenvía las peticiones a `/api` hacia la API, que permanece en la red interna. Consulte [environment-variables.md](environment-variables.md#docker-compose-env-en-la-raíz) para ver todos los valores.
+
+Para actualizar, defina `ENVAULT_VERSION` con la nueva versión y ejecute los mismos dos comandos, `docker compose pull` y `docker compose up -d`. Las migraciones se ejecutan cuando arranca la nueva API (vea la [sección 8](#8-comportamiento-de-migración)).
+
+Ejecute siempre `docker compose pull` antes de `up`. Ese comando falla cuando una imagen no se puede descargar (una versión mal escrita o la falta de red), mientras que `up` por sí solo recurre a construir esa imagen con el código fuente de la carpeta actual.
+
+### Construir las imágenes usted mismo
+
+Para ejecutar el mismo stack desde su copia del repositorio en lugar de las imágenes publicadas, agregue el override de build.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+```
+
+`pnpm docker:prod` hace lo mismo en primer plano. El override construye en cada `up` y nombra las imágenes `envault-management-api:local` y `envault-management-web:local`, de modo que un build desde el código nunca toma las etiquetas publicadas.
+
+Para construir las imágenes por separado, ejecute lo siguiente desde la raíz del monorepo.
 
 ```bash
 # Build local desde la raíz del monorepo
@@ -39,6 +69,9 @@ La imagen de la API instala los clientes de PostgreSQL 14 a 18 uno junto a otro 
 Si prefiere desplegar la API, el Web y los servicios base en servidores o procesos separados sin orquestador:
 
 ```bash
+# La versión a ejecutar, por ejemplo la más reciente de la página de Releases de GitHub.
+ENVAULT_VERSION=X.Y.Z
+
 # 1. Contenedor de Redis (con persistencia AOF y contraseña obligatoria)
 docker run -d \
   --name envault-redis \
@@ -52,7 +85,7 @@ docker run -d \
   --restart unless-stopped \
   -p 3000:3000 \
   --env-file .env.api \
-  envault-api:local
+  "ghcr.io/aisaac2205/envault-api:${ENVAULT_VERSION}"
 
 # 3. Contenedor Web (en el host de frontend)
 docker run -d \
@@ -61,7 +94,7 @@ docker run -d \
   -p 80:80 \
   -e API_UPSTREAM=api.interno.corp:3000 \
   -e CSP_HEADER_NAME=Content-Security-Policy \
-  envault-web:local
+  "ghcr.io/aisaac2205/envault-web:${ENVAULT_VERSION}"
 ```
 
 `--maxmemory-policy noeviction` es necesario para que Redis rechace escrituras en lugar de descartar silenciosamente claves de las colas de BullMQ bajo presión de memoria (ver [BullMQ: going to production](https://docs.bullmq.io/guide/going-to-production)). Una instancia de Redis administrada (por ejemplo, en Railway) se aprovisiona fuera de `docker-compose.yml`, por lo que esta política debe configurarse desde la propia consola de ese proveedor.
@@ -102,16 +135,17 @@ Referencia completa en [environment-variables.md](environment-variables.md). La 
 
 > **Red de Redis**: mantenga Redis en una red privada (la red de Docker o la red privada de Railway). Si debe atravesar una red pública, conéctese con una `REDIS_URL` con `rediss://` o defina `REDIS_TLS=true`.
 
-### Web (build-time Y runtime)
+### Web (runtime)
 
-La capa Web es **GitOps-friendly por diseño**: lee la config runtime de `window.APP_CONFIG`, que `entrypoint.sh` genera al arrancar el container desde variables de entorno. **No va `.env` en la imagen.**
+La imagen Web publicada no contiene ningún valor propio de una instalación, así que una sola imagen sirve para todas. La SPA llama a `/api` en su propio origen y nginx reenvía esa ruta a `API_UPSTREAM`, que lee al arrancar el contenedor. **No va ningún archivo `.env` dentro de la imagen.**
 
 | Variable | Requerida | Notas |
 |----------|-----------|-------|
-| `VITE_API_URL` | sí | URL del backend (ej: `https://api.example.com`) |
-| `VITE_APP_BASE_URL` | sí | URL pública del web (ej: `https://app.example.com`) |
+| `API_UPSTREAM` | no (por defecto `api:3000`) | `host:puerto` al que nginx reenvía `/api/*` |
+| `CSP_HEADER_NAME` | no (por defecto `Content-Security-Policy`) | Use `Content-Security-Policy-Report-Only` solo para depurar una violación |
+| `CLIENT_IP_MODE` | no (por defecto `auto`) | `direct` usa la dirección TCP del cliente, `railway` confía en el `X-Real-IP` que define el borde de Railway y `auto` elige `railway` cuando `RAILWAY_ENVIRONMENT_ID` está definida |
 
-> El prefijo `VITE_` es histórico (eran vars de build-time de Vite). En runtime se leen con los mismos nombres como env vars del container desde `entrypoint.sh`. No hace falta rebuildear la imagen para cambiarlas — solo reiniciá el container con valores nuevos.
+> `VITE_API_URL` es la única variable de build. La imagen publicada se construye con ella vacía y su CSP (`connect-src 'self'`) solo permite llamadas a su propio origen, así que sirva el Web y la API desde un mismo origen a través del contenedor Web. Un origen separado requiere un build propio con `VITE_API_URL` igual al origen de la API, sin ruta, y una CSP que lo permita.
 
 > Auth está manejado completamente por la API vía Better Auth. El Web no necesita variables de entorno específicas para auth — las sesiones son por cookie y el browser las maneja automáticamente.
 
@@ -249,7 +283,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/your-org/envault-api:0.1.0
+          image: ghcr.io/aisaac2205/envault-api:X.Y.Z  # fije una versión
           ports:
             - containerPort: 3000
           envFrom:

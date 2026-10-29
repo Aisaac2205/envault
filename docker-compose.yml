@@ -1,6 +1,19 @@
+# Runs the images published to GHCR on every release. Pin a release with
+# ENVAULT_VERSION in .env (for example 1.57.0); unset, it follows `latest`.
+#   docker compose pull && docker compose up -d
+#
+# Run `pull` first: it fails when an image cannot be pulled, while `up` alone
+# would fall back to building that image from the build block below.
+# The build blocks are the recipe for the overlays, each of which sets its own
+# local image name so a source build never takes the published name:
+#   docker-compose.build.yml  builds api and web from this checkout
+#   docker-compose.dev.yml    dev targets with hot reload
+#   docker-compose.e2e.yml    hermetic E2E stack
+
 services:
   api:
-    image: envault-management-api:0.1.1
+    image: ghcr.io/aisaac2205/envault-api:${ENVAULT_VERSION:-latest}
+    pull_policy: missing
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -32,7 +45,8 @@ services:
     restart: unless-stopped
 
   web:
-    image: envault-management-web:0.1.1
+    image: ghcr.io/aisaac2205/envault-web:${ENVAULT_VERSION:-latest}
+    pull_policy: missing
     build:
       context: .
       dockerfile: apps/web/Dockerfile

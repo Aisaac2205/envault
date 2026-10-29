@@ -4,11 +4,12 @@
 
 Guía para levantar y desarrollar el proyecto localmente con Node.js o Docker.
 
-Hay **dos archivos compose**:
+Para trabajar en local hay **tres archivos compose**.
 
 | Archivo | Cuándo usarlo |
 |---------|---------------|
-| `docker-compose.yml` | Producción / validación del build final |
+| `docker-compose.yml` | Producción con las imágenes publicadas (vea [deployment-self-host.md](deployment-self-host.md#docker-compose-con-las-imágenes-publicadas)) |
+| `docker-compose.build.yml` | Override que construye api y web desde su copia del repositorio, para validar el build final |
 | `docker-compose.dev.yml` | Override para desarrollo (hot reload, puertos abiertos, perfil `test` opcional para DBs de testing) |
 
 > ⚠️ **`docker-compose.dev.yml` NO se carga automáticamente** — el nombre `docker-compose.override.yml` (que Compose mergea sin pedirlo) se evita a propósito para que un `docker compose up` accidental en un servidor de prod no levante dev mode. Siempre pasar `-f docker-compose.yml -f docker-compose.dev.yml` o usar los scripts de `pnpm`.
@@ -101,6 +102,8 @@ Equivale a:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
+La api y el web de desarrollo usan sus propias imágenes locales (`envault-management-api:dev` y `envault-management-web:dev`), que se reconstruyen desde el target `dev` en cada `up` y nunca descargan las imágenes publicadas.
+
 | Servicio | URL |
 |----------|-----|
 | Web | `http://localhost:5173` |
@@ -117,8 +120,10 @@ pnpm docker:prod
 Equivale a:
 
 ```bash
-docker compose -f docker-compose.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 ```
+
+Construye los targets de producción desde su copia del repositorio como `envault-management-api:local` y `envault-management-web:local`, de modo que un build local nunca toma las etiquetas de las imágenes publicadas. Para ejecutar las imágenes publicadas, vea [deployment-self-host.md](deployment-self-host.md#docker-compose-con-las-imágenes-publicadas).
 
 | Servicio | URL |
 |----------|-----|
