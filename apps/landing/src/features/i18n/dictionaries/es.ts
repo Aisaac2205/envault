@@ -4,7 +4,7 @@ export const es: Dictionary = {
   hero: {
     title: 'Respaldos programados para PostgreSQL y MySQL',
     subtitle:
-      'Cada respaldo va a Cloudflare R2 o a otro almacenamiento compatible con S3, y cada restauración admite una simulación previa. Lo instalas con Docker y es gratis para uso interno.',
+      'EnVault es una herramienta gratuita y autoalojada para respaldar PostgreSQL y MySQL, con copias programadas en tu propio bucket de Cloudflare R2. Lleva esos datos reales a tus bases de desarrollo y QA sin arriesgar la de producción.',
     installCta: 'Instalar con Docker',
     docsCta: 'Ver documentación',
     sampleDataBadge: 'Datos de ejemplo',

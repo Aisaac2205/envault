@@ -4,7 +4,7 @@ export const en: Dictionary = {
   hero: {
     title: 'Scheduled backups for PostgreSQL and MySQL',
     subtitle:
-      'Every backup goes to Cloudflare R2 or any S3-compatible store, and every restore can start with a dry run. Self-hosted with Docker and free for internal use.',
+      'EnVault is a free, self-hosted tool for backing up PostgreSQL and MySQL, with scheduled backups in your own Cloudflare R2 bucket. It brings that real data into your development and QA databases without risking production.',
     installCta: 'Install with Docker',
     docsCta: 'Read the docs',
     sampleDataBadge: 'Sample data',
