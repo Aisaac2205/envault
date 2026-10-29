@@ -62,6 +62,24 @@ describe('Pagination', () => {
     expect(inactiveLink).not.toHaveAttribute('aria-current');
   });
 
+  it('draws the active page number in the foreground color of its surface', () => {
+    render(
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationLink isActive>1</PaginationLink>
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>,
+    );
+
+    const activeLink = screen.getByText('1');
+    // `accent` is a surface color; on `accent-soft` it hides the number in both themes.
+    expect(activeLink).toHaveClass('bg-accent-soft', 'text-accent-foreground', 'ring-1', 'ring-border');
+    expect(activeLink).not.toHaveClass('text-accent');
+    expect(activeLink).not.toHaveClass('ring-accent/20');
+  });
+
   it('calls onClick when page link is clicked', () => {
     const handler: Mock<(...args: never[]) => void> = vi.fn();
 
@@ -114,6 +132,40 @@ describe('Pagination', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
     expect(screen.getByText('10')).toBeInTheDocument();
     // Ellipsis renders the MoreHorizontal icon (hidden from screen readers)
+  });
+
+  it('tags page links and the ellipsis so phones keep only the current page', () => {
+    render(
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationLink>1</PaginationLink>
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationEllipsis />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationLink isActive>5</PaginationLink>
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationNext />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>,
+    );
+
+    const list = screen.getByRole('list');
+    expect(list).toHaveClass('flex-wrap');
+    expect(list.querySelectorAll('[data-slot="pagination-ellipsis"]')).toHaveLength(1);
+
+    const pages = list.querySelectorAll('[data-slot="pagination-link"]');
+    expect(Array.from(pages, (page) => page.textContent)).toEqual(['1', '5']);
+    expect(screen.getByText('5')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByLabelText('Ir a la página anterior')).not.toHaveAttribute('data-slot', 'pagination-link');
+    expect(screen.getByLabelText('Ir a la página siguiente')).not.toHaveAttribute('data-slot', 'pagination-link');
   });
 
   it('renders with custom labels', () => {

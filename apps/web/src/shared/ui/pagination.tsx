@@ -13,7 +13,7 @@ const paginationLinkVariants = cva(
   {
     variants: {
       active: {
-        true: "bg-accent-soft text-accent relative",
+        true: "bg-accent-soft text-accent-foreground relative",
         false: "hover:bg-muted",
       },
     },
@@ -55,7 +55,7 @@ export interface PaginationContentProps extends React.HTMLAttributes<HTMLUListEl
 function PaginationContent({ className, ...props }: PaginationContentProps) {
   return (
     <ul
-      className={cn("flex flex-row items-center gap-1", className)}
+      className={cn("flex flex-row flex-wrap items-center gap-1", className)}
       {...props}
     />
   );
@@ -70,8 +70,24 @@ export interface PaginationItemProps extends React.HTMLAttributes<HTMLLIElement>
   className?: string;
 }
 
+/**
+ * When the room is short only Previous, the current page and Next stay: an
+ * item holding another page link or the ellipsis hides, so the controls fit
+ * on one line instead of wrapping. The range text beside them says where you
+ * are. "Short" is a DataTable footer (the `pagination` container) narrower
+ * than 32rem, or a viewport below `sm` anywhere else.
+ */
 function PaginationItem({ className, ...props }: PaginationItemProps) {
-  return <li className={cn("", className)} {...props} />;
+  return (
+    <li
+      className={cn(
+        "max-sm:has-[>[data-slot=pagination-link]:not([aria-current])]:hidden max-sm:has-[>[data-slot=pagination-ellipsis]]:hidden",
+        "@max-lg/pagination:has-[>[data-slot=pagination-link]:not([aria-current])]:hidden @max-lg/pagination:has-[>[data-slot=pagination-ellipsis]]:hidden",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 PaginationItem.displayName = "PaginationItem";
 
@@ -93,11 +109,12 @@ function PaginationLink({
 }: PaginationLinkProps) {
   return (
     <button
+      data-slot="pagination-link"
       aria-current={isActive ? "page" : undefined}
       className={cn(
         paginationLinkVariants({ active: isActive }),
-        "min-w-9 h-9 px-2",
-        isActive && "ring-1 ring-accent/20",
+        "min-w-11 h-11 px-2 sm:min-w-9 sm:h-9",
+        isActive && "ring-1 ring-border",
         className,
       )}
       {...props}
@@ -129,7 +146,7 @@ function PaginationPrevious({
       aria-label={t("pagination.ariaPrevious")}
       className={cn(
         paginationLinkVariants({ active: false }),
-        "min-w-9 h-9 gap-1 px-2",
+        "min-w-11 h-11 gap-1 px-2 sm:min-w-9 sm:h-9",
         className,
       )}
       {...props}
@@ -162,7 +179,7 @@ function PaginationNext({
       aria-label={t("pagination.ariaNext")}
       className={cn(
         paginationLinkVariants({ active: false }),
-        "min-w-9 h-9 gap-1 px-2",
+        "min-w-11 h-11 gap-1 px-2 sm:min-w-9 sm:h-9",
         className,
       )}
       {...props}
@@ -185,6 +202,7 @@ export interface PaginationEllipsisProps extends React.HTMLAttributes<HTMLSpanEl
 function PaginationEllipsis({ className, ...props }: PaginationEllipsisProps) {
   return (
     <span
+      data-slot="pagination-ellipsis"
       aria-hidden
       className={cn("flex h-9 w-9 items-center justify-center", className)}
       {...props}
