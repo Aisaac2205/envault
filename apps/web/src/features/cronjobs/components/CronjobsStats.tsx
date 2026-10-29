@@ -7,7 +7,7 @@ import { nextRunParts } from "@/lib/format";
 
 function ValueWithUnit({ value, unit }: { value: string; unit: string }) {
   return (
-    <span className="flex items-baseline gap-1">
+    <span className="flex items-baseline gap-1 max-sm:flex-wrap">
       {value}
       {unit && (
         <span className="text-sm font-normal text-muted-foreground">{unit}</span>
@@ -57,8 +57,8 @@ export function CronjobsStats({
   };
 
   return (
-    <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <StaggerItem>
+    <Stagger className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('stats.total')}
@@ -67,7 +67,7 @@ export function CronjobsStats({
           loading={loading}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('stats.active')}
@@ -76,7 +76,7 @@ export function CronjobsStats({
           loading={loading}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('stats.topStatus')}
@@ -96,7 +96,7 @@ export function CronjobsStats({
           loading={loading}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('stats.nextRun')}

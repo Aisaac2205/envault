@@ -2,12 +2,22 @@ import { useState, type ReactNode } from "react";
 import { Sidebar, SidebarContent, SidebarRoot } from "./Sidebar";
 import { SidebarProvider, useSidebar } from "./SidebarProvider";
 import { Topbar } from "./Topbar";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import type { AuthUser } from "../hooks/useAuth";
 import type { AppSection } from "../lib/sections";
 import { Sheet, SheetContent } from "../ui/sheet";
+import { AnimatedThemeToggler } from "../ui/animated-theme-toggler";
 import { PanelLeftOpen } from "lucide-react";
 import { Toaster } from "sonner";
 import { cn } from "@/shared/lib/cn";
+
+/**
+ * The header toggles are 32px tall. A transparent inset grows each one to a
+ * 44px tall touch target without changing its look; 4px a side meets the
+ * neighbour across the 8px gap, so the targets never overlap.
+ */
+const MOBILE_TOGGLE_HIT_AREA =
+  "relative after:absolute after:-inset-x-1 after:-inset-y-1.5 after:content-['']";
 
 interface LayoutProps {
   children: ReactNode;
@@ -66,6 +76,11 @@ function LayoutInner({ children, user, sections, onLogout }: LayoutProps) {
         >
           <PanelLeftOpen className="h-4 w-4" />
         </button>
+        {/* The desktop topbar's pair, at the right edge: the topbar is hidden below md. */}
+        <div className="ml-auto flex items-center gap-2">
+          <LanguageSwitcher className={MOBILE_TOGGLE_HIT_AREA} />
+          <AnimatedThemeToggler className={MOBILE_TOGGLE_HIT_AREA} />
+        </div>
       </header>
 
       {/* Main content area */}

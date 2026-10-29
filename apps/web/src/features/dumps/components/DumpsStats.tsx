@@ -37,8 +37,8 @@ export function DumpsStats({ dumps }: DumpsStatsProps) {
     : "N/A";
 
   return (
-    <Stagger className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <StaggerItem>
+    <Stagger className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('label.totalBackups')}
@@ -46,7 +46,7 @@ export function DumpsStats({ dumps }: DumpsStatsProps) {
           icon={<Database className="h-4 w-4" />}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('label.totalSpace')}
@@ -54,7 +54,7 @@ export function DumpsStats({ dumps }: DumpsStatsProps) {
           icon={<HardDrive className="h-4 w-4" />}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('label.lastBackup')}
@@ -62,11 +62,12 @@ export function DumpsStats({ dumps }: DumpsStatsProps) {
           icon={<Calendar className="h-4 w-4" />}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t('label.mostBacked')}
           value={topConn?.[0] ?? "N/A"}
+          truncate
           icon={<Server className="h-4 w-4" />}
         />
       </StaggerItem>
