@@ -36,11 +36,15 @@ export default function ConnectionsTable({
   testLoading,
 }: ConnectionsTableProps) {
   const { t } = useTranslation('connections')
+  // Narrower than 42rem each connection becomes a card: the name and its state
+  // first, the environment below, and a last line with the test result and the
+  // actions menu. The connection details stay in the wide table and the form.
   const columns: Column<Connection>[] = [
     {
       header: t('column.name'),
       accessor: (c) => c.name,
       className: "font-medium",
+      stack: "title",
     },
     {
       header: t('column.environment'),
@@ -49,6 +53,7 @@ export default function ConnectionsTable({
           {formatEnvironment(c.environment)}
         </span>
       ),
+      stack: "meta",
     },
     {
       header: t('column.type'),
@@ -64,34 +69,32 @@ export default function ConnectionsTable({
           </span>
         </div>
       ),
-      className: "hidden sm:table-cell",
-      headerClassName: "hidden sm:table-cell",
+      priority: 2,
     },
     {
       header: t('column.host'),
       accessor: (c) => (
         <span className="truncate font-mono text-xs">{c.host}</span>
       ),
-      className: "hidden sm:table-cell",
-      headerClassName: "hidden sm:table-cell",
+      priority: 2,
     },
     {
       header: t('column.port'),
       accessor: (c) => (
         <span className="font-mono text-xs">{c.port}</span>
       ),
-      className: "hidden sm:table-cell",
-      headerClassName: "hidden sm:table-cell",
+      priority: 2,
     },
     {
       header: t('column.database'),
       accessor: (c) => c.database,
-      className: "hidden sm:table-cell truncate",
-      headerClassName: "hidden sm:table-cell",
+      className: "truncate",
+      priority: 2,
     },
     {
       header: t('column.status'),
       accessor: (c) => <ConnectionStateBadge isActive={c.isActive} />,
+      stack: "badge",
     },
     {
       header: t('column.actions'),
@@ -102,9 +105,9 @@ export default function ConnectionsTable({
         const canEdit = !isProdConnection(c);
 
         return (
-          <>
-            {/* Desktop: full button row */}
-            <div className="hidden sm:flex items-center justify-center gap-2 whitespace-nowrap">
+          <div className="flex items-center justify-center gap-2 whitespace-nowrap @max-2xl/table:w-full @max-2xl/table:justify-between @max-2xl/table:*:min-w-0 @max-2xl/table:*:whitespace-normal">
+            {/* Wide table: the full button row */}
+            <div className="hidden @2xl/table:flex items-center gap-2">
               {canEdit && (
                 <Button variant="outline" size="sm" onClick={() => onEdit(c)}>
                   {t('action.edit')}
@@ -121,16 +124,18 @@ export default function ConnectionsTable({
               >
                 {isTesting ? t('action.testing') : t('action.test')}
               </Button>
-              <TestConnectionBadge result={testResult} isLoading={isTesting} />
             </div>
 
-            {/* Mobile: dropdown menu */}
-            <div className="sm:hidden flex items-center justify-center">
+            {/* One result for both layouts: after the buttons, or beside the menu in a card. */}
+            <TestConnectionBadge result={testResult} isLoading={isTesting} />
+
+            {/* Narrow table: dropdown menu */}
+            <div className="@2xl/table:hidden ml-auto flex items-center justify-center">
               <DropdownMenuPrimitive.Root>
                 <DropdownMenuPrimitive.Trigger asChild>
                   <button
                     type="button"
-                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label={t('column.actions')}
                   >
                     <Ellipsis className="h-4 w-4" />
@@ -166,9 +171,10 @@ export default function ConnectionsTable({
                 </DropdownMenuPrimitive.Portal>
               </DropdownMenuPrimitive.Root>
             </div>
-          </>
+          </div>
         );
       },
+      stack: "footer",
     },
   ];
 
@@ -177,6 +183,8 @@ export default function ConnectionsTable({
       columns={columns}
       data={connections}
       loading={isLoading}
+      caption={t('page.title')}
+      narrowLayout="stack"
       emptyMessage={t('empty.filtered.title')}
       emptyContent={
         <EmptyState
