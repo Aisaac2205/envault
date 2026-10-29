@@ -124,13 +124,14 @@ export default function Dumps() {
         <PageHeader
           title="Dumps"
           actions={
-            <div className="flex items-center gap-3">
+            // On a phone the picker takes the room the button leaves it.
+            <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
               <Select
                 value={selectedConnectionId}
                 onValueChange={setSelectedConnectionId}
                 disabled={isCreatingBackup || connections.length === 0}
               >
-                <SelectTrigger className="w-[240px] sm:w-[280px]">
+                <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none lg:w-[280px]">
                   <SelectValue
                     placeholder={
                       connections.length === 0
@@ -157,6 +158,7 @@ export default function Dumps() {
               <Button
                 onClick={handleOpenConfirm}
                 disabled={isCreatingBackup || !selectedConnectionId}
+                className="shrink-0"
               >
                 {isCreatingBackup ? t('action.creating') : t('action.newBackup')}
               </Button>
@@ -208,7 +210,11 @@ export default function Dumps() {
                       if (idx > 0 && p - arr[idx - 1] > 1) {
                         items.push(
                           <PaginationItem key={`ellipsis-${p}`}>
-                            <span className="flex h-9 w-9 items-center justify-center text-sm text-muted-foreground">
+                            {/* The slot lets a short pagination hide it with the other pages. */}
+                            <span
+                              data-slot="pagination-ellipsis"
+                              className="flex h-9 w-9 items-center justify-center text-sm text-muted-foreground"
+                            >
                               ...
                             </span>
                           </PaginationItem>,

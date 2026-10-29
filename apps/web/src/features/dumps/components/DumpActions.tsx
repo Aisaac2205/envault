@@ -55,7 +55,7 @@ export function DumpActions({ job }: DumpActionsProps) {
           variant="outline"
           size="sm"
           onClick={() => setConfirmCancelOpen(true)}
-          className="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs h-7 px-2"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs h-7 px-2 @max-2xl/table:h-11"
           aria-label={t("dumps:action.cancel")}
         >
           <Ban className="h-3 w-3 mr-1" aria-hidden="true" />
@@ -131,6 +131,7 @@ export function DumpActions({ job }: DumpActionsProps) {
         onClick={() => void handleDownload()}
         disabled={downloading}
         aria-label={t("common:aria.downloadDump")}
+        className="@max-2xl/table:h-11 @max-2xl/table:min-w-11"
       >
         <Download className="h-3.5 w-3.5" />
         {downloading ? t("common:action.downloading") : null}
@@ -140,6 +141,7 @@ export function DumpActions({ job }: DumpActionsProps) {
         size="sm"
         onClick={handleRestore}
         aria-label={t("common:aria.restoreBackup")}
+        className="@max-2xl/table:h-11"
       >
         {t("common:action.restore")}
       </Button>
