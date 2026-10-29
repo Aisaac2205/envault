@@ -5,6 +5,7 @@
   "column.email": "Correo",
   "column.role": "Rol",
   "column.created": "Creado",
+  "column.actions": "Acciones",
   "role.admin": "Administrador",
   "role.user": "Usuario",
   "status.banned": "Suspendido",
