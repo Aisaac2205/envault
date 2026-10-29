@@ -12,12 +12,15 @@ const t = getDictionary(locale).githubStar;
 const stars = visibleStarCount(await getStarCount());
 ---
 
-{/* Below `sm` the pill collapses to the octocat and the heart; the label stays in the accessible name */}
+{/*
+  A segment of the header's action bar, with a resting fill so it reads as the primary action.
+  Below `sm` it collapses to the octocat and the heart; the label stays in the accessible name.
+*/}
 <a
   href={REPOSITORY_URL}
   target="_blank"
   rel="noopener noreferrer"
-  class="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/15 bg-zinc-950 px-3 font-sans text-xs font-medium text-white hover:border-white/30 hover:bg-zinc-900 motion-safe:transition-[background-color,border-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.98]"
+  class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-white/5 px-2.5 font-sans text-xs font-medium text-white hover:bg-white/10 motion-safe:transition-[background-color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.98]"
 >
   <svg
     class="size-4 shrink-0 fill-current"
@@ -29,7 +32,7 @@ const stars = visibleStarCount(await getStarCount());
   <span class="sr-only sm:not-sr-only">{t.label}</span>
   {
     stars !== null && (
-      <span class="tabular-nums text-zinc-400">
+      <span class="tabular-nums text-zinc-300">
         {' '}{formatStarCount(stars, locale)}<span class="sr-only"> {t.starsLabel}</span>
       </span>
     )

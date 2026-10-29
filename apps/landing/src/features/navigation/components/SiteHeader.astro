@@ -29,12 +29,15 @@ const languageHref = altHref ?? (isEn ? '/' : '/en');
       />
     </a>
 
-    {/* Right actions: Language toggle with traducir.png & GitHub Repository */}
-    <div class="flex items-center gap-3">
-      {/* Language Switcher with traducir.png */}
+    {/*
+      Right actions grouped in one translucent bar: language switch | docs | GitHub star.
+      Without backdrop-filter support the fill is more opaque so the text keeps its contrast.
+    */}
+    <div class="flex h-9 shrink-0 items-stretch gap-0.5 rounded-lg border border-white/10 bg-black/80 p-0.5 supports-[backdrop-filter]:bg-black/45 supports-[backdrop-filter]:backdrop-blur-md">
+      {/* Language switcher */}
       <a
         href={languageHref}
-        class="flex items-center gap-2 px-2 py-1.5 text-xs text-zinc-300 hover:text-white transition-colors cursor-pointer select-none active:scale-[0.98]"
+        class="inline-flex items-center gap-2 rounded-md px-2.5 text-xs text-zinc-100 hover:bg-white/10 hover:text-white cursor-pointer select-none motion-safe:transition-[background-color,color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.98]"
         title={isEn ? 'Cambiar a Español' : 'Switch to English'}
         aria-label={isEn ? 'Cambiar a Español' : 'Switch to English'}
       >
@@ -42,15 +45,17 @@ const languageHref = altHref ?? (isEn ? '/' : '/en');
           src="/traducir.png"
           alt=""
           aria-hidden="true"
-          class="size-4 object-contain invert opacity-90"
+          class="size-4 object-contain invert"
         />
-        <span class="font-mono text-xs font-semibold text-zinc-200">{isEn ? 'ES' : 'EN'}</span>
+        <span class="font-mono text-xs font-semibold">{isEn ? 'ES' : 'EN'}</span>
       </a>
 
-      {/* Docs Button (in-app docs, same label in both languages) */}
+      <span class="h-4 w-px self-center bg-white/10" aria-hidden="true"></span>
+
+      {/* Docs link (in-app docs, same label in both languages) */}
       <a
         href={isEn ? '/en/docs' : '/docs'}
-        class="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors cursor-pointer font-sans h-9 px-2 text-xs text-zinc-300 hover:text-white active:scale-[0.98]"
+        class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-2.5 font-sans text-xs font-medium text-zinc-100 hover:bg-white/10 hover:text-white cursor-pointer motion-safe:transition-[background-color,color,scale] motion-safe:duration-150 motion-safe:ease-out motion-safe:active:scale-[0.98]"
       >
         <svg
           class="size-4"
@@ -65,10 +70,12 @@ const languageHref = altHref ?? (isEn ? '/' : '/en');
           <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
           <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
         </svg>
-        <span class="hidden sm:inline">Docs</span>
+        <span class="sr-only sm:not-sr-only">Docs</span>
       </a>
 
-      {/* GitHub star button: the repository link, with the star count once it reaches the visibility threshold */}
+      <span class="h-4 w-px self-center bg-white/10" aria-hidden="true"></span>
+
+      {/* GitHub star: the repository link, with the star count once it reaches the visibility threshold */}
       <GithubStarButton locale={locale} />
     </div>
   </nav>
