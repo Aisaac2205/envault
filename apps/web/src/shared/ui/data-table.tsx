@@ -10,7 +10,8 @@ import {
 import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { ChevronRight, Inbox } from "lucide-react";
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { ChevronRight, Ellipsis, Inbox } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -35,6 +36,9 @@ export type StackRole = "title" | "badge" | "meta" | "field" | "actions" | "foot
  */
 export type ColumnPriority = 1 | 2 | 3;
 
+/** Text left, numbers (sizes, counts, durations) right; the header follows its data. */
+export type ColumnAlign = "left" | "center" | "right";
+
 export interface Column<T> {
   header: ReactNode;
   accessor: (item: T) => ReactNode;
@@ -46,6 +50,21 @@ export interface Column<T> {
   stackLabel?: ReactNode;
   /** Defaults to 1: the column never hides. */
   priority?: ColumnPriority;
+  /**
+   * Width classes of the column in the fixed layout (`layout="fixed"`), such as
+   * `w-40 @4xl/table:w-56`. Leave one column without a width: it takes the rest.
+   */
+  width?: string;
+  /**
+   * Alignment of the header and the cells. Without it the table keeps its
+   * default: the first column left, the others centred.
+   */
+  align?: ColumnAlign;
+  /**
+   * The column exists only in the stacked rows: from 42rem up the table shows
+   * its data elsewhere, usually as the lead cell's second line.
+   */
+  stackOnly?: boolean;
 }
 
 export interface DataTableProps<T> {
@@ -82,6 +101,12 @@ export interface DataTableProps<T> {
    * card laid out by each column's `stack` role, with the same DOM.
    */
   narrowLayout?: "scroll" | "stack";
+  /**
+   * `fixed` sizes the columns from their `width` instead of from their content,
+   * so a long name wraps or truncates inside its column and the table never
+   * grows past its container. Stacked rows ignore it.
+   */
+  layout?: "auto" | "fixed";
 }
 
 /*
@@ -95,6 +120,123 @@ const PRIORITY_CLASSES: Record<ColumnPriority, string> = {
   2: "@max-2xl/table:hidden",
   3: "@max-4xl/table:hidden",
 };
+
+/*
+ * The base cells centre every column but the first with a `:not(:first-child)`
+ * rule; an aligned column overrides it with the same variant, so the class
+ * merge drops the centring instead of fighting it on specificity.
+ */
+const ALIGN_CLASSES: Record<ColumnAlign, string> = {
+  left: "text-left [&:not(:first-child)]:text-left",
+  center: "text-center [&:not(:first-child)]:text-center",
+  right: "text-right [&:not(:first-child)]:text-right",
+};
+
+/**
+ * Figures line up digit by digit in a right-aligned column. Stacked rows keep
+ * their figures as they were: there a number reads on its own line.
+ */
+function alignCellExtras(align: ColumnAlign, stacked: boolean): string {
+  if (align !== "right") return "";
+  return stacked ? "@2xl/table:tabular-nums" : "tabular-nums";
+}
+
+const STACK_ONLY = "@2xl/table:hidden";
+
+/** Two lines at most in the table layout, breaking anywhere: paths, emails and identifiers have no spaces. */
+const CLAMP = "@2xl/table:line-clamp-2 @2xl/table:whitespace-normal @2xl/table:[overflow-wrap:anywhere]";
+
+/**
+ * Long text in a cell of the table layout: two lines at most, then an
+ * ellipsis, with the whole text on hover. The text stays whole in the DOM, so
+ * screen readers read it all. Stacked rows keep the caller's own wrapping.
+ */
+export function ClampText({ text, className }: { text: string; className?: string }) {
+  return (
+    <span className={cn("min-w-0", className, CLAMP)} title={text}>
+      {text}
+    </span>
+  );
+}
+
+export interface RowAction {
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  /** Listed last, after a separator, in the destructive colour. It keeps its own confirmation. */
+  destructive?: boolean;
+}
+
+const MENU_ITEM =
+  "flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+
+/**
+ * The overflow menu of a row: every action of the row, safe ones first and
+ * destructive ones apart. Its trigger is named after the row, since a page of
+ * identical "Actions" buttons tells a screen reader nothing. 32px by default;
+ * stacked rows pass a 44px size.
+ */
+export function RowActionsMenu({
+  label,
+  actions,
+  className,
+}: {
+  /** Accessible name of the trigger, such as "Acciones de orders-db". */
+  label: string;
+  actions: RowAction[];
+  className?: string;
+}) {
+  const safe = actions.filter((action) => !action.destructive);
+  const destructive = actions.filter((action) => action.destructive);
+
+  return (
+    <DropdownMenuPrimitive.Root>
+      <DropdownMenuPrimitive.Trigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className={cn(
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted data-[state=open]:text-foreground",
+            className,
+          )}
+        >
+          <Ellipsis className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </DropdownMenuPrimitive.Trigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          className="z-50 min-w-[10rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          align="end"
+          sideOffset={4}
+        >
+          {safe.map((action) => (
+            <DropdownMenuPrimitive.Item
+              key={action.label}
+              className={cn(MENU_ITEM, "hover:bg-accent focus:bg-accent")}
+              disabled={action.disabled}
+              onSelect={action.onSelect}
+            >
+              {action.label}
+            </DropdownMenuPrimitive.Item>
+          ))}
+          {safe.length > 0 && destructive.length > 0 ? (
+            <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
+          ) : null}
+          {destructive.map((action) => (
+            <DropdownMenuPrimitive.Item
+              key={action.label}
+              className={cn(MENU_ITEM, "text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:text-destructive")}
+              disabled={action.disabled}
+              onSelect={action.onSelect}
+            >
+              {action.label}
+            </DropdownMenuPrimitive.Item>
+          ))}
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
+  );
+}
 
 // Table semantics survive these display changes in current engines; never
 // use display:contents here, which drops the rows from the accessibility tree.
@@ -214,15 +356,18 @@ export function DataTable<T>({
   rowLinkLabel,
   caption,
   narrowLayout = "scroll",
+  layout = "auto",
 }: DataTableProps<T>) {
   const { t } = useTranslation("common");
   const captionId = useId();
 
   const stacked = narrowLayout === "stack";
-  const responsive = stacked || columns.some((col) => priorityOf(col) > 1);
+  const fixed = layout === "fixed";
+  // A fixed table is a container too: its column widths follow its own room.
+  const responsive = stacked || fixed || columns.some((col) => priorityOf(col) > 1);
   const resolvedEmptyMessage = emptyMessage ?? t("empty.data");
-  const headPadding = compact ? "px-3 py-2.5" : "px-6 py-4";
-  const cellPadding = compact ? "px-3 py-2.5" : "px-6 py-4";
+  const headPadding = compact ? "px-3 py-2.5" : "px-3 py-3";
+  const cellPadding = compact ? "px-3 py-2.5" : "px-3 py-3";
   const wrapperClass = className ?? "rounded-xl bg-card shadow-sm border border-border/60 overflow-hidden";
   const minWidth = compact ? "" : "min-w-[360px]";
   const totalColumns = columns.length + (rowHref ? 1 : 0);
@@ -236,17 +381,22 @@ export function DataTable<T>({
     return role === "title" || role === "field" || colIdx === firstMetaIndex;
   };
 
+  /** What hides a column in either layout: its priority, or living only in the stacked rows. */
+  const visibilityClass = (col: Column<T>) => cn(PRIORITY_CLASSES[priorityOf(col)], col.stackOnly && STACK_ONLY);
+
   const cellClass = (col: Column<T>, colIdx: number) => {
     const role = col.stack ?? "field";
     return cn(
       cellPadding,
       "align-middle",
+      col.align && ALIGN_CLASSES[col.align],
+      col.align && alignCellExtras(col.align, stacked),
       col.className,
       INTERACTIVE_ROLES.has(role) && "relative z-10",
       stacksAt(col) && STACKED_CELL,
       stacksAt(col) && STACKED_ROLE_CLASSES[role],
       stacksAt(col) && role === "meta" && colIdx !== firstMetaIndex && META_SEPARATOR,
-      PRIORITY_CLASSES[priorityOf(col)],
+      visibilityClass(col),
     );
   };
 
@@ -265,11 +415,23 @@ export function DataTable<T>({
         aria-label={caption ? undefined : t("label.dataTable")}
         className="overflow-x-auto"
       >
-        <Table className={cn(minWidth, stacked && STACKED_TABLE)}>
+        <Table className={cn(minWidth, fixed && "table-fixed", stacked && STACKED_TABLE)}>
           {caption ? (
             <caption id={captionId} className="sr-only">
               {caption}
             </caption>
+          ) : null}
+          {fixed ? (
+            // One <col> per column the table layout shows. A hidden <col> takes
+            // its width away with it, so priorities apply here as on the cells.
+            <colgroup className={cn(stacked && "@max-2xl/table:hidden")}>
+              {columns.map((col, i) =>
+                col.stackOnly ? null : (
+                  <col key={i} className={cn(col.width, PRIORITY_CLASSES[priorityOf(col)])} />
+                ),
+              )}
+              {rowHref ? <col className="w-10" /> : null}
+            </colgroup>
           ) : null}
           <TableHeader className={cn(stacked && STACKED_HEADER)}>
             <TableRow>
@@ -279,8 +441,9 @@ export function DataTable<T>({
                   className={cn(
                     headPadding,
                     "text-sm font-medium text-muted-foreground truncate",
+                    col.align && ALIGN_CLASSES[col.align],
                     col.headerClassName,
-                    PRIORITY_CLASSES[priorityOf(col)],
+                    visibilityClass(col),
                   )}
                 >
                   {col.header}
@@ -307,11 +470,16 @@ export function DataTable<T>({
                           (skeletonDrawsBar(col, colIdx)
                             ? cn(STACKED_SKELETON_CELL, STACKED_SKELETON_LINE[col.stack ?? "field"])
                             : "@max-2xl/table:hidden"),
-                        PRIORITY_CLASSES[priorityOf(col)],
+                        visibilityClass(col),
                       )}
                     >
                       <Skeleton
-                        className={cn("h-4 w-4/5 mx-auto rounded", stacksAt(col) && STACKED_SKELETON_BAR[col.stack ?? "field"])}
+                        className={cn(
+                          "h-4 w-4/5 mx-auto rounded",
+                          col.align === "left" && "mx-0",
+                          col.align === "right" && "ml-auto mr-0",
+                          stacksAt(col) && STACKED_SKELETON_BAR[col.stack ?? "field"],
+                        )}
                       />
                     </TableCell>
                   ))}

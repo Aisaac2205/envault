@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Timer } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useConnections } from "@/features/connections/hooks/useConnections";
+import { isProdConnection } from "@/features/connections/types";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader } from "@/shared/ui/card";
@@ -63,12 +64,20 @@ interface DumpDurationChartProps {
 /** Per day dump duration (median, 95th percentile, slowest) over 7, 30 or 90 days. */
 export function DumpDurationChart({ presence = "unknown" }: DumpDurationChartProps) {
   const { t } = useTranslation("dashboard");
-  const [connectionValue, setConnectionValue] = useState(ALL_CONNECTIONS);
+  const [selectedValue, setConnectionValue] = useState(ALL_CONNECTIONS);
   // The window asked of the API, and the chart shows all of it. It opens on the one it was left on.
   const [rangeDays, setRangeDays] = useStoredRange(DURATION_RANGE_KEY);
 
-  const analytics = useDailyAnalytics(rangeDays, toConnectionId(connectionValue));
   const { data: connections = [] } = useConnections();
+  // The API backs up production only: a dev or qa connection would always draw an empty chart.
+  const prodConnections = useMemo(() => connections.filter(isProdConnection), [connections]);
+  // A connection that is no longer offered (moved out of production, or deleted) falls back to all.
+  const connectionValue =
+    selectedValue === ALL_CONNECTIONS || prodConnections.some((c) => c.id === selectedValue)
+      ? selectedValue
+      : ALL_CONNECTIONS;
+
+  const analytics = useDailyAnalytics(rangeDays, toConnectionId(connectionValue));
 
   const series = analytics.data;
   const rows = useMemo(
@@ -129,7 +138,7 @@ export function DumpDurationChart({ presence = "unknown" }: DumpDurationChartPro
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div className="w-full sm:w-auto">
             <ConnectionFilter
-              connections={connections}
+              connections={prodConnections}
               onValueChange={setConnectionValue}
               value={connectionValue}
             />

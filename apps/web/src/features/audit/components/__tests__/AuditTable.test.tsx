@@ -93,8 +93,8 @@ describe("AuditTable", () => {
   it("shows connection resources with ConnectionLabel", () => {
     renderTable();
 
-    // ConnectionLabel renders the name (without inline badge)
-    expect(screen.getByText("Dev DB")).toBeInTheDocument();
+    // ConnectionLabel renders the name (without inline badge), once per layout.
+    expect(screen.getAllByText("Dev DB")).toHaveLength(2);
   });
 
   it("leaves the raw payload to the detail page instead of nesting it in a cell", () => {
@@ -157,6 +157,71 @@ describe("AuditTable row navigation", () => {
   });
 });
 
+describe("AuditTable on wide screens", () => {
+  const longAction = "POST /api/backups/3e6bc28a-def9-4f2c-82ff-bc715a611bd8/download-url";
+  const longUser = "maria.fernanda.rodriguez@contabilidad.example.com";
+
+  function renderTable(logs = mockLogs) {
+    return render(
+      <MemoryRouter>
+        <AuditTable logs={logs} isLoading={false} total={logs.length} page={1} pageSize={25} onPageChange={() => {}} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("fixes the date, user and environment columns and gives the action the rest of the width", () => {
+    renderTable();
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveClass("table-fixed");
+    const cols = Array.from(table.querySelectorAll("colgroup > col"));
+    // Date, user, action, environment and the row link: the resource has no column of its own.
+    expect(cols.map((col) => col.className)).toEqual(["w-42", "w-40 @4xl/table:w-56", "", "w-28", "w-10"]);
+    expect(screen.getByRole("columnheader", { name: "Metadatos" })).toHaveClass("@2xl/table:hidden");
+  });
+
+  it("aligns every column left, headers with their data", () => {
+    renderTable();
+
+    for (const name of ["Fecha", "Usuario", "Acción", "Entorno"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveClass("[&:not(:first-child)]:text-left");
+    }
+  });
+
+  it("keeps the date on one line", () => {
+    renderTable();
+
+    expect(document.querySelector("tbody time")).toHaveClass("whitespace-nowrap", "tabular-nums");
+  });
+
+  it("clamps a long action to two lines and keeps the whole path in its title", () => {
+    renderTable([{ ...mockLogs[0], action: longAction }]);
+
+    const action = screen.getByText(longAction);
+    expect(action).toHaveAttribute("title", longAction);
+    expect(action).toHaveClass("@2xl/table:line-clamp-2", "@2xl/table:[overflow-wrap:anywhere]");
+  });
+
+  it("shows the resource as the action's muted second line", () => {
+    renderTable();
+    const row = screen.getByText("Producción").closest("tr") as HTMLElement;
+
+    const secondLine = within(row)
+      .getAllByText("Daily Backup")
+      .find((el) => el.closest("td")?.classList.contains("@max-2xl/table:order-1")) as HTMLElement;
+    expect(secondLine).toBeDefined();
+    expect(secondLine).toHaveClass("text-muted-foreground", "truncate");
+  });
+
+  it("truncates a long user with the full address on hover", () => {
+    renderTable([{ ...mockLogs[0], username: longUser }]);
+
+    const user = screen.getByText(longUser);
+    expect(user).toHaveClass("truncate");
+    expect(user).toHaveAttribute("title", longUser);
+  });
+});
+
 describe("AuditTable on narrow screens", () => {
   function renderTable({ total = mockLogs.length, page = 1 } = {}) {
     return render(
@@ -209,10 +274,26 @@ describe("AuditTable on narrow screens", () => {
     renderTable();
     const row = rowOf("Producción");
 
-    const resourceCell = within(row).getByText("Daily Backup").closest("td") as HTMLElement;
-    expect(resourceCell).toHaveClass("@max-2xl/table:order-6");
+    // The table layout repeats the resource under the action; the card's copy is its own field.
+    const resourceCell = within(row)
+      .getAllByText("Daily Backup")
+      .map((el) => el.closest("td") as HTMLElement)
+      .find((td) => td.classList.contains("@max-2xl/table:order-6")) as HTMLElement;
+    expect(resourceCell).toBeDefined();
     expect(within(resourceCell).getByText("Metadatos")).toHaveAttribute("aria-hidden", "true");
     expect(within(row).getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("leaves every card line as it was: the resource field stays, its table copy hides", () => {
+    renderTable();
+    const row = rowOf("Producción");
+
+    const [secondLine] = within(row)
+      .getAllByText("Daily Backup")
+      .filter((el) => el.closest("td")?.classList.contains("@max-2xl/table:order-1"));
+    expect(secondLine.closest(".\\@max-2xl\\/table\\:hidden")).not.toBeNull();
+    // The action's wrapper steps out of the card layout, so the title cell lays out as before.
+    expect(within(row).getByText("backup.created").closest(".\\@max-2xl\\/table\\:contents")).not.toBeNull();
   });
 
   it("puts the range on its own line when the pagination does not fit beside it", () => {

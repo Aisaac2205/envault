@@ -102,6 +102,12 @@ function deleteMutation(mutateAsync: ReturnType<typeof vi.fn>) {
   } as unknown as ReturnType<typeof hooks.useDeleteConnection>;
 }
 
+/** Opens the row's actions menu; both layouts render one, with the same actions. */
+async function openRowMenu(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(screen.getAllByRole("button", { name: `Acciones de ${name}` })[0]);
+  return screen.findByRole("menu");
+}
+
 function mockTestResult(result: ConnectionTestResult) {
   vi.mocked(hooks.useTestConnection).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue(result),
@@ -175,44 +181,39 @@ describe("Connections page: actions per environment", () => {
     vi.resetAllMocks();
   });
 
-  it("offers Edit for a non-PROD connection", () => {
+  it("offers Edit for a non-PROD connection in the row menu", async () => {
+    const user = userEvent.setup();
     mockConnectionsPage([devConnection]);
     render(<Connections />);
 
-    expect(screen.getByRole("button", { name: "Editar" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Eliminar" })).toBeInTheDocument();
+    const menu = await openRowMenu(user, "Orders QA");
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Probar conexión",
+      "Editar",
+      "Eliminar",
+    ]);
   });
 
   // The API refuses every change to a PROD connection, so its row only offers Delete.
-  it("offers no Edit for a PROD connection", () => {
+  it("offers no Edit for a PROD connection", async () => {
+    const user = userEvent.setup();
     mockConnectionsPage([connection]);
     render(<Connections />);
 
     expect(screen.queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Eliminar" })).toBeInTheDocument();
-  });
-
-  it("offers no Edit for a PROD connection in the mobile menu", async () => {
-    const user = userEvent.setup();
-    mockConnectionsPage([connection]);
-    render(<Connections />);
-
-    await user.click(screen.getByRole("button", { name: "Acciones" }));
-
-    const menu = await screen.findByRole("menu");
+    const menu = await openRowMenu(user, "Orders DB");
     expect(within(menu).queryByRole("menuitem", { name: "Editar" })).not.toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: "Eliminar" })).toBeInTheDocument();
   });
 
-  it("offers Edit for a non-PROD connection in the mobile menu", async () => {
+  it("keeps Delete apart from the safe actions, in the destructive colour", async () => {
     const user = userEvent.setup();
     mockConnectionsPage([devConnection]);
     render(<Connections />);
 
-    await user.click(screen.getByRole("button", { name: "Acciones" }));
-
-    const menu = await screen.findByRole("menu");
-    expect(within(menu).getByRole("menuitem", { name: "Editar" })).toBeInTheDocument();
+    const menu = await openRowMenu(user, "Orders QA");
+    expect(within(menu).getByRole("separator")).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Eliminar" })).toHaveClass("text-destructive");
   });
 });
 
@@ -232,7 +233,7 @@ describe("Connections page: deleting a non-PROD connection", () => {
     mockConnectionsPage([devConnection], { deleteConnection: deleteMutation(mutateAsync) });
     render(<Connections />);
 
-    await user.click(screen.getByRole("button", { name: "Eliminar" }));
+    await user.click(within(await openRowMenu(user, "Orders QA")).getByRole("menuitem", { name: "Eliminar" }));
 
     expect(confirm).toHaveBeenCalledWith("¿Deseas eliminar permanentemente esta conexión?");
     expect(mutateAsync).toHaveBeenCalledWith({ id: "conn-2" });
@@ -247,7 +248,7 @@ describe("Connections page: deleting a non-PROD connection", () => {
     mockConnectionsPage([devConnection], { deleteConnection: deleteMutation(mutateAsync) });
     render(<Connections />);
 
-    await user.click(screen.getByRole("button", { name: "Eliminar" }));
+    await user.click(within(await openRowMenu(user, "Orders QA")).getByRole("menuitem", { name: "Eliminar" }));
 
     expect(mutateAsync).not.toHaveBeenCalled();
   });
@@ -266,7 +267,7 @@ describe("Connections page: deleting a PROD connection", () => {
     const user = userEvent.setup();
     mockConnectionsPage([connection], { deleteConnection: deleteMutation(mutateAsync) });
     render(<Connections />);
-    await user.click(screen.getByRole("button", { name: "Eliminar" }));
+    await user.click(within(await openRowMenu(user, "Orders DB")).getByRole("menuitem", { name: "Eliminar" }));
     const dialog = await screen.findByRole("dialog", {
       name: "Eliminar conexión de producción",
     });
@@ -374,7 +375,7 @@ describe("Connections page: deleting a PROD connection", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Eliminar" }));
+    await user.click(within(await openRowMenu(user, "Orders DB")).getByRole("menuitem", { name: "Eliminar" }));
     const reopened = await screen.findByRole("dialog");
     expect(within(reopened).getByLabelText("Tu contraseña")).toHaveValue("");
     expect(within(reopened).getByLabelText("Escribe Orders DB para confirmar")).toHaveValue("");
@@ -441,20 +442,23 @@ describe("Connections page on narrow screens", () => {
 
     const name = cellOf("Orders QA");
     expect(name).toHaveClass("@max-2xl/table:order-1");
-    // The type column hides in cards; the logo beside the name says the engine there.
-    expect(within(name).getByRole("img", { name: "PostgreSQL" }).parentElement).toHaveClass("hidden", "@max-2xl/table:flex");
-    expect(cellOf("postgres")).toHaveClass("@max-2xl/table:hidden");
+    // The logo beside the name says the engine in every layout.
+    expect(within(name).getByRole("img", { name: "PostgreSQL" }).parentElement).not.toHaveClass("hidden");
 
     const state = cellOf("Activa");
     expect(state).toHaveClass("@max-2xl/table:order-2");
-    expect(within(state).getByRole("button", { name: "Acciones" })).toBeInTheDocument();
+    const cardMenu = within(state).getByRole("button", { name: "Acciones de Orders QA" });
+    expect(cardMenu).toHaveClass("size-11");
+    expect(cardMenu.parentElement).toHaveClass("@2xl/table:hidden");
 
-    expect(cellOf("Desarrollo")).toHaveClass("@max-2xl/table:order-5");
+    // The table repeats the environment under the name; the card keeps its meta cell.
+    const environments = within(row).getAllByText("Desarrollo").map((el) => el.closest("td"));
+    expect(environments.some((td) => td?.classList.contains("@max-2xl/table:order-5"))).toBe(true);
     const host = within(row).getByText(/db\.internal/).closest("td") as HTMLElement;
     expect(host).toHaveClass("@max-2xl/table:order-6");
     expect(host).not.toHaveClass("@max-2xl/table:hidden");
     expect(within(host).getByText("Host")).toHaveAttribute("aria-hidden", "true");
-    expect(within(host).getByText(":5432")).toHaveClass("hidden", "@max-2xl/table:inline");
+    expect(within(host).getByText(":5432")).not.toHaveClass("hidden");
 
     const database = cellOf("orders");
     expect(database).toHaveClass("@max-2xl/table:order-6");
@@ -466,21 +470,29 @@ describe("Connections page on narrow screens", () => {
     render(<Connections />);
     const row = rowOf("Orders QA");
 
-    const actions = within(row).getByRole("button", { name: "Editar" }).closest("td") as HTMLElement;
+    const actions = within(row).getByRole("button", { name: "Probar conexión" }).closest("td") as HTMLElement;
     expect(actions).toHaveClass("@max-2xl/table:order-7", "@max-2xl/table:[&:not(:has([data-test-result]))]:hidden");
     expect(actions.querySelector("[data-test-result]")).toBeNull();
   });
 
-  it("picks the button row or the menu by the room the table has, not the viewport", () => {
+  it("picks the test button, the menu or the card menu by the room the table has, not the viewport", () => {
     mockConnectionsPage([devConnection]);
     render(<Connections />);
     const row = rowOf("Orders QA");
 
-    expect(within(row).getByRole("button", { name: "Editar" }).parentElement).toHaveClass("hidden", "@2xl/table:flex");
-    expect(within(row).getByRole("button", { name: "Acciones" }).parentElement).toHaveClass("@2xl/table:hidden");
+    const [cardMenu, tableMenu] = within(row).getAllByRole("button", { name: "Acciones de Orders QA" });
+    expect(cardMenu.parentElement).toHaveClass("@2xl/table:hidden");
+    expect(tableMenu.parentElement).toHaveClass("hidden", "@2xl/table:flex");
+    expect(tableMenu).toHaveClass("size-8");
+    // Below 56rem the table menu holds every action; from there the test is a button too.
+    expect(within(row).getByRole("button", { name: "Probar conexión" })).toHaveClass("hidden", "@4xl/table:inline-flex");
+    expect(within(row).queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+    // A menu-only column is too narrow for its header, which stays for screen readers.
+    expect(within(screen.getByRole("columnheader", { name: "Acciones" })).getByText("Acciones")).toHaveClass("@max-4xl/table:sr-only");
   });
 
-  it("shows the test result once, where both layouts see it", async () => {
+  it("shows the test result under the name in the table and on the card's last line", async () => {
     const user = userEvent.setup();
     mockConnectionsPage([devConnection]);
     mockTestResult({ success: true, latencyMs: 12 });
@@ -489,9 +501,85 @@ describe("Connections page on narrow screens", () => {
     await user.click(screen.getByRole("button", { name: "Probar conexión" }));
 
     const results = await screen.findAllByText(/Conectado/);
-    expect(results).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Editar" }).parentElement).not.toContainElement(results[0]);
-    expect(results[0].closest("td")).toHaveClass("@max-2xl/table:order-7");
-    expect(results[0].closest("[data-test-result]")).not.toBeNull();
+    expect(results).toHaveLength(2);
+    const [table, card] = results.map((el) => el.closest("[data-test-result]") as HTMLElement);
+    expect(table.closest("td")).toHaveClass("@max-2xl/table:order-1");
+    expect(table.parentElement).toHaveClass("@max-2xl/table:hidden");
+    expect(card.closest("td")).toHaveClass("@max-2xl/table:order-7");
+    expect(card).toHaveClass("contents", "@2xl/table:hidden");
+  });
+});
+
+describe("Connections page on wide screens", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  const longHost = "rrhh-replica-01.mysql.internal.example.com";
+
+  it("drops the type and port columns: the logo says the engine and the port follows the host", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+
+    const headers = within(screen.getByRole("table")).getAllByRole("columnheader").map((th) => th.textContent);
+    expect(headers).toEqual(["Nombre", "Ambiente", "Host", "BD", "Estado", "Acciones"]);
+    expect(screen.getByRole("columnheader", { name: "Ambiente" })).toHaveClass("@2xl/table:hidden");
+  });
+
+  it("fixes every column but the name, which takes the rest of the width", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveClass("table-fixed");
+    expect(Array.from(table.querySelectorAll("colgroup > col")).map((col) => col.className)).toEqual([
+      "",
+      "w-40 @4xl/table:w-52 @6xl/table:w-64",
+      "w-32 @4xl/table:w-40 @6xl/table:w-48",
+      "w-28",
+      "w-14 @4xl/table:w-48",
+    ]);
+  });
+
+  it("shows the environment as the name's muted second line", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+
+    const secondLine = screen
+      .getAllByText("Desarrollo")
+      .find((el) => el.closest("td")?.classList.contains("@max-2xl/table:order-1")) as HTMLElement;
+    expect(secondLine).toHaveClass("text-muted-foreground");
+    expect(secondLine.parentElement).toHaveClass("@max-2xl/table:hidden");
+  });
+
+  it("truncates a long host and database with the whole value on hover", () => {
+    mockConnectionsPage([{ ...devConnection, host: longHost, port: 3306, database: "nomina_2026_historico" }]);
+    render(<Connections />);
+
+    const host = screen.getByText(new RegExp(longHost));
+    expect(host).toHaveAttribute("title", `${longHost}:3306`);
+    expect(host).toHaveClass("truncate", "@2xl/table:block");
+    const database = screen.getByText("nomina_2026_historico");
+    expect(database).toHaveAttribute("title", "nomina_2026_historico");
+    expect(database).toHaveClass("truncate", "@2xl/table:block");
+  });
+
+  it("clamps a long name to two lines with the whole name in its title", () => {
+    const longName = "Recursos Humanos y Nómina (réplica de lectura)";
+    mockConnectionsPage([{ ...devConnection, name: longName }]);
+    render(<Connections />);
+
+    const name = screen.getByText(longName);
+    expect(name).toHaveAttribute("title", longName);
+    expect(name).toHaveClass("@2xl/table:line-clamp-2");
+  });
+
+  it("aligns every column left, headers with their data", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+
+    for (const name of ["Nombre", "Host", "BD", "Estado", "Acciones"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveClass("[&:not(:first-child)]:text-left");
+    }
   });
 });

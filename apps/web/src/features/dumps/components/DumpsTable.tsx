@@ -1,4 +1,4 @@
-import { DataTable, type Column } from "@/shared/ui/data-table";
+import { ClampText, DataTable, type Column } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Database, AlertCircle } from "lucide-react";
@@ -60,6 +60,8 @@ export function DumpsTable({
   // Narrower than 42rem each backup becomes a card: the connection with its
   // actions, then the environment and the date, then the status (with the
   // error, in full) and the size. Origin and storage stay in wide tables.
+  // From 42rem the columns are fixed and the connection takes the rest, with
+  // the environment as its second line instead of a column.
   const columns: Column<BackupJob>[] = [
     {
       header: t('column.connection'),
@@ -67,20 +69,23 @@ export function DumpsTable({
         const name = job.connectionName ?? t('common:connection.deleted');
         return (
           <EngineName dbType={job.dbType}>
-            <p
-              className={cn(
-                "min-w-0 truncate font-medium text-sm @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]",
-                job.connectionName === null && "text-muted-foreground italic",
-              )}
-              title={name}
-            >
-              {name}
-            </p>
+            {/* In a card the wrapper steps aside: the name is the card's title. */}
+            <div className="flex min-w-0 flex-col gap-0.5 @max-2xl/table:contents">
+              <ClampText
+                text={name}
+                className={cn(
+                  "min-w-0 truncate font-medium text-sm @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]",
+                  job.connectionName === null && "text-muted-foreground italic",
+                )}
+              />
+              <span className="truncate text-xs text-muted-foreground @max-2xl/table:hidden">
+                {formatEnvironment(job.environment)}
+              </span>
+            </div>
           </EngineName>
         );
       },
-      className: "w-[20%]",
-      headerClassName: "w-[20%]",
+      align: "left",
       stack: "title",
     },
     {
@@ -88,19 +93,18 @@ export function DumpsTable({
       accessor: (job) => (
         <span className="text-xs text-muted-foreground">{formatEnvironment(job.environment)}</span>
       ),
-      className: "w-[10%]",
-      headerClassName: "w-[10%]",
       stack: "meta",
+      stackOnly: true,
     },
     {
       header: t('column.date'),
       accessor: (job) => (
-        <time dateTime={job.createdAt} className="text-xs text-muted-foreground whitespace-nowrap">
+        <time dateTime={job.createdAt} className="text-xs text-muted-foreground whitespace-nowrap @2xl/table:tabular-nums">
           {formatDate(job.createdAt)}
         </time>
       ),
-      className: "w-[14%]",
-      headerClassName: "w-[14%]",
+      width: "w-42",
+      align: "left",
       stack: "meta",
     },
     {
@@ -110,8 +114,8 @@ export function DumpsTable({
           {job.triggeredBy === "system-cronjob" ? t('origin.cronjob') : t('origin.manual')}
         </span>
       ),
-      className: "w-[11%]",
-      headerClassName: "w-[11%]",
+      width: "w-18",
+      align: "left",
       priority: 3,
     },
     {
@@ -122,11 +126,11 @@ export function DumpsTable({
             ? formatHumanErrorMessage(job.errorMessage, t)
             : undefined;
         return (
-          <div className="flex flex-col items-center gap-1 @max-2xl/table:flex-row @max-2xl/table:flex-wrap @max-2xl/table:gap-x-2">
+          <div className="flex flex-col items-center gap-1 @2xl/table:items-start @max-2xl/table:flex-row @max-2xl/table:flex-wrap @max-2xl/table:gap-x-2">
             <StatusBadge status={job.status} />
             {errorText && (
               <div
-                className="flex items-center justify-center gap-1 max-w-[200px] text-[11px] text-error font-medium cursor-help @max-2xl/table:max-w-none"
+                className="flex items-center justify-center gap-1 max-w-[200px] text-[11px] text-error font-medium cursor-help @2xl/table:max-w-full @2xl/table:justify-start @max-2xl/table:max-w-none"
                 title={job.errorMessage ?? undefined}
               >
                 <AlertCircle className="h-3 w-3 shrink-0" />
@@ -136,14 +140,14 @@ export function DumpsTable({
           </div>
         );
       },
-      className: "w-[20%]",
-      headerClassName: "w-[20%]",
+      width: "w-32",
+      align: "left",
       stack: "field",
     },
     {
       header: t('column.storage'),
       accessor: () => (
-        <div className="flex items-center justify-center">
+        <div className="flex items-center">
           <img
             src={cloudflareSvg}
             alt="Cloudflare R2"
@@ -151,8 +155,8 @@ export function DumpsTable({
           />
         </div>
       ),
-      className: "w-[8%]",
-      headerClassName: "w-[8%]",
+      width: "w-34",
+      align: "left",
       priority: 3,
     },
     {
@@ -164,19 +168,19 @@ export function DumpsTable({
             : "-"}
         </span>
       ),
-      className: "w-[8%]",
-      headerClassName: "w-[8%]",
+      width: "w-24",
+      align: "right",
       stack: "field",
     },
     {
       header: t('column.actions'),
       accessor: (job) => (
-        <div className="flex items-center justify-center">
+        <div className="flex items-center justify-center @2xl/table:justify-start">
           <DumpActions job={job} />
         </div>
       ),
-      className: "w-[11%]",
-      headerClassName: "w-[11%]",
+      width: "w-44",
+      align: "left",
       stack: "actions",
     },
   ];
@@ -194,6 +198,7 @@ export function DumpsTable({
         loading={isLoading}
         caption={t('nav.dumps', { ns: 'common' })}
         narrowLayout="stack"
+        layout="fixed"
         emptyMessage={t('empty.noBackups')}
         emptyContent={
           <EmptyState

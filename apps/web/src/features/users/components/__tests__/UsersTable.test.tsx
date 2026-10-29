@@ -76,7 +76,9 @@ describe("UsersTable on narrow screens", () => {
       "relative",
       "z-10",
     );
-    expect(cellOf("grace@example.com")).toHaveClass("@max-2xl/table:order-5");
+    // The table repeats the email under the name; the card keeps its meta cell.
+    const emailCells = within(row).getAllByText("grace@example.com").map((el) => el.closest("td"));
+    expect(emailCells.some((td) => td?.classList.contains("@max-2xl/table:order-5"))).toBe(true);
     for (const [text, label] of [
       ["Usuario", "Rol"],
       ["2 mar 2026", "Creado"],
@@ -91,12 +93,54 @@ describe("UsersTable on narrow screens", () => {
     renderTable();
 
     expect(screen.getByText("Grace Hopper")).toHaveClass("@max-2xl/table:[overflow-wrap:anywhere]");
-    expect(screen.getByText("grace@example.com")).toHaveClass("@max-2xl/table:[overflow-wrap:anywhere]");
+    const cardEmail = screen
+      .getAllByText("grace@example.com")
+      .find((el) => el.closest("td")?.classList.contains("@max-2xl/table:order-5"));
+    expect(cardEmail).toHaveClass("@max-2xl/table:[overflow-wrap:anywhere]");
   });
 
   it("gives the phone actions menu a 44px target", () => {
     renderTable();
 
     expect(screen.getByRole("button", { name: "Acciones de Grace Hopper" })).toHaveClass("size-11");
+  });
+});
+
+describe("UsersTable on wide screens", () => {
+  const longName = "María Fernanda Rodríguez de la Cruz";
+  const longEmail = "maria.fernanda.rodriguez@contabilidad.example.com";
+
+  it("fixes every column but the name, which takes the rest of the width", () => {
+    renderTable();
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveClass("table-fixed");
+    // Name, role, created and actions: the email rides under the name.
+    expect(Array.from(table.querySelectorAll("colgroup > col")).map((col) => col.className)).toEqual(["", "w-36", "w-28", "w-48"]);
+    expect(screen.getByRole("columnheader", { name: "Correo" })).toHaveClass("@2xl/table:hidden");
+  });
+
+  it("shows the email as the name's muted second line, truncated with the whole address on hover", () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <UsersTable users={[{ ...users[1], name: longName, email: longEmail }]} loading={false} />
+      </QueryClientProvider>,
+    );
+
+    const secondLine = screen
+      .getAllByText(longEmail)
+      .find((el) => el.closest("td")?.classList.contains("@max-2xl/table:order-1")) as HTMLElement;
+    expect(secondLine).toHaveClass("truncate", "text-muted-foreground", "@max-2xl/table:hidden");
+    expect(secondLine).toHaveAttribute("title", longEmail);
+    expect(screen.getByText(longName)).toHaveAttribute("title", longName);
+    expect(screen.getByText(longName)).toHaveClass("@2xl/table:line-clamp-2");
+  });
+
+  it("aligns every column left, headers with their data", () => {
+    renderTable();
+
+    for (const name of ["Nombre", "Rol", "Creado"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveClass("[&:not(:first-child)]:text-left");
+    }
   });
 });

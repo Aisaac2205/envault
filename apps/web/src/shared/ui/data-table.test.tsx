@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { DataTable, type Column } from './data-table';
+import { ClampText, DataTable, RowActionsMenu, type Column } from './data-table';
 
 interface SampleRow {
   id: number;
@@ -287,5 +288,173 @@ describe('DataTable stacked layout', () => {
     expect(screen.getByRole('table').querySelector('thead')).not.toHaveClass('@max-2xl/table:sr-only');
     expect(screen.getByText('Alice').closest('td')?.className).not.toContain('@max-');
     expect(screen.getAllByText('Name')).toHaveLength(1);
+  });
+});
+
+describe('DataTable fixed layout', () => {
+  interface Entry {
+    id: string;
+    action: string;
+    actor: string;
+    size: string;
+    resource: string;
+    origin: string;
+  }
+
+  const entries: Entry[] = [
+    { id: 'e1', action: 'POST /api/backups/trigger', actor: 'ops@envault.local', size: '12 MB', resource: 'orders-db', origin: 'Cronjob' },
+  ];
+
+  const fixedColumns: Column<Entry>[] = [
+    { header: 'Acción', accessor: (e) => e.action, stack: 'title', align: 'left' },
+    { header: 'Usuario', accessor: (e) => e.actor, stack: 'meta', width: 'w-40 @4xl/table:w-56', align: 'left' },
+    { header: 'Tamaño', accessor: (e) => e.size, width: 'w-24', align: 'right' },
+    { header: 'Origen', accessor: (e) => e.origin, width: 'w-20', priority: 3 },
+    { header: 'Recurso', accessor: (e) => e.resource, stack: 'field', stackOnly: true },
+  ];
+
+  function renderFixed(props: Partial<Parameters<typeof DataTable<Entry>>[0]> = {}) {
+    return render(
+      <MemoryRouter>
+        <DataTable columns={fixedColumns} data={entries} layout="fixed" narrowLayout="stack" {...props} />
+      </MemoryRouter>,
+    );
+  }
+
+  function colsOf(table: HTMLElement) {
+    return Array.from(table.querySelectorAll('colgroup > col'));
+  }
+
+  it('sizes the columns from a colgroup, leaving the lead column the rest of the width', () => {
+    renderFixed();
+    const table = screen.getByRole('table');
+
+    expect(table).toHaveClass('table-fixed');
+    const cols = colsOf(table);
+    // The stack-only column has no column in the table layout.
+    expect(cols).toHaveLength(4);
+    expect(cols[0].className).toBe('');
+    expect(cols[1]).toHaveClass('w-40', '@4xl/table:w-56');
+    expect(cols[2]).toHaveClass('w-24');
+    // A column that hides by priority takes its width away with it.
+    expect(cols[3]).toHaveClass('w-20', '@max-4xl/table:hidden');
+    // Cards have no columns: the colgroup stays out of the stacked layout.
+    expect(table.querySelector('colgroup')).toHaveClass('@max-2xl/table:hidden');
+  });
+
+  it('adds a column for the row link', () => {
+    renderFixed({ rowHref: (e) => `/audit/${e.id}` });
+
+    const cols = colsOf(screen.getByRole('table'));
+    expect(cols).toHaveLength(5);
+    expect(cols[4]).toHaveClass('w-10');
+  });
+
+  it('makes the table a container even when no column reflows, so widths can follow its room', () => {
+    const { container } = render(
+      <DataTable columns={[{ header: 'Name', accessor: (row: SampleRow) => row.name, width: 'w-40 @4xl/table:w-56' }, columns[0]]} data={data} layout="fixed" />,
+    );
+
+    expect(container.firstElementChild).toHaveClass('@container/table');
+  });
+
+  it('keeps a stack-only column out of the table layout and in the cards', () => {
+    renderFixed();
+
+    const header = screen.getByRole('columnheader', { name: 'Recurso' });
+    const cell = screen.getByText('orders-db').closest('td') as HTMLElement;
+    expect(header).toHaveClass('@2xl/table:hidden');
+    expect(cell).toHaveClass('@2xl/table:hidden', '@max-2xl/table:order-6');
+    expect(within(cell).getByText('Recurso')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('aligns a column and its header as asked', () => {
+    renderFixed();
+
+    for (const name of ['Acción', 'Usuario']) {
+      expect(screen.getByRole('columnheader', { name })).toHaveClass('text-left', '[&:not(:first-child)]:text-left');
+      expect(screen.getByRole('columnheader', { name })).not.toHaveClass('[&:not(:first-child)]:text-center');
+    }
+    expect(screen.getByText('ops@envault.local').closest('td')).toHaveClass('text-left', '[&:not(:first-child)]:text-left');
+    expect(screen.getByRole('columnheader', { name: 'Tamaño' })).toHaveClass('text-right', '[&:not(:first-child)]:text-right');
+    // Stacked rows keep their figures; the table lines them up digit by digit.
+    expect(screen.getByText('12 MB').closest('td')).toHaveClass('text-right', '@2xl/table:tabular-nums');
+    // A column that does not ask keeps the table's default alignment.
+    expect(screen.getByText('Cronjob').closest('td')).toHaveClass('[&:not(:first-child)]:text-center');
+  });
+
+  it('pads cells compactly, the dashboard spacing', () => {
+    renderFixed();
+
+    const cell = screen.getByText('12 MB').closest('td');
+    expect(cell).toHaveClass('px-3', 'py-3');
+    expect(cell).not.toHaveClass('px-6');
+    expect(screen.getByRole('columnheader', { name: 'Tamaño' })).toHaveClass('px-3');
+  });
+
+  it('leaves the default layout without a colgroup', () => {
+    render(<DataTable columns={columns} data={data} />);
+
+    expect(screen.getByRole('table')).not.toHaveClass('table-fixed');
+    expect(screen.getByRole('table').querySelector('colgroup')).toBeNull();
+  });
+});
+
+describe('ClampText', () => {
+  it('shows two lines at most in the table layout and keeps the full text in its title and in the DOM', () => {
+    const long = 'POST /api/backups/3e6bc28a-def9-4f2c-82ff-bc715a611bd8/download-url';
+    render(<ClampText text={long} className="text-xs" />);
+
+    const text = screen.getByText(long);
+    expect(text).toHaveAttribute('title', long);
+    expect(text).toHaveClass('text-xs', '@2xl/table:line-clamp-2', '@2xl/table:whitespace-normal', '@2xl/table:[overflow-wrap:anywhere]');
+  });
+});
+
+describe('RowActionsMenu', () => {
+  function renderMenu(onDelete = vi.fn(), onTest = vi.fn()) {
+    render(
+      <RowActionsMenu
+        label="Acciones de orders-db"
+        actions={[
+          { label: 'Eliminar', onSelect: onDelete, destructive: true },
+          { label: 'Probar conexión', onSelect: onTest },
+          { label: 'Editar', onSelect: vi.fn(), disabled: true },
+        ]}
+      />,
+    );
+    return { onDelete, onTest };
+  }
+
+  it('names the trigger after its row, with a visible focus ring and a 32px target', () => {
+    renderMenu();
+
+    const trigger = screen.getByRole('button', { name: 'Acciones de orders-db' });
+    expect(trigger).toHaveClass('size-8', 'focus-visible:ring-2');
+  });
+
+  it('lists the safe actions first and keeps the destructive ones apart, in the destructive colour', async () => {
+    const user = userEvent.setup();
+    const { onDelete } = renderMenu();
+
+    await user.click(screen.getByRole('button', { name: 'Acciones de orders-db' }));
+    const menu = await screen.findByRole('menu');
+    const items = within(menu).getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Probar conexión', 'Editar', 'Eliminar']);
+    expect(within(menu).getByRole('separator')).toBeInTheDocument();
+    expect(items[2]).toHaveClass('text-destructive');
+    expect(items[1]).toHaveAttribute('data-disabled');
+
+    await user.click(items[2]);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws no separator when there is nothing destructive', async () => {
+    const user = userEvent.setup();
+    render(<RowActionsMenu label="Acciones" actions={[{ label: 'Editar', onSelect: vi.fn() }]} />);
+
+    await user.click(screen.getByRole('button', { name: 'Acciones' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByRole('separator')).toBeNull();
   });
 });

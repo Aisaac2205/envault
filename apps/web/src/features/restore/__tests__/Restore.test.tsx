@@ -181,4 +181,38 @@ describe("Restore Feature", () => {
     const backBtn = screen.getByRole("button", { name: "Back to home" });
     expect(backBtn).toBeInTheDocument();
   });
+
+  // At 1024 px with the sidebar open the comparison has 670 px, two short of
+  // 42rem, and the table fits: the card around it decides when it turns into cards.
+  it("makes the dry run's result card the container its comparison reflows by", async () => {
+    await i18n.changeLanguage("es");
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.mocked(hooks.useRestore).mockReturnValue({
+      state: "dry-run",
+      dryRunResult: {
+        manifestAvailable: true,
+        sourceConnection: { name: "Prod DB", database: "prod_db", environment: "prod", dbType: "postgres" },
+        targetConnection: { name: "Dev DB", database: "dev_db", environment: "dev", dbType: "postgres" },
+        source: { tableCount: 1, estimatedRows: 10, tables: [{ name: "users", estimatedRows: 10 }] },
+        target: { tableCount: 1, estimatedRows: 8, tables: [{ name: "users", estimatedRows: 8 }] },
+        diff: { added: [], removed: [], common: [{ name: "users", sourceRows: 10, targetRows: 8 }] },
+      },
+      restoreJob: null,
+      finalStatus: null,
+      isLoading: false,
+      error: null,
+      executeDryRun: vi.fn(),
+      confirmRestore: vi.fn(),
+      setDone: vi.fn(),
+      reset: vi.fn(),
+    });
+
+    renderWithProviders();
+
+    const region = screen.getByRole("region", { name: "Comparación de tablas" });
+    const container = region.closest(".\\@container\\/table") as HTMLElement;
+    expect(container).not.toBeNull();
+    expect(container).toHaveClass("rounded-xl", "shadow-sm");
+    expect(container).toContainElement(screen.getByRole("button", { name: "Confirmar restauración" }));
+  });
 });

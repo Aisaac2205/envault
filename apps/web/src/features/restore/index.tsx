@@ -12,6 +12,8 @@ import { dumpsApi } from "@/features/dumps/api/dumps-api";
 import { Button } from "@/shared/ui/button";
 import { Alert, AlertDescription } from "@/shared/ui/alert";
 import { Card, CardContent } from "@/shared/ui/card";
+import { stackedTableClasses } from "@/shared/ui/data-table";
+import { cn } from "@/shared/lib/cn";
 import { RestoreForm } from "./components/RestoreForm";
 import { DryRunResult } from "./components/DryRunResult";
 import { RestoreHistory } from "./components/RestoreHistory";
@@ -203,7 +205,8 @@ export default function Restore() {
       {(state === "dry-run" || (state === "running" && !!dryRunResult)) && dryRunResult && (
         <div ref={dryRunResultRef} className="flex flex-col items-center scroll-mt-6 sm:min-h-[calc(100vh-12rem)] sm:justify-center">
           <div className="w-full max-w-6xl">
-            <Card className="rounded-xl shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-300">
+            {/* The table container of the comparison: it reflows into cards when the result card is narrower than 42rem. */}
+            <Card className={cn("rounded-xl shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-300", stackedTableClasses.container)}>
               <CardContent className="p-4 sm:p-6">
                 <DryRunResult
                   result={dryRunResult}

@@ -76,7 +76,9 @@ describe("DumpsTable on narrow screens", () => {
       "relative",
       "z-10",
     );
-    expect(cellOf(row, "Producción")).toHaveClass("@max-2xl/table:order-5");
+    // The table repeats the environment under the connection; the card keeps its own meta cell.
+    const environments = within(row).getAllByText("Producción").map((el) => el.closest("td"));
+    expect(environments.some((td) => td?.classList.contains("@max-2xl/table:order-5"))).toBe(true);
     const date = within(row).getByText((_, el) => el?.tagName === "TIME");
     expect(date).toHaveAttribute("dateTime", "2026-06-13T10:00:00Z");
     expect(date.closest("td")).toHaveClass("@max-2xl/table:order-5");
@@ -115,6 +117,65 @@ describe("DumpsTable on narrow screens", () => {
     renderTable([{ ...base, status: "running", fileKey: null }]);
 
     expect(screen.getByRole("button", { name: "Cancelar respaldo" })).toHaveClass("@max-2xl/table:h-11");
+  });
+});
+
+describe("DumpsTable on wide screens", () => {
+  const longName = "Recursos Humanos y Nómina (réplica de lectura)";
+
+  it("fixes every column but the connection, which takes the rest of the width", () => {
+    renderTable();
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveClass("table-fixed");
+    const cols = Array.from(table.querySelectorAll("colgroup > col")).map((col) => col.className);
+    // Connection, date, origin, status, storage, size, actions: the environment has no column of its own.
+    expect(cols).toEqual(["", "w-42", "w-18 @max-4xl/table:hidden", "w-32", "w-34 @max-4xl/table:hidden", "w-24", "w-44"]);
+    expect(screen.getByRole("columnheader", { name: "Entorno" })).toHaveClass("@2xl/table:hidden");
+  });
+
+  it("shows the environment as the connection's muted second line", () => {
+    renderTable();
+    const row = rowOf("orders-production-primary");
+
+    const secondLine = within(row)
+      .getAllByText("Producción")
+      .find((el) => el.closest("td")?.classList.contains("@max-2xl/table:order-1")) as HTMLElement;
+    expect(secondLine).toHaveClass("text-muted-foreground", "@max-2xl/table:hidden");
+  });
+
+  it("clamps a long connection name to two lines with the whole name in its title", () => {
+    renderTable([{ ...base, connectionName: longName }]);
+
+    const name = screen.getByText(longName);
+    expect(name).toHaveAttribute("title", longName);
+    expect(name).toHaveClass("@2xl/table:line-clamp-2");
+  });
+
+  it("aligns text left and the size right, in tabular figures", () => {
+    renderTable();
+
+    for (const name of ["Conexión", "Fecha", "Origen", "Estado", "Almacenamiento", "Acciones"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveClass("[&:not(:first-child)]:text-left");
+    }
+    expect(screen.getByRole("columnheader", { name: "Tamaño" })).toHaveClass("[&:not(:first-child)]:text-right");
+    expect(screen.getByText("12.00 MB").closest("td")).toHaveClass("text-right", "@2xl/table:tabular-nums");
+  });
+
+  it("keeps the date on one line", () => {
+    renderTable();
+
+    expect(within(rowOf("billing-db")).getByText((_, el) => el?.tagName === "TIME")).toHaveClass("whitespace-nowrap");
+  });
+
+  it("keeps a long error inside the status column, whole in its title", () => {
+    renderTable();
+    const row = rowOf("billing-db");
+
+    const error = within(row).getByText("Conexión rechazada");
+    expect(error).toHaveClass("truncate");
+    expect(error.parentElement).toHaveClass("@2xl/table:max-w-full");
+    expect(error.parentElement).toHaveAttribute("title", "connect ECONNREFUSED 10.0.0.4:5432");
   });
 });
 

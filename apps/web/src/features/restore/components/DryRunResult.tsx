@@ -8,6 +8,7 @@ import mysqlSvg from "@/shared/assets/MySQL.svg";
 import { engineLogoClass } from "@/shared/components/EngineIcon";
 import { Check, X } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
+import { StackFieldLabel, stackedTableClasses as stacked } from "@/shared/ui/data-table";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -113,6 +114,42 @@ function TableScrollRegion({ labelledBy, children }: { labelledBy: string; child
   );
 }
 
+/**
+ * The exclude control of a compared table: a 20 px box, with a 44 px tap area
+ * in a card, where it is the row's only control. The area's inset counts from
+ * inside the 1 px border: 18 + 2 x 13 = 44.
+ */
+function ExcludeToggle({ name, excluded, onToggle }: { name: string; excluded: boolean; onToggle: () => void }) {
+  const { t } = useTranslation("restore");
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="relative flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring @max-2xl/table:after:absolute @max-2xl/table:after:-inset-[13px] @max-2xl/table:after:content-['']"
+      aria-label={t("dryRun.excludeAria", { name })}
+    >
+      {excluded ? (
+        <X className="h-3 w-3 text-muted-foreground" />
+      ) : (
+        <Check className="h-3 w-3 text-transparent" />
+      )}
+    </button>
+  );
+}
+
+/*
+ * Cells of a compared table, by their place in a card (`stackedTableClasses`).
+ * The exclude cell stays unpositioned: there is no row link to sit above, and
+ * a raised cell would scroll over the sticky header.
+ */
+const EXCLUDE_CELL = cn("px-3 py-2.5", stacked.cell("actions"), "static z-auto");
+const NAME_CELL = cn("px-3 py-2.5 [overflow-wrap:anywhere]", stacked.cell("title"));
+/** The figure is monospaced, not its card label. */
+const COUNT_CELL = cn("px-3 py-2.5 text-right text-xs", stacked.cell("field"));
+const DIFF_CELL = cn("px-3 py-2.5 text-right text-xs", stacked.cell("badge"));
+/** A card draws its own rule below; the table's rule above would double it. */
+const ROW = cn("border-t border-border/20", stacked.row, "@max-2xl/table:border-t-0");
+
 function ConnectionCard({ conn, label }: { conn: DryRunConnectionInfo; label: string }) {
   return (
     <div className="flex items-center gap-2.5 rounded-xl bg-muted/40 px-3 py-2">
@@ -167,6 +204,12 @@ export function DryRunResult({
     return <TargetOnlyView target={target} targetConnection={result.targetConnection} onConfirm={() => onConfirm([])} onCancel={onCancel} isLoading={isLoading} />;
   }
 
+  const sourceEnv = result.sourceConnection?.environment?.toUpperCase();
+  const targetEnv = result.targetConnection.environment.toUpperCase();
+  // A card names each count: the side and its environment, as the columns do.
+  const sourceLabel = sourceEnv ? `${t("dryRun.sourceLabel")} · ${sourceEnv}` : t("dryRun.sourceLabel");
+  const targetLabel = `${t("dryRun.targetLabel")} · ${targetEnv}`;
+
   return (
     <div className="space-y-4">
       {/* Connection info */}
@@ -193,110 +236,96 @@ export function DryRunResult({
       </div>
 
       <TableScrollRegion labelledBy={captionId}>
-        <table className="w-full text-sm">
+        {/* Below 42rem of room each compared table is a card: the name with
+            the difference and the exclude control, then one line per side.
+            The room is the result card's (the `table` container around this
+            component), not the scroller's: at 1024 px with the sidebar open
+            the table fits in 670 px, two short of 42rem. */}
+        <table className={cn("w-full text-sm", stacked.table)}>
           <caption id={captionId} className="sr-only">
             {t("dryRun.comparisonRegion")}
           </caption>
-          <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
+          <thead className={cn("sticky top-0 z-10 bg-card/95 backdrop-blur-sm", stacked.header)}>
             <tr>
               <th className="w-10 px-3 py-2.5"></th>
               <th className="min-w-40 px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t("dryRun.columnTable")}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {result.sourceConnection?.environment?.toUpperCase() ?? t("dryRun.sourceLabel")}
+                {sourceEnv ?? t("dryRun.sourceLabel")}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {result.targetConnection.environment.toUpperCase()}
+                {targetEnv}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t("dryRun.columnDiff")}
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={stacked.body}>
             {diff.added.map((name) => (
-              <tr key={name} className="border-t border-border/20 bg-emerald-500/5">
-                <td className="px-3 py-2.5">
-                  <button
-                    type="button"
-                    onClick={() => toggleTable(name)}
-                    className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    aria-label={t("dryRun.excludeAria", { name })}
-                  >
-                    {excludedTables.has(name) ? (
-                      <X className="h-3 w-3 text-muted-foreground" />
-                    ) : (
-                      <Check className="h-3 w-3 text-transparent" />
-                    )}
-                  </button>
+              <tr key={name} className={cn(ROW, "bg-emerald-500/5")}>
+                <td className={EXCLUDE_CELL}>
+                  <ExcludeToggle name={name} excluded={excludedTables.has(name)} onToggle={() => toggleTable(name)} />
                 </td>
-                <td className="px-3 py-2.5 [overflow-wrap:anywhere]">
-                  <span className="mr-1.5 text-xs text-emerald-600">+</span>{name}
+                <td className={NAME_CELL}>
+                  <span className="mr-1.5 text-xs text-emerald-600">+</span>
+                  <span>{name}</span>
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs">
-                  {formatNumber(source.tables.find((row) => row.name === name)?.estimatedRows ?? 0)}
+                <td className={COUNT_CELL}>
+                  <StackFieldLabel>{sourceLabel}</StackFieldLabel>
+                  <span className="font-mono">{formatNumber(source.tables.find((row) => row.name === name)?.estimatedRows ?? 0)}</span>
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground">-</td>
-                <td className="px-3 py-2.5 text-right text-xs text-emerald-600">{t("dryRun.statusNew")}</td>
+                <td className={cn(COUNT_CELL, "text-muted-foreground")}>
+                  <StackFieldLabel>{targetLabel}</StackFieldLabel>
+                  <span className="font-mono">-</span>
+                </td>
+                <td className={cn(DIFF_CELL, "text-emerald-600")}>{t("dryRun.statusNew")}</td>
               </tr>
             ))}
             {diff.common.map((row) => {
               const delta = row.sourceRows - row.targetRows;
               const isExcluded = excludedTables.has(row.name);
               return (
-                <tr key={row.name} className={`border-t border-border/20 hover:bg-muted/40 ${isExcluded ? "opacity-40" : ""}`}>
-                  <td className="px-3 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => toggleTable(row.name)}
-                      className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      aria-label={t("dryRun.excludeAria", { name: row.name })}
-                    >
-                      {isExcluded ? (
-                        <X className="h-3 w-3 text-muted-foreground" />
-                      ) : (
-                        <Check className="h-3 w-3 text-transparent" />
-                      )}
-                    </button>
+                <tr key={row.name} className={cn(ROW, "hover:bg-muted/40", isExcluded && "opacity-40")}>
+                  <td className={EXCLUDE_CELL}>
+                    <ExcludeToggle name={row.name} excluded={isExcluded} onToggle={() => toggleTable(row.name)} />
                   </td>
-                  <td className="px-3 py-2.5 [overflow-wrap:anywhere]">{row.name}</td>
-                  <td className="px-3 py-2.5 text-right font-mono text-xs">
-                    {formatNumber(row.sourceRows)}
+                  <td className={NAME_CELL}>
+                    <span>{row.name}</span>
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-xs">
-                    {formatNumber(row.targetRows)}
+                  <td className={COUNT_CELL}>
+                    <StackFieldLabel>{sourceLabel}</StackFieldLabel>
+                    <span className="font-mono">{formatNumber(row.sourceRows)}</span>
                   </td>
-                  <td className={`px-3 py-2.5 text-right font-mono text-xs ${delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                  <td className={COUNT_CELL}>
+                    <StackFieldLabel>{targetLabel}</StackFieldLabel>
+                    <span className="font-mono">{formatNumber(row.targetRows)}</span>
+                  </td>
+                  <td className={cn(DIFF_CELL, "font-mono", delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-500" : "text-muted-foreground")}>
                     {delta > 0 ? `+${formatNumber(delta)}` : delta < 0 ? formatNumber(delta) : "="}
                   </td>
                 </tr>
               );
             })}
             {diff.removed.map((name) => (
-              <tr key={name} className="border-t border-border/20 bg-red-500/5">
-                <td className="px-3 py-2.5">
-                  <button
-                    type="button"
-                    onClick={() => toggleTable(name)}
-                    className="flex h-5 w-5 items-center justify-center rounded border border-border bg-background hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    aria-label={t("dryRun.excludeAria", { name })}
-                  >
-                    {excludedTables.has(name) ? (
-                      <X className="h-3 w-3 text-muted-foreground" />
-                    ) : (
-                      <Check className="h-3 w-3 text-transparent" />
-                    )}
-                  </button>
+              <tr key={name} className={cn(ROW, "bg-red-500/5")}>
+                <td className={EXCLUDE_CELL}>
+                  <ExcludeToggle name={name} excluded={excludedTables.has(name)} onToggle={() => toggleTable(name)} />
                 </td>
-                <td className="px-3 py-2.5 [overflow-wrap:anywhere]">
-                  <span className="mr-1.5 text-xs text-red-500">−</span>{name}
+                <td className={NAME_CELL}>
+                  <span className="mr-1.5 text-xs text-red-500">−</span>
+                  <span>{name}</span>
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground">-</td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs">
-                  {formatNumber(target.tables.find((t) => t.name === name)?.estimatedRows ?? 0)}
+                <td className={cn(COUNT_CELL, "text-muted-foreground")}>
+                  <StackFieldLabel>{sourceLabel}</StackFieldLabel>
+                  <span className="font-mono">-</span>
                 </td>
-                <td className="px-3 py-2.5 text-right text-xs text-red-500">{t("dryRun.statusDrop")}</td>
+                <td className={COUNT_CELL}>
+                  <StackFieldLabel>{targetLabel}</StackFieldLabel>
+                  <span className="font-mono">{formatNumber(target.tables.find((t) => t.name === name)?.estimatedRows ?? 0)}</span>
+                </td>
+                <td className={cn(DIFF_CELL, "text-red-500")}>{t("dryRun.statusDrop")}</td>
               </tr>
             ))}
           </tbody>

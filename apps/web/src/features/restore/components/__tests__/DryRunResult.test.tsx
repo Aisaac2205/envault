@@ -114,6 +114,72 @@ describe("DryRunResult: table comparison scroll region", () => {
   });
 });
 
+describe("DryRunResult: comparison cards on phones", () => {
+  // Below 42rem of table room each compared table becomes a card, the same
+  // layout as the app's other tables: the name as title with the difference
+  // and the exclude control beside it, then one labelled line per side.
+  function rowOf(name: string) {
+    return screen.getByText(name).closest("tr") as HTMLElement;
+  }
+
+  it("reflows by the room of the card around it, not the scroller's, into a stack of cards below 42rem", () => {
+    renderResult(withManifest);
+
+    const region = screen.getByRole("region", { name: "Comparación de tablas" });
+    // The result card is the container (see the restore page); a container here would be narrower.
+    expect(region.parentElement).not.toHaveClass("@container/table");
+    const table = within(region).getByRole("table");
+    expect(table).toHaveClass("@max-2xl/table:block");
+    expect(table.querySelector("thead")).toHaveClass("@max-2xl/table:sr-only");
+    expect(table.querySelector("tbody")).toHaveClass("@max-2xl/table:block");
+    expect(rowOf("users")).toHaveClass("@max-2xl/table:flex", "@max-2xl/table:flex-wrap");
+  });
+
+  it("titles each card with the table name, the difference as its badge and the exclude control at the end", () => {
+    renderResult(withManifest);
+    const row = rowOf("users");
+
+    expect(within(row).getByText("users").closest("td")).toHaveClass("@max-2xl/table:order-1", "@max-2xl/table:flex-1");
+    expect(within(row).getByText("+200.000").closest("td")).toHaveClass("@max-2xl/table:order-2");
+    const exclude = within(row).getByRole("button", { name: "Excluir tabla users" });
+    expect(exclude.closest("td")).toHaveClass("@max-2xl/table:order-3");
+    // No row link to sit above, and a raised cell would scroll over the sticky header.
+    expect(exclude.closest("td")).not.toHaveClass("z-10");
+    // A 20 px box with a 44 px tap area in a card.
+    expect(exclude).toHaveClass("relative", "@max-2xl/table:after:absolute", "@max-2xl/table:after:-inset-[13px]");
+  });
+
+  it("labels the source and target counts with their side and environment", () => {
+    renderResult(withManifest);
+    const row = rowOf("users");
+
+    const source = within(row).getByText("1.200.000").closest("td") as HTMLElement;
+    const target = within(row).getByText("1.000.000").closest("td") as HTMLElement;
+    expect(source).toHaveClass("@max-2xl/table:order-6", "@max-2xl/table:basis-full");
+    expect(target).toHaveClass("@max-2xl/table:order-6");
+    expect(within(source).getByText("Origen · PROD")).toHaveAttribute("aria-hidden", "true");
+    expect(within(target).getByText("Destino · QA")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("shows a new table's status as the card badge", () => {
+    renderResult(withManifest);
+
+    expect(screen.getByText("Nueva").closest("td")).toHaveClass("@max-2xl/table:order-2");
+  });
+
+  it("keeps excluding tables: the row fades and the footer counts it", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    render(<DryRunResult result={withManifest} onConfirm={onConfirm} onCancel={vi.fn()} isLoading={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Excluir tabla users" }));
+
+    expect(rowOf("users")).toHaveClass("opacity-40");
+    await user.click(screen.getByRole("button", { name: "Confirmar restauración" }));
+    expect(onConfirm).toHaveBeenCalledWith(["users"]);
+  });
+});
+
 describe("DryRunResult: target-only view", () => {
   it("exposes the target tables in a named, focusable region", () => {
     renderResult(targetOnly);

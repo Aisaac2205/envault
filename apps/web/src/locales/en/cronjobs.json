@@ -43,6 +43,7 @@
   "action.edit": "Edit",
   "action.delete": "Delete",
   "action.actions": "Actions",
+  "action.actionsAria": "Actions for {{name}}",
   "empty.title": "No cronjobs configured",
   "empty.description": "Create your first cronjob to schedule automatic backups.",
   "toast.created": "Cronjob created successfully",

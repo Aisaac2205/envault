@@ -37,10 +37,13 @@ export function FrequencyTabs({
       value={value ?? ""}
       onValueChange={(next) => onChange(next as BackupCategory)}
       aria-label={t("freq.ariaLabel")}
+      className="@container/frequency"
     >
-      {/* Below sm five equal cells are narrower than the longest label, so the
-          tabs share a flex row where each keeps at least its label width. */}
-      <TabsList className="flex h-9 w-full gap-1 rounded-md p-1 sm:grid sm:grid-cols-5">
+      {/* Five equal cells need about 19rem (54 px a tab) to hold the longest
+          label. With less room (a phone, or the narrow form column of 1024-1280
+          px screens) the tabs share a wrapping row where each keeps at least its
+          label width; the room, not the viewport, picks the layout. */}
+      <TabsList className="flex h-auto min-h-9 w-full flex-wrap gap-1 rounded-md p-1 @[19rem]/frequency:grid @[19rem]/frequency:h-9 @[19rem]/frequency:grid-cols-5">
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.value}

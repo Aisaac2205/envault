@@ -21,7 +21,10 @@ export function RestoreActions({
 }: RestoreActionsProps) {
   const { t } = useTranslation("restore");
   return (
-    <div className="space-y-3">
+    // The buttons follow the room this block has, not the viewport: side by
+    // side they need about 425 px, more than the form column has on 1024-1536
+    // px screens, where a viewport breakpoint pushed the second past the card.
+    <div className="@container/actions space-y-3">
       {!isDryRun && (
         <div className="flex items-start gap-2.5 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-xs">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
@@ -34,11 +37,11 @@ export function RestoreActions({
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 @[27rem]/actions:flex-row">
         <Button
           onClick={onSimulate}
           disabled={isLoading || !canSimulate || !isDryRun}
-          className="sm:flex-1"
+          className="@[27rem]/actions:flex-1"
           variant="outline"
         >
           <Play className="mr-2 h-4 w-4" />
@@ -49,7 +52,7 @@ export function RestoreActions({
           onClick={onExecute}
           disabled={isLoading || !canExecute || isDryRun}
           variant="destructive"
-          className="sm:flex-1"
+          className="@[27rem]/actions:flex-1"
         >
           <AlertTriangle className="mr-2 h-4 w-4" />
           {isLoading && !isDryRun ? t("action.processing") : t("action.restore")}
