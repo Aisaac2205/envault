@@ -62,6 +62,16 @@ describe("EngineName", () => {
     expect(name.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("lets the caller style the logo's box", () => {
+    render(
+      <EngineName dbType="postgres" markClassName="hidden @max-2xl/table:flex">
+        <span>orders</span>
+      </EngineName>,
+    );
+
+    expect(screen.getByRole("img", { name: "PostgreSQL" }).parentElement).toHaveClass("hidden", "@max-2xl/table:flex");
+  });
+
   it("shows no fallback beside a logo", () => {
     render(
       <EngineName dbType="mysql" fallback={<span>MYSQL</span>}>

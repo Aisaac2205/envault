@@ -433,20 +433,42 @@ describe("Connections page on narrow screens", () => {
     expect(screen.getByRole("table", { name: "Conexiones" })).toBeInTheDocument();
   });
 
-  it("stacks each connection: name as title, state as badge, environment as meta, actions last", () => {
+  it("stacks each connection: engine and name as title, state and actions menu beside it, environment as meta, host and database as fields", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+    const row = rowOf("Orders QA");
+    const cellOf = (text: string) => within(row).getByText(text).closest("td") as HTMLElement;
+
+    const name = cellOf("Orders QA");
+    expect(name).toHaveClass("@max-2xl/table:order-1");
+    // The type column hides in cards; the logo beside the name says the engine there.
+    expect(within(name).getByRole("img", { name: "PostgreSQL" }).parentElement).toHaveClass("hidden", "@max-2xl/table:flex");
+    expect(cellOf("postgres")).toHaveClass("@max-2xl/table:hidden");
+
+    const state = cellOf("Activa");
+    expect(state).toHaveClass("@max-2xl/table:order-2");
+    expect(within(state).getByRole("button", { name: "Acciones" })).toBeInTheDocument();
+
+    expect(cellOf("Desarrollo")).toHaveClass("@max-2xl/table:order-5");
+    const host = within(row).getByText(/db\.internal/).closest("td") as HTMLElement;
+    expect(host).toHaveClass("@max-2xl/table:order-6");
+    expect(host).not.toHaveClass("@max-2xl/table:hidden");
+    expect(within(host).getByText("Host")).toHaveAttribute("aria-hidden", "true");
+    expect(within(host).getByText(":5432")).toHaveClass("hidden", "@max-2xl/table:inline");
+
+    const database = cellOf("orders");
+    expect(database).toHaveClass("@max-2xl/table:order-6");
+    expect(within(database).getByText("BD")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("gives a card no result line until a test result exists", () => {
     mockConnectionsPage([devConnection]);
     render(<Connections />);
     const row = rowOf("Orders QA");
 
-    expect(within(row).getByText("Orders QA").closest("td")).toHaveClass("@max-2xl/table:order-1");
-    expect(within(row).getByText("Activa").closest("td")).toHaveClass("@max-2xl/table:order-2");
-    expect(within(row).getByText("Desarrollo").closest("td")).toHaveClass("@max-2xl/table:order-5");
-    expect(within(row).getByRole("button", { name: "Acciones" }).closest("td")).toHaveClass(
-      "@max-2xl/table:order-7",
-      "relative",
-      "z-10",
-    );
-    expect(within(row).getByText("db.internal").closest("td")).toHaveClass("@max-2xl/table:hidden");
+    const actions = within(row).getByRole("button", { name: "Editar" }).closest("td") as HTMLElement;
+    expect(actions).toHaveClass("@max-2xl/table:order-7", "@max-2xl/table:[&:not(:has([data-test-result]))]:hidden");
+    expect(actions.querySelector("[data-test-result]")).toBeNull();
   });
 
   it("picks the button row or the menu by the room the table has, not the viewport", () => {
@@ -470,5 +492,6 @@ describe("Connections page on narrow screens", () => {
     expect(results).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Editar" }).parentElement).not.toContainElement(results[0]);
     expect(results[0].closest("td")).toHaveClass("@max-2xl/table:order-7");
+    expect(results[0].closest("[data-test-result]")).not.toBeNull();
   });
 });

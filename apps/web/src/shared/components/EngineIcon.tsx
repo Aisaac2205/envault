@@ -50,6 +50,8 @@ interface EngineNameProps {
   fallback?: ReactNode;
   /** Sets the font size and line height the mark aligns to: the name's own. */
   className?: string;
+  /** Classes for the logo's box, such as showing it only in a stacked table row. */
+  markClassName?: string;
 }
 
 /**
@@ -59,14 +61,14 @@ interface EngineNameProps {
  * name out of line. The mark sits in a box one line of the name tall, so it
  * stays level with the first line when a long name wraps.
  */
-export function EngineName({ dbType, children, fallback, className }: EngineNameProps) {
+export function EngineName({ dbType, children, fallback, className, markClassName }: EngineNameProps) {
   const leads = knownEngine(dbType) !== null;
   const trailing = leads ? null : fallback;
 
   return (
     <div className={cn("flex min-w-0 items-start gap-2", className)}>
       {leads ? (
-        <span className="flex h-[1lh] shrink-0 items-center">
+        <span className={cn("flex h-[1lh] shrink-0 items-center", markClassName)}>
           <EngineLogo dbType={dbType} />
         </span>
       ) : null}

@@ -4,6 +4,7 @@ import { Button } from "@/shared/ui/button";
 import { DataTable, type Column } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
 import TestConnectionBadge from "./TestConnectionBadge";
+import { EngineName } from "@/shared/components/EngineIcon";
 import PostgresSQL from "@/shared/assets/PostgresSQL.svg";
 import MySQL from "@/shared/assets/MySQL.svg";
 import { useTranslation } from "react-i18next";
@@ -36,13 +37,20 @@ export default function ConnectionsTable({
   testLoading,
 }: ConnectionsTableProps) {
   const { t } = useTranslation('connections')
-  // Narrower than 42rem each connection becomes a card: the name and its state
-  // first, the environment below, and a last line with the test result and the
-  // actions menu. The connection details stay in the wide table and the form.
+  // Narrower than 42rem each connection becomes a card: its engine and name
+  // with the state and the actions menu beside them, then the environment,
+  // then host:port and the database as labelled lines, and a last line with
+  // the test result only once there is one. Type and port keep their own
+  // columns in the wide table.
   const columns: Column<Connection>[] = [
     {
       header: t('column.name'),
-      accessor: (c) => c.name,
+      accessor: (c) => (
+        // The type column hides in a card; the logo says the engine there.
+        <EngineName dbType={c.dbType} markClassName="hidden @max-2xl/table:flex">
+          <span className="min-w-0 @max-2xl/table:[overflow-wrap:anywhere]">{c.name}</span>
+        </EngineName>
+      ),
       className: "font-medium",
       stack: "title",
     },
@@ -74,9 +82,13 @@ export default function ConnectionsTable({
     {
       header: t('column.host'),
       accessor: (c) => (
-        <span className="truncate font-mono text-xs">{c.host}</span>
+        <span className="truncate font-mono text-xs @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]">
+          {c.host}
+          {/* A card has no port column: the port follows the host there. */}
+          <span className="hidden @max-2xl/table:inline">:{c.port}</span>
+        </span>
       ),
-      priority: 2,
+      stack: "field",
     },
     {
       header: t('column.port'),
@@ -87,50 +99,25 @@ export default function ConnectionsTable({
     },
     {
       header: t('column.database'),
-      accessor: (c) => c.database,
-      className: "truncate",
-      priority: 2,
+      accessor: (c) => (
+        <span className="min-w-0 truncate @max-2xl/table:whitespace-normal @max-2xl/table:font-mono @max-2xl/table:text-xs @max-2xl/table:[overflow-wrap:anywhere]">
+          {c.database}
+        </span>
+      ),
+      stack: "field",
     },
     {
       header: t('column.status'),
-      accessor: (c) => <ConnectionStateBadge isActive={c.isActive} />,
-      stack: "badge",
-    },
-    {
-      header: t('column.actions'),
       accessor: (c) => {
         const isTesting = testLoading[c.id] ?? false;
-        const testResult = testResults[c.id] ?? null;
         // The API refuses every change to a PROD connection, so it offers no Edit.
         const canEdit = !isProdConnection(c);
 
         return (
-          <div className="flex items-center justify-center gap-2 whitespace-nowrap @max-2xl/table:w-full @max-2xl/table:justify-between @max-2xl/table:*:min-w-0 @max-2xl/table:*:whitespace-normal">
-            {/* Wide table: the full button row */}
-            <div className="hidden @2xl/table:flex items-center gap-2">
-              {canEdit && (
-                <Button variant="outline" size="sm" onClick={() => onEdit(c)}>
-                  {t('action.edit')}
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={() => onDelete(c)}>
-                {t('action.delete')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onTest(c.id)}
-                disabled={isTesting}
-              >
-                {isTesting ? t('action.testing') : t('action.test')}
-              </Button>
-            </div>
-
-            {/* One result for both layouts: after the buttons, or beside the menu in a card. */}
-            <TestConnectionBadge result={testResult} isLoading={isTesting} />
-
-            {/* Narrow table: dropdown menu */}
-            <div className="@2xl/table:hidden ml-auto flex items-center justify-center">
+          <div className="inline-flex items-center gap-1">
+            <ConnectionStateBadge isActive={c.isActive} />
+            {/* Narrow table: the actions menu, at the card's top right */}
+            <div className="@2xl/table:hidden flex items-center justify-center">
               <DropdownMenuPrimitive.Root>
                 <DropdownMenuPrimitive.Trigger asChild>
                   <button
@@ -174,6 +161,48 @@ export default function ConnectionsTable({
           </div>
         );
       },
+      stack: "badge",
+    },
+    {
+      header: t('column.actions'),
+      accessor: (c) => {
+        const isTesting = testLoading[c.id] ?? false;
+        const testResult = testResults[c.id] ?? null;
+        const canEdit = !isProdConnection(c);
+
+        return (
+          <div className="flex items-center justify-center gap-2 whitespace-nowrap @max-2xl/table:w-full @max-2xl/table:justify-start @max-2xl/table:*:min-w-0 @max-2xl/table:*:whitespace-normal">
+            {/* Wide table: the full button row */}
+            <div className="hidden @2xl/table:flex items-center gap-2">
+              {canEdit && (
+                <Button variant="outline" size="sm" onClick={() => onEdit(c)}>
+                  {t('action.edit')}
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={() => onDelete(c)}>
+                {t('action.delete')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onTest(c.id)}
+                disabled={isTesting}
+              >
+                {isTesting ? t('action.testing') : t('action.test')}
+              </Button>
+            </div>
+
+            {/* One result for both layouts: after the buttons, or on the card's last line. */}
+            {isTesting || testResult ? (
+              <span data-test-result="" className="contents">
+                <TestConnectionBadge result={testResult} isLoading={isTesting} />
+              </span>
+            ) : null}
+          </div>
+        );
+      },
+      // A card has a result line only while there is a result to show.
+      className: "@max-2xl/table:[&:not(:has([data-test-result]))]:hidden",
       stack: "footer",
     },
   ];
