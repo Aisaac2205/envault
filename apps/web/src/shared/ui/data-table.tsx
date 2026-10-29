@@ -5,13 +5,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableScrollRegion,
 } from "@/shared/ui/table";
-import { useId, useRef, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ChevronRight, Inbox } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
-import { useScrollOverflow } from "@/shared/hooks/useScrollOverflow";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { EmptyState } from "@/shared/ui/empty-state";
 
@@ -22,8 +22,10 @@ import { EmptyState } from "@/shared/ui/empty-state";
  * - `actions`: first line, at the end, above the row link.
  * - `meta`: second line, inline with the other meta cells (a time, an actor).
  * - `field`: a line of its own, after a visual label.
+ * - `footer`: the last line, full width and unlabelled, above the row link;
+ *   for controls that need the room (a result beside its action menu).
  */
-export type StackRole = "title" | "badge" | "meta" | "field" | "actions";
+export type StackRole = "title" | "badge" | "meta" | "field" | "actions" | "footer";
 
 /**
  * How long a column survives as the table narrows, measured on the table's
@@ -119,7 +121,11 @@ const STACKED_ROLE_CLASSES: Record<StackRole, string> = {
   meta: "@max-2xl/table:order-5 @max-2xl/table:mt-1",
   field:
     "@max-2xl/table:order-6 @max-2xl/table:mt-1.5 @max-2xl/table:basis-full @max-2xl/table:items-baseline @max-2xl/table:gap-2",
+  footer: "@max-2xl/table:order-7 @max-2xl/table:mt-2 @max-2xl/table:basis-full",
 };
+
+/** Roles holding controls: they sit above the stretched row link. */
+const INTERACTIVE_ROLES: ReadonlySet<StackRole> = new Set(["actions", "footer"]);
 
 /** A middle dot between meta cells that share the second line. */
 const META_SEPARATOR =
@@ -139,6 +145,7 @@ const STACKED_SKELETON_LINE: Record<StackRole, string> = {
   field: "@max-2xl/table:order-6",
   badge: "",
   actions: "",
+  footer: "",
 };
 const STACKED_SKELETON_BAR: Record<StackRole, string> = {
   title: "@max-2xl/table:mx-0 @max-2xl/table:w-3/5",
@@ -146,12 +153,48 @@ const STACKED_SKELETON_BAR: Record<StackRole, string> = {
   field: "@max-2xl/table:mx-0 @max-2xl/table:w-4/5",
   badge: "",
   actions: "",
+  footer: "",
 };
 
 /** The row link's cell collapses; its ::after still covers the whole card. */
 const STACKED_LINK_CELL = "@max-2xl/table:order-last @max-2xl/table:size-0 @max-2xl/table:p-0";
 const STACKED_LINK =
   "@max-2xl/table:focus-visible:ring-0 @max-2xl/table:focus-visible:after:ring-2 @max-2xl/table:focus-visible:after:ring-inset @max-2xl/table:focus-visible:after:ring-ring";
+
+/**
+ * The label of a field in the stacked layout, hidden in the table layout.
+ * Visual only: screen readers already pair the cell with its column header.
+ */
+export function StackFieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <span aria-hidden="true" className="hidden shrink-0 text-xs text-muted-foreground @max-2xl/table:inline">
+      {children}
+    </span>
+  );
+}
+
+/**
+ * The stacked layout as classes, for a raw <Table> whose layout DataTable
+ * does not offer (RestoreHistory: a full-height pane with a sticky header).
+ * `container` goes on an ancestor of the table.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- layout classes co-located with the DataTable that defines them, so both layouts stay one definition
+export const stackedTableClasses = {
+  container: "@container/table",
+  table: STACKED_TABLE,
+  header: STACKED_HEADER,
+  body: STACKED_BODY,
+  row: STACKED_ROW,
+  /** For rows and cells that stay one block, such as the empty state. */
+  block: "@max-2xl/table:block",
+  cell: (role: StackRole, options: { afterMeta?: boolean } = {}) =>
+    cn(
+      STACKED_CELL,
+      STACKED_ROLE_CLASSES[role],
+      INTERACTIVE_ROLES.has(role) && "relative z-10",
+      options.afterMeta && META_SEPARATOR,
+    ),
+} as const;
 
 function priorityOf<T>(column: Column<T>): ColumnPriority {
   return column.priority ?? 1;
@@ -173,8 +216,6 @@ export function DataTable<T>({
   narrowLayout = "scroll",
 }: DataTableProps<T>) {
   const { t } = useTranslation("common");
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const overflowing = useScrollOverflow(scrollerRef);
   const captionId = useId();
 
   const stacked = narrowLayout === "stack";
@@ -201,7 +242,7 @@ export function DataTable<T>({
       cellPadding,
       "align-middle",
       col.className,
-      role === "actions" && "relative z-10",
+      INTERACTIVE_ROLES.has(role) && "relative z-10",
       stacksAt(col) && STACKED_CELL,
       stacksAt(col) && STACKED_ROLE_CLASSES[role],
       stacksAt(col) && role === "meta" && colIdx !== firstMetaIndex && META_SEPARATOR,
@@ -219,18 +260,10 @@ export function DataTable<T>({
       )}
       data-loaded=""
     >
-      {/*
-        A named region that joins the tab order only while it overflows, so
-        keyboard users can scroll it (WCAG 2.1.1) without an extra tab stop
-        when there is nothing to scroll.
-      */}
-      <div
-        ref={scrollerRef}
-        role="region"
+      <TableScrollRegion
         aria-labelledby={caption ? captionId : undefined}
         aria-label={caption ? undefined : t("label.dataTable")}
-        tabIndex={overflowing ? 0 : undefined}
-        className="overflow-x-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        className="overflow-x-auto"
       >
         <Table className={cn(minWidth, stacked && STACKED_TABLE)}>
           {caption ? (
@@ -317,14 +350,7 @@ export function DataTable<T>({
                   {columns.map((col, colIdx) => (
                     <TableCell key={colIdx} className={cellClass(col, colIdx)}>
                       {stacksAt(col) && (col.stack ?? "field") === "field" ? (
-                        // Visual only: screen readers already pair the cell
-                        // with its column header, so the label is hidden from them.
-                        <span
-                          aria-hidden="true"
-                          className="hidden shrink-0 text-xs text-muted-foreground @max-2xl/table:inline"
-                        >
-                          {col.stackLabel ?? col.header}
-                        </span>
+                        <StackFieldLabel>{col.stackLabel ?? col.header}</StackFieldLabel>
                       ) : null}
                       {col.accessor(item)}
                     </TableCell>
@@ -355,7 +381,7 @@ export function DataTable<T>({
             )}
           </TableBody>
         </Table>
-      </div>
+      </TableScrollRegion>
       {pagination && (
         // Outside the scroller, so it never scrolls away; it wraps instead of
         // being clipped by the rounded wrapper, and as the `pagination`

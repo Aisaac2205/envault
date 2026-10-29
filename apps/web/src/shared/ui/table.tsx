@@ -1,4 +1,6 @@
+import { useRef, type RefObject } from "react";
 import { cn } from "@/shared/lib/cn";
+import { useScrollOverflow } from "@/shared/hooks/useScrollOverflow";
 
 function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
@@ -82,6 +84,32 @@ function TableCell({
   );
 }
 
+interface TableScrollRegionProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** For callers that also move the scroll position (a reset on filter change). */
+  scrollRef?: RefObject<HTMLDivElement | null>;
+}
+
+/**
+ * The scroll container around a table: a region (name it with aria-label or
+ * aria-labelledby) that joins the tab order only while its content overflows,
+ * so keyboard users can scroll it (WCAG 2.1.1) without a useless tab stop.
+ * The focus outline is inset because the wrapper usually clips its overflow.
+ */
+function TableScrollRegion({ scrollRef, className, ...props }: TableScrollRegionProps) {
+  const ownRef = useRef<HTMLDivElement>(null);
+  const ref = scrollRef ?? ownRef;
+  const overflowing = useScrollOverflow(ref);
+  return (
+    <div
+      ref={ref}
+      role="region"
+      tabIndex={overflowing ? 0 : undefined}
+      className={cn("focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", className)}
+      {...props}
+    />
+  );
+}
+
 function TableCaption({
   className,
   ...props
@@ -103,4 +131,5 @@ export {
   TableHead,
   TableHeader,
   TableRow,
+  TableScrollRegion,
 };
