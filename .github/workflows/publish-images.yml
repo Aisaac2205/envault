@@ -1,0 +1,179 @@
+name: Publish container images
+
+# Builds the api and web production images for linux/amd64 and linux/arm64 and
+# pushes them to GHCR as X.Y.Z, X.Y and latest.
+#
+# Normal path: ci.yml calls this workflow right after semantic-release
+# publishes a new version. A tag created with GITHUB_TOKEN never starts another
+# workflow, so `on: release` or `on: push: tags` would never fire here.
+# Manual path: run it from the Actions tab with an existing release tag, for the
+# first publish or to publish a version again.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Released version without the leading v, for example 1.4.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish, for example v1.4.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      sha: ${{ steps.release.outputs.sha }}
+      latest: ${{ steps.release.outputs.latest }}
+      latest-in-minor: ${{ steps.release.outputs.latest-in-minor }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Every branch and tag, to check where the tag points and how it ranks.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate the tag and rank it against the other releases
+        id: release
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          raw="${INPUT_VERSION:-$INPUT_TAG}"
+          version="${raw#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Expected a release version like 1.4.0 or v1.4.0, got '$raw'."
+            exit 1
+          fi
+          tag="v$version"
+
+          if ! sha="$(git rev-parse --quiet --verify "refs/tags/$tag^{commit}")"; then
+            echo "::error::Tag $tag does not exist."
+            exit 1
+          fi
+          # Only commits released from main are published.
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::Tag $tag points to $sha, which is not on main."
+            exit 1
+          fi
+
+          # Republishing an older version must not move `latest` (or X.Y) back.
+          releases() { git tag --list "$1" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1; }
+          highest="$(releases 'v*')"
+          highest_in_minor="$(releases "v${version%.*}.*")"
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "sha=$sha"
+            echo "latest=$([ "$tag" = "$highest" ] && echo true || echo false)"
+            echo "latest-in-minor=$([ "$tag" = "$highest_in_minor" ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Publishing $tag ($sha). Highest release: $highest. Highest in ${version%.*}: $highest_in_minor."
+
+  publish:
+    name: Publish ${{ matrix.image }}
+    needs: [resolve]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    # One publish per image at a time, so two releases close together cannot
+    # finish out of order and leave `latest` on the older one.
+    concurrency:
+      group: publish-images-${{ matrix.image }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: envault-api
+            dockerfile: apps/api/Dockerfile
+            title: EnVault API
+            description: EnVault API, the NestJS service that runs backups, restores and their schedules.
+          # Built without VITE_API_URL: the SPA calls the same-origin /api, and
+          # nginx proxies it to API_UPSTREAM, which is read when the container
+          # starts. One image therefore serves every install.
+          - image: envault-web
+            dockerfile: apps/web/Dockerfile
+            title: EnVault Web
+            description: EnVault web app, the React dashboard served by nginx, which proxies /api to the API.
+    steps:
+      - name: Checkout the release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          # GHCR reads the description and the repository link of a multi-arch
+          # image from the index, so the annotations go on both levels.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          # Revision and ref come from the checked-out release commit, not from
+          # the commit that triggered this run.
+          context: git
+          images: ghcr.io/aisaac2205/${{ matrix.image }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.resolve.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.resolve.outputs.tag }},enable=${{ needs.resolve.outputs.latest-in-minor }}
+            type=raw,value=latest,enable=${{ needs.resolve.outputs.latest }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.source=https://github.com/Aisaac2205/envault
+            org.opencontainers.image.url=https://github.com/Aisaac2205/envault
+            org.opencontainers.image.licenses=FSL-1.1-ALv2
+          annotations: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.source=https://github.com/Aisaac2205/envault
+            org.opencontainers.image.url=https://github.com/Aisaac2205/envault
+            org.opencontainers.image.licenses=FSL-1.1-ALv2
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: production
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
