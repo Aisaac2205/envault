@@ -726,7 +726,7 @@ export class BackupService implements OnApplicationBootstrap {
 
     const items: BackupHistoryItem[] = jobs.map((job) => ({
       ...job,
-      connectionName: nameMap.get(job.connectionId) ?? '(eliminada)',
+      connectionName: nameMap.get(job.connectionId) ?? null,
     }));
 
     return new PaginatedResponseDto<BackupHistoryItem>(
@@ -788,7 +788,7 @@ export class BackupService implements OnApplicationBootstrap {
       throw new NotFoundException(`Backup job con ID "${id}" no encontrado`);
     }
 
-    let connectionName = '(eliminada)';
+    let connectionName: string | null = null;
     try {
       const connection = await this.connectionsService.findById(job.connectionId);
       connectionName = connection.name;

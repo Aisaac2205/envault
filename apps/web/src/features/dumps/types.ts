@@ -35,7 +35,8 @@ export type JobStatus = "pending" | "running" | "completed" | "failed";
 export interface BackupJob {
   id: string;
   connectionId: string;
-  connectionName: string;
+  /** Null when the connection was deleted after the backup ran. */
+  connectionName: string | null;
   environment: string;
   dbType: "postgres" | "mysql" | null;
   status: JobStatus;

@@ -11,13 +11,15 @@ import { RestoreFormSection } from "./RestoreFormSection";
 import { RestoreOptions } from "./RestoreOptions";
 import { RestoreActions } from "./RestoreActions";
 import { Badge } from "@/shared/ui/badge";
+import { cn } from "@/shared/lib/cn";
 import cloudflareSvg from "@/shared/assets/Cloudflare.svg";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
 import { FileText, ArrowRight } from "lucide-react";
 
 interface BackupInfo {
-  connectionName?: string;
+  /** Null when the connection was deleted after the backup ran. */
+  connectionName?: string | null;
   environment?: string;
   date?: string;
   fileSizeMb?: number | null;
@@ -62,7 +64,7 @@ export function RestoreForm({
   sourceConnections,
   sourceConnectionsLoading = false,
 }: RestoreFormProps) {
-  const { t } = useTranslation("restore");
+  const { t } = useTranslation(["restore", "common"]);
   const [targetConnectionId, setTargetConnectionId] = useState("");
   const [isDryRun, setIsDryRun] = useState(true);
 
@@ -113,6 +115,10 @@ export function RestoreForm({
   }
 
   const sectionCount = showR2Selector ? 3 : 2;
+  const backupName =
+    backupInfo?.connectionName === null
+      ? t("common:connection.deleted")
+      : (backupInfo?.connectionName ?? "Backup");
 
   return (
     <div className="flex flex-col h-full">
@@ -162,10 +168,13 @@ export function RestoreForm({
                 )}
                 <div className="min-w-0 flex-1">
                   <p
-                    className="truncate text-sm font-medium"
-                    title={backupInfo?.connectionName}
+                    className={cn(
+                      "truncate text-sm font-medium",
+                      backupInfo?.connectionName === null && "text-muted-foreground italic",
+                    )}
+                    title={backupName}
                   >
-                    {backupInfo?.connectionName ?? "Backup"}
+                    {backupName}
                   </p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     {backupInfo?.environment && (

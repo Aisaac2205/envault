@@ -9,6 +9,7 @@ import { formatSize } from "@/shared/lib/format";
 import { formatDateTimeShort as formatDate, formatEnvironment } from "@/lib/format";
 import cloudflareSvg from "@/shared/assets/Cloudflare.svg";
 import { EngineName } from "@/shared/components/EngineIcon";
+import { cn } from "@/shared/lib/cn";
 
 function formatHumanErrorMessage(
   rawError: string,
@@ -52,7 +53,7 @@ export function DumpsTable({
   pageSize,
   pagination,
 }: DumpsTableProps) {
-  const { t } = useTranslation('dumps')
+  const { t } = useTranslation(['dumps', 'common'])
   const start = total > 0 ? (page - 1) * pageSize + 1 : 0;
   const end = Math.min(page * pageSize, total);
 
@@ -62,16 +63,22 @@ export function DumpsTable({
   const columns: Column<BackupJob>[] = [
     {
       header: t('column.connection'),
-      accessor: (job) => (
-        <EngineName dbType={job.dbType}>
-          <p
-            className="min-w-0 truncate font-medium text-sm @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]"
-            title={job.connectionName}
-          >
-            {job.connectionName}
-          </p>
-        </EngineName>
-      ),
+      accessor: (job) => {
+        const name = job.connectionName ?? t('common:connection.deleted');
+        return (
+          <EngineName dbType={job.dbType}>
+            <p
+              className={cn(
+                "min-w-0 truncate font-medium text-sm @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]",
+                job.connectionName === null && "text-muted-foreground italic",
+              )}
+              title={name}
+            >
+              {name}
+            </p>
+          </EngineName>
+        );
+      },
       className: "w-[20%]",
       headerClassName: "w-[20%]",
       stack: "title",

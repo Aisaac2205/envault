@@ -11,7 +11,7 @@ interface DumpsStatsProps {
 }
 
 export function DumpsStats({ dumps }: DumpsStatsProps) {
-  const { t } = useTranslation('dumps')
+  const { t } = useTranslation(['dumps', 'common'])
   const completed = dumps.filter((d) => d.status === "completed");
   const totalSize = completed.reduce(
     (acc, d) => acc + (d.fileSizeMb ?? 0),
@@ -24,13 +24,13 @@ export function DumpsStats({ dumps }: DumpsStatsProps) {
         )
       : null;
 
-  const connCounts: Record<string, number> = {};
+  // Counted by id: two deleted connections have no name and must not add up as one.
+  const connCounts = new Map<string, { name: string | null; count: number }>();
   completed.forEach((d) => {
-    connCounts[d.connectionName] = (connCounts[d.connectionName] ?? 0) + 1;
+    const entry = connCounts.get(d.connectionId);
+    connCounts.set(d.connectionId, { name: d.connectionName, count: (entry?.count ?? 0) + 1 });
   });
-  const topConn = Object.entries(connCounts).sort(
-    (a, b) => b[1] - a[1],
-  )[0];
+  const topConn = [...connCounts.values()].sort((a, b) => b.count - a.count)[0];
 
   const lastBackupLabel = lastBackup?.completedAt
     ? formatDate(lastBackup.completedAt, { day: '2-digit', month: 'short' })
@@ -66,7 +66,7 @@ export function DumpsStats({ dumps }: DumpsStatsProps) {
         <StatCard
           variant="outlined"
           label={t('label.mostBacked')}
-          value={topConn?.[0] ?? "N/A"}
+          value={topConn ? (topConn.name ?? t('common:connection.deleted')) : "N/A"}
           truncate
           icon={<Server className="h-4 w-4" />}
         />
