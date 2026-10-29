@@ -57,4 +57,9 @@ export const en: Dictionary = {
       security: 'Security Model',
     },
   },
+  githubStar: {
+    label: 'Leave a star on GitHub',
+    starsLabel: 'stars',
+    opensInNewTab: '(opens in a new tab)',
+  },
 };

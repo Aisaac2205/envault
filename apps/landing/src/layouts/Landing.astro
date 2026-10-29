@@ -1,6 +1,9 @@
 ---
+import { getImage } from "astro:assets";
 import "../styles/global.css";
 import type { Locale } from "../features/i18n/types";
+import dashboardEs from "../assets/dashboard/dash-es.png";
+import dashboardEn from "../assets/dashboard/dash-en.png";
 
 interface Props {
   title?: string;
@@ -22,6 +25,21 @@ const isEn = locale === "en";
 const site = Astro.site ?? new URL("http://localhost:4321");
 const canonicalUrl = new URL(Astro.url.pathname, site);
 const siteUrl = site.toString().replace(/\/$/, "");
+
+// Social preview: a 1200x630 crop from the top of the localized dashboard capture,
+// so it follows the screenshot whenever it changes. Crawlers need an absolute URL.
+const socialImage = await getImage({
+  src: isEn ? dashboardEn : dashboardEs,
+  width: 1200,
+  height: 630,
+  fit: "cover",
+  position: "top",
+  format: "png",
+});
+const socialImageUrl = new URL(socialImage.src, site).toString();
+const socialImageAlt = isEn
+  ? "EnVault Management dashboard with backup success rate, recent backups, and backup duration"
+  : "Panel de EnVault Management con la tasa de éxito, las copias de seguridad recientes y su duración";
 ---
 
 <!doctype html>
@@ -49,7 +67,10 @@ const siteUrl = site.toString().replace(/\/$/, "");
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content="/dash.png" />
+    <meta property="og:image" content={socialImageUrl} />
+    <meta property="og:image:width" content={String(socialImage.attributes.width)} />
+    <meta property="og:image:height" content={String(socialImage.attributes.height)} />
+    <meta property="og:image:alt" content={socialImageAlt} />
     <meta property="og:locale" content={isEn ? "en_US" : "es_ES"} />
 
     <!-- Twitter -->
@@ -57,7 +78,8 @@ const siteUrl = site.toString().replace(/\/$/, "");
     <meta property="twitter:url" content={canonicalUrl} />
     <meta property="twitter:title" content={title} />
     <meta property="twitter:description" content={description} />
-    <meta property="twitter:image" content="/dash.png" />
+    <meta property="twitter:image" content={socialImageUrl} />
+    <meta property="twitter:image:alt" content={socialImageAlt} />
 
     <!-- Google Fonts: Geist Sans & Geist Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

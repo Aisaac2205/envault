@@ -58,8 +58,15 @@ export interface FooterTranslations {
   };
 }
 
+export interface GithubStarTranslations {
+  label: string;
+  starsLabel: string;
+  opensInNewTab: string;
+}
+
 export interface Dictionary {
   features: FeaturesTranslations;
   docs: DocumentationTranslations;
   footer: FooterTranslations;
+  githubStar: GithubStarTranslations;
 }
