@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useId } from "react";
 import { motion } from "motion/react";
 import { useTheme } from "@/shared/hooks/useTheme";
+import { cn } from "@/shared/lib/cn";
 
 /**
  * Animated Theme Toggler — sun↔moon morph.
@@ -102,7 +103,11 @@ export function AnimatedThemeToggler({
 
   return (
     <motion.button
-      className={className}
+      // The focus ring of the header buttons beside it; the ring follows the 8px radius.
+      className={cn(
+        "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-indicator",
+        className,
+      )}
       onClick={handleToggle}
       whileHover={{ scale: 1.1 }}
       whileTap={{ scale: 0.86 }}
@@ -117,7 +122,6 @@ export function AnimatedThemeToggler({
         justifyContent: "center",
         color: isDark ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.82)",
         borderRadius: 8,
-        outline: "none",
         WebkitTapHighlightColor: "transparent",
       }}
       aria-label="Toggle theme"
