@@ -196,9 +196,9 @@ export function SidebarContent({
     <>
       <SidebarHeader>
         <img
-          src="/logo.png"
+          src="/logo.svg"
           alt="EnVault Management"
-          className="h-10 w-auto max-w-[40px] object-contain invert dark:invert-0 transition-[filter] duration-200"
+          className="h-4.5 w-auto object-contain invert dark:invert-0 transition-[filter] duration-200"
         />
       </SidebarHeader>
 
