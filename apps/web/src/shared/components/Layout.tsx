@@ -5,7 +5,7 @@ import { Topbar } from "./Topbar";
 import type { AuthUser } from "../hooks/useAuth";
 import type { AppSection } from "../lib/sections";
 import { Sheet, SheetContent } from "../ui/sheet";
-import { Menu } from "lucide-react";
+import { PanelLeftOpen } from "lucide-react";
 import { Toaster } from "sonner";
 import { cn } from "@/shared/lib/cn";
 
@@ -57,23 +57,15 @@ function LayoutInner({ children, user, sections, onLogout }: LayoutProps) {
       </Sheet>
 
       {/* Mobile header */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b border-sidebar-border bg-sidebar px-4 md:hidden">
+      <header className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center border-b border-border bg-bg px-4 md:hidden">
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}
-          className="text-sidebar-text/70 hover:text-sidebar-text"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-text/70 transition-colors hover:bg-sidebar-hover hover:text-sidebar-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-indicator"
           aria-label="Open menu"
         >
-          <Menu className="h-5 w-5" />
+          <PanelLeftOpen className="h-4 w-4" />
         </button>
-        <img
-          src="/logo.png"
-          alt="EnVault Management"
-          className="h-7 w-7 object-contain invert dark:invert-0 transition-[filter] duration-200"
-        />
-        <span className="text-sm font-bold tracking-wide text-sidebar-text">
-          EnVault Management
-        </span>
       </header>
 
       {/* Main content area */}

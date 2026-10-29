@@ -42,6 +42,7 @@ describe("Layout", () => {
     renderLayout();
     const menuBtn = screen.getByLabelText("Open menu");
     expect(menuBtn).toBeInTheDocument();
+    expect(menuBtn.querySelector("svg.lucide-panel-left-open")).not.toBeNull();
   });
 
   it("renders topbar with breadcrumbs", () => {
@@ -61,10 +62,12 @@ describe("Layout", () => {
     expect(toaster ?? true).toBeTruthy();
   });
 
-  it("uses bg-sidebar on mobile header instead of bg-black", () => {
+  it("matches the page background on the mobile header and shows only the menu button", () => {
     renderLayout();
     const mobileHeader = document.querySelector("header");
-    expect(mobileHeader).toHaveClass("bg-sidebar");
-    expect(mobileHeader).not.toHaveClass("bg-black");
+    expect(mobileHeader).toHaveClass("bg-bg");
+    expect(mobileHeader).not.toHaveClass("bg-sidebar");
+    expect(mobileHeader?.querySelector("img")).toBeNull();
+    expect(mobileHeader).not.toHaveTextContent("EnVault Management");
   });
 });
