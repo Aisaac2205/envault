@@ -57,4 +57,9 @@ export const es: Dictionary = {
       security: 'Modelo de Seguridad',
     },
   },
+  githubStar: {
+    label: 'Deje una estrella en GitHub',
+    starsLabel: 'estrellas',
+    opensInNewTab: '(se abre en una pestaña nueva)',
+  },
 };
