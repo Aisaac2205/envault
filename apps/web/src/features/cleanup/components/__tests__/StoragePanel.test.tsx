@@ -64,3 +64,42 @@ describe("StoragePanel table on phones", () => {
     expect(region).toContainElement(screen.getByText("Acciones"));
   });
 });
+
+describe("StoragePanel stacked rows", () => {
+  it("turns the table into a container and hides its header row visually", () => {
+    renderPanel();
+
+    const region = screen.getByRole("region", { name: "Uso de almacenamiento por conexión" });
+    expect(region).toHaveClass("@container/table");
+    const table = within(region).getByRole("table");
+    expect(table).toHaveClass("@max-2xl/table:block");
+    expect(table.querySelector("thead")).toHaveClass("@max-2xl/table:sr-only");
+  });
+
+  it("stacks each connection: name as title, counts as labelled fields, the retention button last", () => {
+    renderPanel();
+    const row = rowOf("orders");
+
+    expect(row).toHaveClass("@max-2xl/table:flex", "@max-2xl/table:flex-wrap");
+    expect(screen.getByText("orders").closest("td")).toHaveClass("@max-2xl/table:order-1");
+
+    const count = within(row).getByText("12").closest("td") as HTMLElement;
+    expect(count).toHaveClass("@max-2xl/table:order-6");
+    expect(within(count).getByText("Respaldos")).toHaveAttribute("aria-hidden", "true");
+    const size = within(row).getByText("340 MB").closest("td") as HTMLElement;
+    expect(within(size).getByText("Tamaño")).toHaveAttribute("aria-hidden", "true");
+    const oldest = within(row).getByText(/2025|2026/).closest("td") as HTMLElement;
+    expect(within(oldest).getByText("Más antiguo")).toHaveAttribute("aria-hidden", "true");
+
+    const configure = within(row).getByRole("button", { name: "Configurar retención" });
+    expect(configure.closest("td")).toHaveClass("@max-2xl/table:order-7", "@max-2xl/table:basis-full");
+    expect(configure).toHaveClass("@max-2xl/table:h-11", "@max-2xl/table:w-full");
+  });
+
+  it("lets a long name and slug wrap inside the card instead of widening it", () => {
+    renderPanel();
+
+    expect(screen.getByText("orders")).toHaveClass("@max-2xl/table:[overflow-wrap:anywhere]");
+    expect(screen.getByText("orders-primary")).toHaveClass("@max-2xl/table:[overflow-wrap:anywhere]");
+  });
+});

@@ -51,3 +51,52 @@ describe("UsersTable headers", () => {
     expect(headers.map((th) => th.textContent)).toEqual(["Nombre", "Correo", "Rol", "Creado", "Acciones"]);
   });
 });
+
+describe("UsersTable on narrow screens", () => {
+  function rowOf(name: string) {
+    return screen.getByText(name).closest("tr") as HTMLElement;
+  }
+
+  it("names the table after the page", () => {
+    renderTable();
+
+    expect(screen.getByRole("region", { name: "Usuarios" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Usuarios" })).toBeInTheDocument();
+  });
+
+  it("stacks each user: name as title with the actions beside it, email as meta, role and creation date as fields", () => {
+    renderTable();
+    const row = rowOf("Grace Hopper");
+    const cellOf = (text: string) => within(row).getByText(text).closest("td") as HTMLElement;
+
+    expect(cellOf("Grace Hopper")).toHaveClass("@max-2xl/table:order-1");
+    expect(cellOf("Suspendido")).toBe(cellOf("Grace Hopper"));
+    expect(within(row).getByRole("button", { name: "Acciones de Grace Hopper" }).closest("td")).toHaveClass(
+      "@max-2xl/table:order-3",
+      "relative",
+      "z-10",
+    );
+    expect(cellOf("grace@example.com")).toHaveClass("@max-2xl/table:order-5");
+    for (const [text, label] of [
+      ["Usuario", "Rol"],
+      ["2 mar 2026", "Creado"],
+    ]) {
+      const cell = cellOf(text);
+      expect(cell).toHaveClass("@max-2xl/table:order-6");
+      expect(within(cell).getByText(label)).toHaveAttribute("aria-hidden", "true");
+    }
+  });
+
+  it("lets a long name and email wrap inside the card instead of widening it", () => {
+    renderTable();
+
+    expect(screen.getByText("Grace Hopper")).toHaveClass("@max-2xl/table:[overflow-wrap:anywhere]");
+    expect(screen.getByText("grace@example.com")).toHaveClass("@max-2xl/table:[overflow-wrap:anywhere]");
+  });
+
+  it("gives the phone actions menu a 44px target", () => {
+    renderTable();
+
+    expect(screen.getByRole("button", { name: "Acciones de Grace Hopper" })).toHaveClass("size-11");
+  });
+});

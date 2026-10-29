@@ -79,7 +79,7 @@ export function UserActions({ user }: UserActionsProps) {
           <DropdownMenuPrimitive.Trigger asChild>
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               aria-label={t("actions.actionsAria", { name: user.name })}
             >
               <MoreHorizontal className="h-4 w-4" />

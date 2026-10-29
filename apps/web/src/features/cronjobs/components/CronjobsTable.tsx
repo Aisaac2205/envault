@@ -37,12 +37,16 @@ export default function CronjobsTable({
   const resolveEnv = (connectionId: string): string | undefined =>
     resolveConnection(connectionId)?.environment;
 
+  // Narrower than 42rem each cronjob becomes a card: the name with its switch
+  // and actions menu, then the connection and its environment, then the
+  // schedule, the next run and the last status as labelled lines.
   const columns: Column<Cronjob>[] = [
     {
       header: t('column.name'),
       accessor: (cronjob) => (
-        <span className="font-medium">{cronjob.name}</span>
+        <span className="font-medium @max-2xl/table:[overflow-wrap:anywhere]">{cronjob.name}</span>
       ),
+      stack: "title",
     },
     {
       header: t('column.connection'),
@@ -57,6 +61,7 @@ export default function CronjobsTable({
           />
         </EngineName>
       ),
+      stack: "meta",
     },
     {
       header: t('column.environment'),
@@ -70,14 +75,14 @@ export default function CronjobsTable({
           <span className="text-muted-foreground">-</span>
         );
       },
+      stack: "meta",
     },
     {
       header: t('column.schedule'),
       accessor: (cronjob) => (
         <span className="text-xs">{describeSchedule(cronjob.schedule, t)}</span>
       ),
-      className: "hidden sm:table-cell",
-      headerClassName: "hidden sm:table-cell",
+      stack: "field",
     },
     {
       header: t('column.nextRun'),
@@ -86,8 +91,7 @@ export default function CronjobsTable({
           {formatDate(cronjob.nextRunAt)}
         </span>
       ),
-      className: "hidden sm:table-cell",
-      headerClassName: "hidden sm:table-cell",
+      stack: "field",
     },
     {
       header: t('column.lastStatus'),
@@ -97,6 +101,7 @@ export default function CronjobsTable({
         ) : (
           <span className="text-xs text-muted-foreground">-</span>
         ),
+      stack: "field",
     },
     {
       header: t('column.active'),
@@ -112,7 +117,8 @@ export default function CronjobsTable({
             }
             disabled={isToggling}
             onClick={() => onToggle(cronjob.id)}
-            className="rounded-md text-muted-foreground transition-transform duration-[160ms] ease-out active:scale-[0.97] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            // A 20px mark with a 44px target in the card.
+            className="rounded-md text-muted-foreground transition-transform duration-[160ms] ease-out active:scale-[0.97] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 @max-2xl/table:inline-flex @max-2xl/table:size-11 @max-2xl/table:items-center @max-2xl/table:justify-center"
           >
             {cronjob.isActive ? (
               <ToggleRight className="h-5 w-5 text-primary" />
@@ -122,13 +128,14 @@ export default function CronjobsTable({
           </button>
         );
       },
+      stack: "actions",
     },
     {
       header: t('column.actions'),
       accessor: (cronjob) => (
         <>
-          {/* Desktop: full button row */}
-          <div className="hidden sm:flex items-center justify-center gap-2 whitespace-nowrap">
+          {/* Wide table: the full button row */}
+          <div className="hidden @2xl/table:flex items-center justify-center gap-2 whitespace-nowrap">
             <Button
               variant="outline"
               size="sm"
@@ -145,13 +152,13 @@ export default function CronjobsTable({
             </Button>
           </div>
 
-          {/* Mobile: dropdown menu */}
-          <div className="sm:hidden flex items-center justify-center">
+          {/* Narrow table: dropdown menu */}
+          <div className="@2xl/table:hidden flex items-center justify-center">
             <DropdownMenuPrimitive.Root>
               <DropdownMenuPrimitive.Trigger asChild>
                 <button
                   type="button"
-                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label={t('column.actions')}
                 >
                   <Ellipsis className="h-4 w-4" />
@@ -180,6 +187,7 @@ export default function CronjobsTable({
           </div>
         </>
       ),
+      stack: "actions",
     },
   ];
 
@@ -188,6 +196,8 @@ export default function CronjobsTable({
       columns={columns}
       data={cronjobs}
       loading={isLoading}
+      caption={t('nav.cronjobs', { ns: 'common' })}
+      narrowLayout="stack"
       emptyMessage={t('empty.title')}
       emptyContent={
         <EmptyState

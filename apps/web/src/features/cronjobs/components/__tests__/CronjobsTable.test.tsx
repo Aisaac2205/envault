@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import CronjobsTable from "../CronjobsTable";
 import type { Cronjob } from "../../types";
 
@@ -94,8 +94,9 @@ describe("CronjobsTable", () => {
 
   it("renders the schedule column header", () => {
     render(<CronjobsTable {...defaultProps} />);
-    expect(screen.getByText("Programación")).toBeInTheDocument();
-    expect(screen.queryByText(/cron/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Programación", { selector: "th" })).toBeInTheDocument();
+    // The caption names the table after the page ("Cronjobs"); no column says cron.
+    expect(screen.queryByText(/cron/i, { ignore: "caption, script, style" })).not.toBeInTheDocument();
   });
 
   it("describes each schedule in plain language", () => {
@@ -104,13 +105,15 @@ describe("CronjobsTable", () => {
     expect(screen.getByText("Cada 6 horas")).toBeInTheDocument();
   });
 
-  it("keeps the schedule column hidden on small screens", () => {
+  it("shows the schedule as a labelled line of the card on small screens instead of hiding it", () => {
     render(<CronjobsTable {...defaultProps} />);
-    const header = screen.getByText("Programación").closest("th");
-    const cell = screen.getByText("Todos los días a las 02:00").closest("td");
+    const header = screen.getByText("Programación", { selector: "th" });
+    const cell = screen.getByText("Todos los días a las 02:00").closest("td") as HTMLElement;
     for (const element of [header, cell]) {
-      expect(element).toHaveClass("hidden", "sm:table-cell");
+      expect(element).not.toHaveClass("hidden");
     }
+    expect(cell).toHaveClass("@max-2xl/table:order-6");
+    expect(within(cell).getByText("Programación")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("shows a generic label for a schedule the builder cannot represent", () => {
@@ -144,6 +147,49 @@ describe("CronjobsTable", () => {
 
     expect(screen.getByText("QA DB")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("names the table after the page", () => {
+    render(<CronjobsTable {...defaultProps} />);
+
+    expect(screen.getByRole("region", { name: "Cronjobs" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Cronjobs" })).toBeInTheDocument();
+  });
+
+  it("stacks each cronjob: name as title, switch and menu beside it, connection and environment as meta, the rest as fields", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    const row = screen.getByText("Daily Backup").closest("tr") as HTMLElement;
+    const cellOf = (text: string) => within(row).getByText(text).closest("td");
+
+    expect(cellOf("Daily Backup")).toHaveClass("@max-2xl/table:order-1");
+    expect(cellOf("Prod DB")).toHaveClass("@max-2xl/table:order-5");
+    expect(cellOf("Producción")).toHaveClass("@max-2xl/table:order-5");
+    expect(within(row).getByRole("switch").closest("td")).toHaveClass("@max-2xl/table:order-3", "relative", "z-10");
+    expect(within(row).getByRole("button", { name: "Acciones" }).closest("td")).toHaveClass("@max-2xl/table:order-3");
+    for (const [text, label] of [
+      ["Completado", "Último estado"],
+      ["Todos los días a las 02:00", "Programación"],
+    ]) {
+      const cell = cellOf(text) as HTMLElement;
+      expect(cell).toHaveClass("@max-2xl/table:order-6");
+      expect(within(cell).getByText(label)).toHaveAttribute("aria-hidden", "true");
+    }
+  });
+
+  it("gives the switch and the actions menu 44px targets in cards", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    const row = screen.getByText("Daily Backup").closest("tr") as HTMLElement;
+
+    expect(within(row).getByRole("switch")).toHaveClass("@max-2xl/table:size-11");
+    expect(within(row).getByRole("button", { name: "Acciones" })).toHaveClass("size-11");
+  });
+
+  it("picks the button row or the menu by the room the table has, not the viewport", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    const row = screen.getByText("Daily Backup").closest("tr") as HTMLElement;
+
+    expect(within(row).getByRole("button", { name: "Editar" }).parentElement).toHaveClass("hidden", "@2xl/table:flex");
+    expect(within(row).getByRole("button", { name: "Acciones" }).parentElement).toHaveClass("@2xl/table:hidden");
   });
 
   it("renders empty state when no cronjobs", () => {
