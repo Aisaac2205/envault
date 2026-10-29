@@ -117,3 +117,19 @@ describe("DumpsTable on narrow screens", () => {
     expect(screen.getByRole("button", { name: "Cancelar respaldo" })).toHaveClass("@max-2xl/table:h-11");
   });
 });
+
+describe("DumpsTable engine logos", () => {
+  it("leads each connection name with the official logo of its engine", () => {
+    renderTable([base, { ...failed, dbType: "mysql" }]);
+
+    const postgres = within(rowOf("orders-production-primary")).getByRole("img", { name: "PostgreSQL" });
+    expect(postgres.closest("td")).toHaveClass("@max-2xl/table:order-1");
+    expect(within(rowOf("billing-db")).getByRole("img", { name: "MySQL" })).toBeInTheDocument();
+  });
+
+  it("keeps the name alone when the engine is unknown", () => {
+    renderTable([{ ...base, dbType: null }]);
+
+    expect(within(rowOf("orders-production-primary")).queryByRole("img", { name: /PostgreSQL|MySQL/ })).not.toBeInTheDocument();
+  });
+});

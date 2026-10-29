@@ -10,6 +10,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Stagger, StaggerItem } from "@/shared/ui/motion/Stagger";
 import { useStorageOverview } from "../hooks/useMaintenance";
 import { useConnections } from "@/features/connections/hooks/useConnections";
+import { EngineName } from "@/shared/components/EngineIcon";
 import { RetentionDialog } from "./RetentionDialog";
 
 function countOldDumps(connections: { oldest: string | null }[]): number {
@@ -25,6 +26,7 @@ interface ConnectionRowData {
   slug: string;
   name: string;
   environment?: string;
+  dbType?: string;
   count: number;
   sizeMb: number;
   oldest: string | null;
@@ -56,6 +58,7 @@ export function StoragePanel() {
           slug: conn.slug,
           name: conn.name,
           environment: conn.environment,
+          dbType: conn.dbType,
           count: usage?.count ?? 0,
           sizeMb: usage?.sizeMb ?? 0,
           oldest: usage?.oldest ?? null,
@@ -203,26 +206,30 @@ export function StoragePanel() {
                         className="transition-colors duration-150 hover:bg-muted/30"
                       >
                         <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-text-primary">
-                              {conn.name}
-                            </span>
-                            {conn.environment && (
-                              <Badge
-                                variant={
-                                  conn.environment.toLowerCase() === "prod"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                                className="text-[10px] uppercase tracking-wider"
-                              >
-                                {conn.environment}
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="font-mono text-[11px] text-muted-foreground">
-                            {conn.slug}
-                          </span>
+                          <EngineName dbType={conn.dbType}>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-text-primary">
+                                  {conn.name}
+                                </span>
+                                {conn.environment && (
+                                  <Badge
+                                    variant={
+                                      conn.environment.toLowerCase() === "prod"
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                    className="text-[10px] uppercase tracking-wider"
+                                  >
+                                    {conn.environment}
+                                  </Badge>
+                                )}
+                              </div>
+                              <span className="font-mono text-[11px] text-muted-foreground">
+                                {conn.slug}
+                              </span>
+                            </div>
+                          </EngineName>
                         </td>
                         <td className="px-5 py-3.5 text-right text-xs font-medium tabular-nums text-text-secondary">
                           {conn.count}

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { Button } from "@/shared/ui/button";
 import { ConnectionLabel } from "@/shared/components/ConnectionLabel";
+import { EngineName } from "@/shared/components/EngineIcon";
 import { useConnections } from "@/features/connections/hooks/useConnections";
 import { DataTable, type Column } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -31,8 +32,10 @@ export default function CronjobsTable({
 }: CronjobsTableProps) {
   const { t } = useTranslation('cronjobs')
   const { data: connections } = useConnections();
+  const resolveConnection = (connectionId: string) =>
+    connections?.find((c) => c.id === connectionId);
   const resolveEnv = (connectionId: string): string | undefined =>
-    connections?.find((c) => c.id === connectionId)?.environment;
+    resolveConnection(connectionId)?.environment;
 
   const columns: Column<Cronjob>[] = [
     {
@@ -44,10 +47,15 @@ export default function CronjobsTable({
     {
       header: t('column.connection'),
       accessor: (cronjob) => (
-        <ConnectionLabel
-          id={cronjob.connectionId}
-          name={cronjob.connectionName}
-        />
+        <EngineName
+          className="inline-flex max-w-full"
+          dbType={resolveConnection(cronjob.connectionId)?.dbType}
+        >
+          <ConnectionLabel
+            id={cronjob.connectionId}
+            name={cronjob.connectionName}
+          />
+        </EngineName>
       ),
     },
     {
