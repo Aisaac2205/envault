@@ -17,11 +17,29 @@ const ENGINE_NAMES: Record<KnownEngine, string> = {
   mysql: "MySQL",
 };
 
+/**
+ * Per theme adjustments the official files need. The MySQL blue (#00618A) has about
+ * 2.5:1 on the dark card and 2:1 on a hovered row; dark mode lifts it to #0092CF,
+ * about 4.9:1 and 4:1. Light mode keeps the official colours. An <img> SVG cannot see
+ * the app theme, so the lift is a class on the image.
+ */
+const ENGINE_LOGO_CLASSES: Record<KnownEngine, string> = {
+  postgresql: "",
+  mysql: "dark:brightness-150",
+};
+
 function knownEngine(dbType: string | null | undefined): KnownEngine | null {
   const engine = dbType?.toLowerCase();
   if (engine === "postgres" || engine === "postgresql") return "postgresql";
   if (engine === "mysql") return "mysql";
   return null;
+}
+
+/** The theme classes of an engine's logo, for the screens that draw the file themselves. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-located with EngineLogo, which applies the same classes; splitting it into its own file only for Fast Refresh is out of scope here
+export function engineLogoClass(dbType: string | null | undefined): string {
+  const engine = knownEngine(dbType);
+  return engine === null ? "" : ENGINE_LOGO_CLASSES[engine];
 }
 
 /**
@@ -36,7 +54,7 @@ export function EngineLogo({ dbType }: { dbType: string | null | undefined }) {
   return (
     <img
       alt={ENGINE_NAMES[engine]}
-      className="size-5 shrink-0"
+      className={cn("size-5 shrink-0", ENGINE_LOGO_CLASSES[engine])}
       src={ENGINE_LOGOS[engine]}
       title={ENGINE_NAMES[engine]}
     />

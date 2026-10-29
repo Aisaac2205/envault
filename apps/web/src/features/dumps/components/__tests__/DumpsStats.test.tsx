@@ -39,3 +39,26 @@ describe("DumpsStats", () => {
     expect(screen.getByText("1")).not.toHaveClass("max-sm:line-clamp-2");
   });
 });
+
+describe("DumpsStats most backed up connection", () => {
+  it("says the connection was deleted when the API returns no name for it", () => {
+    render(<DumpsStats dumps={[{ ...dump, connectionName: null }]} />);
+
+    expect(screen.getByText("Conexión eliminada")).toBeInTheDocument();
+  });
+
+  it("counts two deleted connections apart, by id", () => {
+    render(
+      <DumpsStats
+        dumps={[
+          { ...dump, id: "job-1", connectionId: "gone-1", connectionName: null },
+          { ...dump, id: "job-2", connectionId: "gone-2", connectionName: null },
+          { ...dump, id: "job-3", connectionId: "conn-1" },
+          { ...dump, id: "job-4", connectionId: "conn-1" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Orders DB")).toBeInTheDocument();
+  });
+});

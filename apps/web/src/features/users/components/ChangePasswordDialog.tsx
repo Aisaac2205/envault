@@ -18,18 +18,29 @@ import { useChangePassword } from "../hooks/useUsers";
 interface ChangePasswordDialogProps {
   userId: string;
   userName: string;
+  /** Controlled open state, for a second way in such as the phone row menu. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ChangePasswordDialog({
   userId,
   userName,
+  open: openProp,
+  onOpenChange,
 }: ChangePasswordDialogProps) {
   const { t } = useTranslation("users");
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const mutation = useChangePassword();
+
+  function setOpen(next: boolean) {
+    if (openProp === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  }
 
   function handleOpenChange(next: boolean) {
     setOpen(next);

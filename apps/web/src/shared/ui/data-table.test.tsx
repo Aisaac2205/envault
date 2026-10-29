@@ -124,6 +124,22 @@ describe('DataTable scroll region', () => {
     expect(nav.parentElement).toHaveClass('flex-wrap', 'min-w-0', '@container/pagination');
   });
 
+  // Preflight resets border colours to currentColor, so a bare border-t draws in
+  // the text colour. jsdom ignores CSS: this pins the class contract.
+  it('draws the footer rule in the border token of the table, not in the text colour', () => {
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        caption="Usuarios"
+        pagination={<nav aria-label="Paginación">1</nav>}
+      />,
+    );
+
+    const footer = screen.getByRole('navigation', { name: 'Paginación' }).parentElement;
+    expect(footer).toHaveClass('border-t', 'border-border/60');
+  });
+
   it('positions the region, so visually hidden header text scrolls with the table instead of widening the page', () => {
     const withHiddenHeader: Column<SampleRow>[] = [
       ...columns,

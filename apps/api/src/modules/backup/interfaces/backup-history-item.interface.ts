@@ -5,7 +5,8 @@ import { JobStatus } from '../../../database/enums/job-status.enum';
 export interface BackupHistoryItem {
   id: string;
   connectionId: string;
-  connectionName: string;
+  /** Null when the connection was deleted after the backup ran. */
+  connectionName: string | null;
   environment: Environment;
   dbType: DbTypeEnum | null;
   status: JobStatus;

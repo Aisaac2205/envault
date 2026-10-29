@@ -20,6 +20,7 @@ import {
 } from "@/shared/ui/popover";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
 
 interface ConnectionSelectorProps {
   connections: Connection[];
@@ -41,7 +42,7 @@ function DbTypeLogo({ dbType }: { dbType: string }) {
     <img
       src={logo}
       alt={dbType}
-      className="size-5 shrink-0"
+      className={cn("size-5 shrink-0", engineLogoClass(dbType))}
     />
   );
 }

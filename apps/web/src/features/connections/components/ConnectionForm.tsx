@@ -19,6 +19,8 @@ import {
 import { Button } from "@/shared/ui/button";
 import PostgresSQL from "@/shared/assets/PostgresSQL.svg";
 import MySQL from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
+import { cn } from "@/shared/lib/cn";
 
 interface ConnectionFormProps {
   connection?: Connection;
@@ -235,7 +237,7 @@ export default function ConnectionForm({
                   }}
                   disabled={isLoading}
                 >
-                  <img src={MySQL} alt="MySQL" className="h-6 w-6" />
+                  <img src={MySQL} alt="MySQL" className={cn("h-6 w-6", engineLogoClass("mysql"))} />
                   <span>MySQL</span>
                 </button>
               </div>

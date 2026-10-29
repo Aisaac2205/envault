@@ -25,6 +25,8 @@ import {
 } from "@/shared/ui/select";
 import postgresIcon from "@/shared/assets/PostgresSQL.svg";
 import mysqlIcon from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
+import { cn } from "@/shared/lib/cn";
 import {
   Pagination,
   PaginationContent,
@@ -133,8 +135,7 @@ export default function Dumps() {
                 onValueChange={setSelectedConnectionId}
                 disabled={isCreatingBackup || connections.length === 0}
               >
-                {/* Radix drops the className given to Select.Value, so the trigger truncates it. */}
-                <SelectTrigger className="flex-[1_1_13.5rem] sm:w-[13.5rem] sm:flex-none lg:w-[280px] *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate">
+                <SelectTrigger className="flex-[1_1_13.5rem] sm:w-[13.5rem] sm:flex-none lg:w-[280px]">
                   <SelectValue
                     placeholder={
                       connections.length === 0
@@ -150,7 +151,7 @@ export default function Dumps() {
                         <img
                           src={c.dbType?.toLowerCase().includes("mysql") ? mysqlIcon : postgresIcon}
                           alt={c.dbType}
-                          className="h-4 w-4 shrink-0 object-contain"
+                          className={cn("h-4 w-4 shrink-0 object-contain", engineLogoClass(c.dbType))}
                         />
                         <span className="truncate">{c.name}</span>
                       </div>
@@ -267,7 +268,7 @@ export default function Dumps() {
               <img
                 src={selectedConnection.dbType?.toLowerCase().includes("mysql") ? mysqlIcon : postgresIcon}
                 alt={selectedConnection.dbType}
-                className="h-5 w-5 shrink-0 object-contain"
+                className={cn("h-5 w-5 shrink-0 object-contain", engineLogoClass(selectedConnection.dbType))}
               />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-text-primary truncate">

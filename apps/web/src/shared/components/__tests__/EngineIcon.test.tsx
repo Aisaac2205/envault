@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import MySQL from "@/shared/assets/MySQL.svg";
 import PostgresSQL from "@/shared/assets/PostgresSQL.svg";
-import { EngineLogo, EngineName } from "../EngineIcon";
+import { EngineLogo, EngineName, engineLogoClass } from "../EngineIcon";
 
 describe("EngineLogo", () => {
   it.each([
@@ -17,6 +17,22 @@ describe("EngineLogo", () => {
     expect(icon).toHaveAttribute("src", logo);
     expect(icon).toHaveAttribute("title", name);
     expect(icon).toHaveClass("size-5", "shrink-0");
+  });
+
+  // jsdom ignores CSS: these pin the class contract. The official MySQL blue (#00618A)
+  // has about 2.5:1 on the dark card; dark mode lifts it, light mode keeps it.
+  it("lifts the MySQL logo in dark mode only, keeping the official file", () => {
+    render(<EngineLogo dbType="mysql" />);
+
+    const icon = screen.getByRole("img", { name: "MySQL" });
+    expect(icon).toHaveAttribute("src", MySQL);
+    expect(icon).toHaveClass("dark:brightness-150");
+  });
+
+  it("leaves the PostgreSQL logo as it is in both themes", () => {
+    render(<EngineLogo dbType="postgres" />);
+
+    expect(screen.getByRole("img", { name: "PostgreSQL" }).className).not.toMatch(/dark:/);
   });
 
   it.each([["mariadb"], [null], [undefined]])("draws nothing for an engine without a logo (%s)", (dbType) => {
@@ -80,5 +96,30 @@ describe("EngineName", () => {
     );
 
     expect(screen.queryByText("MYSQL")).not.toBeInTheDocument();
+  });
+});
+
+describe("engineLogoClass", () => {
+  it.each([
+    ["mysql", "dark:brightness-150"],
+    ["MySQL", "dark:brightness-150"],
+    ["postgres", ""],
+    ["mariadb", ""],
+    [null, ""],
+  ])("gives the screens that draw a logo themselves the same dark mode lift (%s)", (dbType, classes) => {
+    expect(engineLogoClass(dbType)).toBe(classes);
+  });
+
+  // Most screens draw the file with their own <img>; each must carry the same lift.
+  it("is applied by every screen that draws the MySQL file itself", () => {
+    const sources = import.meta.glob<string>("/src/**/*.tsx", { query: "?raw", import: "default", eager: true });
+    const drawers = Object.entries(sources).filter(
+      ([path, source]) => !/\.test\.tsx$/.test(path) && source.includes("assets/MySQL.svg"),
+    );
+
+    expect(drawers.length).toBeGreaterThan(5);
+    for (const [path, source] of drawers) {
+      expect(source, path).toMatch(/engineLogoClass\(|ENGINE_LOGO_CLASSES\[/);
+    }
   });
 });

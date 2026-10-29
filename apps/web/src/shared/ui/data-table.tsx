@@ -386,7 +386,7 @@ export function DataTable<T>({
         // Outside the scroller, so it never scrolls away; it wraps instead of
         // being clipped by the rounded wrapper, and as the `pagination`
         // container it lets the controls compact to the room they have.
-        <div className="@container/pagination flex min-w-0 flex-wrap items-center justify-end gap-2 border-t px-4 py-3">
+        <div className="@container/pagination flex min-w-0 flex-wrap items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
           {pagination}
         </div>
       )}

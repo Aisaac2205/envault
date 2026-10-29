@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bullmq';
 import { UnrecoverableError } from 'bullmq';
+import { NotFoundException } from '@nestjs/common';
 import { BackupService } from './backup.service';
 import { isJobStreamClosed } from './backup-stream';
 import { BackupRepository } from './backup.repository';
@@ -37,6 +38,7 @@ describe('BackupService', () => {
     create: jest.Mock;
     updateStatus: jest.Mock;
     findById: jest.Mock;
+    findAll: jest.Mock;
     insertPendingOrFindExisting: jest.Mock;
     findAllUnfinished: jest.Mock;
     failPendingStale: jest.Mock;
@@ -57,6 +59,7 @@ describe('BackupService', () => {
   };
   let mockConnectionsService: {
     findById: jest.Mock;
+    findByIds: jest.Mock;
   };
   let mockSseService: {
     register: jest.Mock;
@@ -93,6 +96,7 @@ describe('BackupService', () => {
       create: jest.fn(),
       updateStatus: jest.fn(),
       findById: jest.fn(),
+      findAll: jest.fn(),
       insertPendingOrFindExisting: jest.fn(),
       findAllUnfinished: jest.fn().mockResolvedValue([]),
       failPendingStale: jest.fn().mockResolvedValue(false),
@@ -113,6 +117,7 @@ describe('BackupService', () => {
     };
     mockConnectionsService = {
       findById: jest.fn().mockResolvedValue(mockConnection),
+      findByIds: jest.fn().mockResolvedValue(new Map()),
     };
     mockSseService = {
       register: jest.fn(),
@@ -1176,6 +1181,47 @@ describe('BackupService', () => {
         expect.objectContaining({ type: 'completed' }),
       );
       expect(mockSseService.complete).not.toHaveBeenCalledWith('job-fenced-success');
+    });
+  });
+
+  // A backup outlives its connection: the history keeps the job, and the name is
+  // null so each client says "deleted connection" in its own language.
+  describe('connection name of a backup whose connection was deleted', () => {
+    const orphanJob = {
+      id: 'job-orphan',
+      connectionId: 'conn-gone',
+      status: JobStatus.COMPLETED,
+      fileKey: 'gone-db/manual/orphan.dump',
+    };
+
+    it('getHistory returns null for the deleted connection and the name for a live one', async () => {
+      mockBackupRepository.findAll.mockResolvedValue({
+        data: [orphanJob, { ...orphanJob, id: 'job-live', connectionId: 'conn-1' }],
+        total: 2,
+      });
+      mockConnectionsService.findByIds.mockResolvedValue(new Map([['conn-1', 'Prod DB']]));
+
+      const history = await service.getHistory();
+
+      expect(history.data.map((item) => item.connectionName)).toEqual([null, 'Prod DB']);
+    });
+
+    it('getBackupById returns null when the connection no longer exists', async () => {
+      mockBackupRepository.findById.mockResolvedValue(orphanJob);
+      mockConnectionsService.findById.mockRejectedValue(new NotFoundException());
+
+      await expect(service.getBackupById('job-orphan')).resolves.toMatchObject({
+        id: 'job-orphan',
+        connectionName: null,
+      });
+    });
+
+    it('getBackupById keeps the name of a live connection', async () => {
+      mockBackupRepository.findById.mockResolvedValue({ ...orphanJob, connectionId: 'conn-1' });
+
+      await expect(service.getBackupById('job-orphan')).resolves.toMatchObject({
+        connectionName: 'Prod DB',
+      });
     });
   });
 });

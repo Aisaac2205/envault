@@ -133,3 +133,13 @@ describe("DumpsTable engine logos", () => {
     expect(within(rowOf("orders-production-primary")).queryByRole("img", { name: /PostgreSQL|MySQL/ })).not.toBeInTheDocument();
   });
 });
+
+describe("DumpsTable deleted connection", () => {
+  it("says the connection was deleted when the API returns no name for it", () => {
+    renderTable([{ ...base, connectionName: null }]);
+
+    const name = screen.getByText("Conexión eliminada");
+    expect(name.closest("tr")).toBeInTheDocument();
+    expect(name).toHaveAttribute("title", "Conexión eliminada");
+  });
+});

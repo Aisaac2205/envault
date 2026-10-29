@@ -16,16 +16,22 @@ function SelectGroup({
   return <SelectPrimitive.Group data-slot="select-group" {...props} />
 }
 
+// Radix Select.Value discards its className and style, so this span carries them.
+// It is the trigger's shrinkable flex item: a long value truncates instead of
+// pushing the chevron out. Like the Radix span, it lets clicks through to the trigger.
 function SelectValue({
   className,
+  style,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Value>) {
   return (
-    <SelectPrimitive.Value
+    <span
       data-slot="select-value"
-      className={cn("truncate text-sm font-medium", className)}
-      {...props}
-    />
+      className={cn("pointer-events-none min-w-0 truncate", className)}
+      style={style}
+    >
+      <SelectPrimitive.Value {...props} />
+    </span>
   )
 }
 

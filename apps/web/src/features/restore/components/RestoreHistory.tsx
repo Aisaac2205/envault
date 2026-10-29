@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { formatDateTimeShort } from "@/lib/format";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
+import { engineLogoClass } from "@/shared/components/EngineIcon";
 import {
   Table,
   TableBody,
@@ -261,7 +262,7 @@ export function RestoreHistory({
                       {info ? (
                         <div className="flex items-center gap-2">
                           {DB_LOGOS[info.dbType] && (
-                            <img src={DB_LOGOS[info.dbType]} alt={info.dbType} className="h-4 w-4 shrink-0" />
+                            <img src={DB_LOGOS[info.dbType]} alt={info.dbType} className={cn("h-4 w-4 shrink-0", engineLogoClass(info.dbType))} />
                           )}
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]" title={info.name}>{info.name}</p>
