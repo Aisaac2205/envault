@@ -224,6 +224,18 @@ describe('DataTable stacked layout', () => {
     expect(links[0].closest('tr')).toHaveClass('relative');
   });
 
+  it('gives footer cells a last line of their own, unlabelled and above the row link', () => {
+    const withFooter: Column<Job>[] = [
+      stackedColumns[0],
+      { header: 'Prueba', accessor: () => <button type="button">Probar</button>, stack: 'footer' },
+    ];
+    render(<DataTable columns={withFooter} data={jobs} narrowLayout="stack" />);
+
+    const footer = cellOf('Probar');
+    expect(footer).toHaveClass('@max-2xl/table:order-7', '@max-2xl/table:basis-full', 'relative', 'z-10');
+    expect(within(footer).queryByText('Prueba')).toBeNull();
+  });
+
   it('draws a loading card with the loaded card lines: title, meta and fields', () => {
     render(<DataTable columns={stackedColumns} data={[]} loading skeletonRows={1} narrowLayout="stack" />);
 

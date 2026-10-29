@@ -415,3 +415,60 @@ describe("Connections page: errors from the API", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Error inesperado");
   });
 });
+
+describe("Connections page on narrow screens", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  function rowOf(name: string) {
+    return screen.getByRole("row", { name: new RegExp(name) });
+  }
+
+  it("names the table after the page", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+
+    expect(screen.getByRole("region", { name: "Conexiones" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Conexiones" })).toBeInTheDocument();
+  });
+
+  it("stacks each connection: name as title, state as badge, environment as meta, actions last", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+    const row = rowOf("Orders QA");
+
+    expect(within(row).getByText("Orders QA").closest("td")).toHaveClass("@max-2xl/table:order-1");
+    expect(within(row).getByText("Activa").closest("td")).toHaveClass("@max-2xl/table:order-2");
+    expect(within(row).getByText("Desarrollo").closest("td")).toHaveClass("@max-2xl/table:order-5");
+    expect(within(row).getByRole("button", { name: "Acciones" }).closest("td")).toHaveClass(
+      "@max-2xl/table:order-7",
+      "relative",
+      "z-10",
+    );
+    expect(within(row).getByText("db.internal").closest("td")).toHaveClass("@max-2xl/table:hidden");
+  });
+
+  it("picks the button row or the menu by the room the table has, not the viewport", () => {
+    mockConnectionsPage([devConnection]);
+    render(<Connections />);
+    const row = rowOf("Orders QA");
+
+    expect(within(row).getByRole("button", { name: "Editar" }).parentElement).toHaveClass("hidden", "@2xl/table:flex");
+    expect(within(row).getByRole("button", { name: "Acciones" }).parentElement).toHaveClass("@2xl/table:hidden");
+  });
+
+  it("shows the test result once, where both layouts see it", async () => {
+    const user = userEvent.setup();
+    mockConnectionsPage([devConnection]);
+    mockTestResult({ success: true, latencyMs: 12 });
+    render(<Connections />);
+
+    await user.click(screen.getByRole("button", { name: "Probar conexión" }));
+
+    const results = await screen.findAllByText(/Conectado/);
+    expect(results).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Editar" }).parentElement).not.toContainElement(results[0]);
+    expect(results[0].closest("td")).toHaveClass("@max-2xl/table:order-7");
+  });
+});

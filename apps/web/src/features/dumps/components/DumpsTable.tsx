@@ -55,16 +55,23 @@ export function DumpsTable({
   const start = total > 0 ? (page - 1) * pageSize + 1 : 0;
   const end = Math.min(page * pageSize, total);
 
+  // Narrower than 42rem each backup becomes a card: the connection with its
+  // actions, then the environment and the date, then the status (with the
+  // error, in full) and the size. Origin and storage stay in wide tables.
   const columns: Column<BackupJob>[] = [
     {
       header: t('column.connection'),
       accessor: (job) => (
-        <p className="truncate font-medium text-sm" title={job.connectionName}>
+        <p
+          className="truncate font-medium text-sm @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]"
+          title={job.connectionName}
+        >
           {job.connectionName}
         </p>
       ),
       className: "w-[20%]",
       headerClassName: "w-[20%]",
+      stack: "title",
     },
     {
       header: t('column.environment'),
@@ -73,16 +80,18 @@ export function DumpsTable({
       ),
       className: "w-[10%]",
       headerClassName: "w-[10%]",
+      stack: "meta",
     },
     {
       header: t('column.date'),
       accessor: (job) => (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
+        <time dateTime={job.createdAt} className="text-xs text-muted-foreground whitespace-nowrap">
           {formatDate(job.createdAt)}
-        </span>
+        </time>
       ),
-      className: "w-[14%] hidden sm:table-cell",
-      headerClassName: "w-[14%] hidden sm:table-cell",
+      className: "w-[14%]",
+      headerClassName: "w-[14%]",
+      stack: "meta",
     },
     {
       header: t('column.origin'),
@@ -91,8 +100,9 @@ export function DumpsTable({
           {job.triggeredBy === "system-cronjob" ? t('origin.cronjob') : t('origin.manual')}
         </span>
       ),
-      className: "w-[11%] hidden sm:table-cell",
-      headerClassName: "w-[11%] hidden sm:table-cell",
+      className: "w-[11%]",
+      headerClassName: "w-[11%]",
+      priority: 3,
     },
     {
       header: t('column.status'),
@@ -102,15 +112,15 @@ export function DumpsTable({
             ? formatHumanErrorMessage(job.errorMessage, t)
             : undefined;
         return (
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-1 @max-2xl/table:flex-row @max-2xl/table:flex-wrap @max-2xl/table:gap-x-2">
             <StatusBadge status={job.status} />
             {errorText && (
               <div
-                className="flex items-center justify-center gap-1 max-w-[200px] text-[11px] text-error font-medium cursor-help"
+                className="flex items-center justify-center gap-1 max-w-[200px] text-[11px] text-error font-medium cursor-help @max-2xl/table:max-w-none"
                 title={job.errorMessage ?? undefined}
               >
                 <AlertCircle className="h-3 w-3 shrink-0" />
-                <span className="truncate">{errorText}</span>
+                <span className="truncate @max-2xl/table:whitespace-normal">{errorText}</span>
               </div>
             )}
           </div>
@@ -118,6 +128,7 @@ export function DumpsTable({
       },
       className: "w-[20%]",
       headerClassName: "w-[20%]",
+      stack: "field",
     },
     {
       header: t('column.storage'),
@@ -130,8 +141,9 @@ export function DumpsTable({
           />
         </div>
       ),
-      className: "w-[8%] hidden sm:table-cell",
-      headerClassName: "w-[8%] hidden sm:table-cell",
+      className: "w-[8%]",
+      headerClassName: "w-[8%]",
+      priority: 3,
     },
     {
       header: t('column.size'),
@@ -142,8 +154,9 @@ export function DumpsTable({
             : "-"}
         </span>
       ),
-      className: "w-[8%] hidden sm:table-cell",
-      headerClassName: "w-[8%] hidden sm:table-cell",
+      className: "w-[8%]",
+      headerClassName: "w-[8%]",
+      stack: "field",
     },
     {
       header: t('column.actions'),
@@ -154,6 +167,7 @@ export function DumpsTable({
       ),
       className: "w-[11%]",
       headerClassName: "w-[11%]",
+      stack: "actions",
     },
   ];
 
@@ -168,6 +182,8 @@ export function DumpsTable({
         columns={columns}
         data={dumps}
         loading={isLoading}
+        caption={t('nav.dumps', { ns: 'common' })}
+        narrowLayout="stack"
         emptyMessage={t('empty.noBackups')}
         emptyContent={
           <EmptyState
