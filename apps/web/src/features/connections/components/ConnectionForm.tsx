@@ -384,7 +384,7 @@ export default function ConnectionForm({
           )}
         </CardContent>
 
-        <CardFooter className="flex justify-end gap-3">
+        <CardFooter className="flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
           {testRaw && (
             <Button
               type="button"

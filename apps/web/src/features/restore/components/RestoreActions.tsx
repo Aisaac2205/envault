@@ -34,11 +34,11 @@ export function RestoreActions({
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row">
         <Button
           onClick={onSimulate}
           disabled={isLoading || !canSimulate || !isDryRun}
-          className="flex-1"
+          className="sm:flex-1"
           variant="outline"
         >
           <Play className="mr-2 h-4 w-4" />
@@ -49,7 +49,7 @@ export function RestoreActions({
           onClick={onExecute}
           disabled={isLoading || !canExecute || isDryRun}
           variant="destructive"
-          className="flex-1"
+          className="sm:flex-1"
         >
           <AlertTriangle className="mr-2 h-4 w-4" />
           {isLoading && !isDryRun ? t("action.processing") : t("action.restore")}

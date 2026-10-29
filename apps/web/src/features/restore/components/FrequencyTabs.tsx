@@ -38,7 +38,9 @@ export function FrequencyTabs({
       onValueChange={(next) => onChange(next as BackupCategory)}
       aria-label={t("freq.ariaLabel")}
     >
-      <TabsList className="grid h-9 w-full grid-cols-5 gap-1 rounded-md p-1">
+      {/* Below sm five equal cells are narrower than the longest label, so the
+          tabs share a flex row where each keeps at least its label width. */}
+      <TabsList className="flex h-9 w-full gap-1 rounded-md p-1 sm:grid sm:grid-cols-5">
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.value}
@@ -46,7 +48,7 @@ export function FrequencyTabs({
             disabled={disabled}
             aria-label={tab.label}
             title={tab.label}
-            className="rounded-sm px-1.5 py-1 text-[11px] leading-tight"
+            className="flex-1 rounded-sm px-1.5 py-1 text-[11px] leading-tight"
           >
             {tab.shortLabel}
           </TabsTrigger>
