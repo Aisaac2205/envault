@@ -20,7 +20,7 @@
     "docker:dev:test": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile test up",
     "docker:db": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up db",
     "docker:db:test": "docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile test up db db-test-pg db-test-mysql",
-    "docker:prod": "docker compose -f docker-compose.yml up --build",
+    "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.build.yml up --build",
     "docker:e2e": "docker compose -p envault-e2e --env-file .env.e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait --wait-timeout 300",
     "docker:e2e:down": "docker compose -p envault-e2e --env-file .env.e2e -f docker-compose.yml -f docker-compose.e2e.yml down -v --remove-orphans",
     "e2e:install": "pnpm --filter @vaultly-control/e2e exec playwright install chromium",

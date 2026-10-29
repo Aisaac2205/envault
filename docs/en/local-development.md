@@ -4,11 +4,12 @@
 
 Guide to bringing the project up and developing it locally with Node.js or Docker.
 
-There are **two compose files**:
+There are **three compose files** for local work:
 
 | File | When to use it |
 |------|----------------|
-| `docker-compose.yml` | Production / validating the final build |
+| `docker-compose.yml` | Production with the published images (see [deployment-self-host.md](deployment-self-host.md#docker-compose-with-the-published-images)) |
+| `docker-compose.build.yml` | Override that builds api and web from your checkout instead, to validate the final build |
 | `docker-compose.dev.yml` | Development override (hot reload, open ports, optional `test` profile for testing DBs) |
 
 > ⚠️ **`docker-compose.dev.yml` is NOT auto-loaded** — the name `docker-compose.override.yml` (which Compose merges without asking) is avoided on purpose so that an accidental `docker compose up` on a prod server does not boot dev mode. Always pass `-f docker-compose.yml -f docker-compose.dev.yml` or use the `pnpm` scripts.
@@ -102,6 +103,8 @@ Equivalent to:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
+The dev api and web run their own local images (`envault-management-api:dev`, `envault-management-web:dev`), rebuilt on every `up` from the `dev` target; they never pull the published images.
+
 | Service | URL |
 |---------|-----|
 | Web | `http://localhost:5173` |
@@ -118,8 +121,10 @@ pnpm docker:prod
 Equivalent to:
 
 ```bash
-docker compose -f docker-compose.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up --build
 ```
+
+It builds the production targets from your checkout as `envault-management-api:local` and `envault-management-web:local`, so a local build never takes the published image tags. To run the published images instead, see [deployment-self-host.md](deployment-self-host.md#docker-compose-with-the-published-images).
 
 | Service | URL |
 |---------|-----|

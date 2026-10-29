@@ -1,17 +1,22 @@
+# Runs the images published to GHCR on every release. Pin a release with
+# ENVAULT_VERSION in .env (for example 1.57.0); unset, it uses `latest`.
+#   docker compose up -d
+#
+# `pull_policy: missing` pulls an image only when it is not on the host, so a
+# restart never changes the running version. Upgrade on purpose: change
+# ENVAULT_VERSION (or run `docker compose pull`), then `docker compose up -d`.
+# A failed pull stops `up` with an error. There is
+# no build block here on purpose: with one, a failed pull would quietly build
+# this checkout under the published name. The overlays carry the build recipe
+# and their own local image names:
+#   docker-compose.build.yml  builds api and web from this checkout
+#   docker-compose.dev.yml    dev targets with hot reload
+#   docker-compose.e2e.yml    hermetic E2E stack
+
 services:
   api:
-    image: envault-management-api:0.1.1
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-      target: production
-      # La imagen instala los clientes de PostgreSQL 14 a 18, uno junto a otro:
-      # el valor por defecto vive en el ARG POSTGRES_CLIENT_VERSIONS de
-      # apps/api/Dockerfile. La API respalda con el cliente de la versión del
-      # servidor origen y restaura con el de la versión del destino. Para otra
-      # lista, descomenta y ajusta (versiones separadas por espacios):
-      # args:
-      #   POSTGRES_CLIENT_VERSIONS: "16 17 18"
+    image: ghcr.io/aisaac2205/envault-api:${ENVAULT_VERSION:-latest}
+    pull_policy: missing
     env_file: .env
     depends_on:
       db:
@@ -32,11 +37,8 @@ services:
     restart: unless-stopped
 
   web:
-    image: envault-management-web:0.1.1
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-      target: production
+    image: ghcr.io/aisaac2205/envault-web:${ENVAULT_VERSION:-latest}
+    pull_policy: missing
     environment:
       # Sigue el PORT real de la API en vez de asumir 3000 si alguien
       # lo cambia en .env — ver Dockerfile ENV API_UPSTREAM default.

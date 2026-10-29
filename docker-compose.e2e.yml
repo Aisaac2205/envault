@@ -1,8 +1,8 @@
 # ── Hermetic stack for black-box E2E runs ───────────────────────
 # Layer it on the BASE compose file only, never on docker-compose.dev.yml: the
 # dev override swaps in dev targets and bind mounts, which would skew the
-# performance timings the E2E suite collects. The api and web services keep the
-# production targets from docker-compose.yml.
+# performance timings the E2E suite collects. The api and web services build
+# the production targets, as declared below.
 #
 #   cp .env.e2e.example .env.e2e
 #   pnpm docker:e2e        # build + start, returns once everything is healthy
@@ -33,6 +33,11 @@ services:
     # Dedicated tag so building the E2E image never retags the one used by the
     # regular production compose.
     image: envault-management-api:e2e
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: production
     ports:
       - "${E2E_API_PORT:-3000}:3000"
     # The base file loads the root `.env`. Drop it so a developer's real
@@ -94,6 +99,11 @@ services:
 
   web:
     image: envault-management-web:e2e
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: production
     environment:
       # The base file derives this from ${PORT}, which a PORT exported in the
       # developer's shell would silently win over. The api listens on 3000.

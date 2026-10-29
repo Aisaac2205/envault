@@ -15,14 +15,67 @@ If you want a managed PaaS template instead, use [deployment-railway.md](deploym
 
 ## 1. The two images
 
-EnVault Management ships as two Docker images:
+EnVault Management ships as two Docker images. Every release publishes both to GitHub Container Registry for `linux/amd64` and `linux/arm64`:
 
-| Image | Built from | Purpose | Listens on |
-|-------|-----------|---------|------------|
-| API | [`apps/api/Dockerfile`](../../apps/api/Dockerfile) | NestJS backend, runs migrations, serves REST + SSE | `3000` (HTTP) |
-| Web | [`apps/web/Dockerfile`](../../apps/web/Dockerfile) | nginx serving the built React SPA | `80` (HTTP) |
+| Image | Published as | Built from | Purpose | Listens on |
+|-------|--------------|-----------|---------|------------|
+| API | `ghcr.io/aisaac2205/envault-api` | [`apps/api/Dockerfile`](../../apps/api/Dockerfile) | NestJS backend, runs migrations, serves REST + SSE | `3000` (HTTP) |
+| Web | `ghcr.io/aisaac2205/envault-web` | [`apps/web/Dockerfile`](../../apps/web/Dockerfile) | nginx serving the built React SPA | `80` (HTTP) |
 
-Build them yourself from the repo, or pull from your registry once your CI publishes them.
+Each release is tagged `X.Y.Z`, `X.Y` (the newest patch of that minor) and `latest`. Pin `X.Y.Z` in production so an upgrade only happens when you choose it. Both images carry SBOM and provenance attestations.
+
+### Docker Compose with the published images
+
+The root `docker-compose.yml` runs the API, the Web, PostgreSQL and Redis from the published images. It needs only that file and a `.env` next to it, so a full clone is optional.
+
+```bash
+cp .env.example .env
+# Fill in .env: the secrets and passwords, REDIS_HOST=redis, the R2 storage,
+# and ENVAULT_VERSION (a release such as 1.57.0; pinning one is recommended).
+docker compose pull
+docker compose up -d
+```
+
+The Web answers on `http://localhost:5173` and proxies `/api` to the API, which stays on the internal network. See [environment-variables.md](environment-variables.md#docker-compose-env-at-the-root) for every value.
+
+`docker compose up -d` pulls an image only when it is not on the host yet (`pull_policy: missing`), so a restart never changes the running version, `latest` included. A failed pull (a mistyped version, no network) stops it with an error: the root file has no build block, so it never builds the current folder instead.
+
+### Upgrading and rolling back
+
+Upgrades are explicit. The new API runs its migrations when it starts and nothing reverts them on a downgrade (see [§8](#8-migration-behavior)), so back up the control database first:
+
+```bash
+# With `latest`, note the running release first: you need it to roll back.
+docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' ghcr.io/aisaac2205/envault-api:latest
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -F c' > envault-before-upgrade.dump
+# Set ENVAULT_VERSION to the new release in .env (with `latest`, skip this).
+docker compose pull
+docker compose up -d
+```
+
+To roll back, stop the API, restore that backup into an empty control database, and start the previous release:
+
+```bash
+docker compose stop api
+docker compose exec -T db sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < envault-before-upgrade.dump
+# Set ENVAULT_VERSION to the previous release in .env.
+docker compose up -d
+```
+
+The restore loses what changed after the upgrade (connections, backup history, audit entries). Backup files already in R2 stay there.
+
+### Building the images yourself
+
+To run the same stack from your checkout instead of the published images, add the build override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+```
+
+`pnpm docker:prod` does the same in the foreground. The override builds on every `up` and names the images `envault-management-api:local` and `envault-management-web:local`, so a source build never takes the published tags.
+
+To build the images on their own:
 
 ```bash
 # Local build from monorepo root
@@ -32,13 +85,16 @@ docker build -t envault-web:local -f apps/web/Dockerfile .
 
 Both Dockerfiles expect the monorepo root as the build context because they read `pnpm-workspace.yaml` and `pnpm-lock.yaml`.
 
-The API image installs the PostgreSQL clients 14 to 18 side by side so it can dump and restore any of those server majors. Change the list with the `POSTGRES_CLIENT_VERSIONS` build arg (space-separated), for example `docker build --build-arg POSTGRES_CLIENT_VERSIONS="16 17 18" -f apps/api/Dockerfile .`; for the Compose build, add it under `build.args` of the `api` service in `docker-compose.yml`.
+The API image installs the PostgreSQL clients 14 to 18 side by side so it can dump and restore any of those server majors. Change the list with the `POSTGRES_CLIENT_VERSIONS` build arg (space-separated), for example `docker build --build-arg POSTGRES_CLIENT_VERSIONS="16 17 18" -f apps/api/Dockerfile .`; for the Compose build, add it under `build.args` of the `api` service in `docker-compose.build.yml`.
 
 ### Individual Container Deployment
 
 If you prefer to deploy the API, Web, and infrastructure services on separate hosts or standalone containers without Docker Compose:
 
 ```bash
+# The release to run, for example the newest one on the GitHub Releases page.
+ENVAULT_VERSION=X.Y.Z
+
 # 1. Redis Container (with AOF persistence and mandatory authentication)
 docker run -d \
   --name envault-redis \
@@ -52,7 +108,7 @@ docker run -d \
   --restart unless-stopped \
   -p 3000:3000 \
   --env-file .env.api \
-  envault-api:local
+  "ghcr.io/aisaac2205/envault-api:${ENVAULT_VERSION}"
 
 # 3. Web Container (on frontend host)
 docker run -d \
@@ -61,7 +117,7 @@ docker run -d \
   -p 80:80 \
   -e API_UPSTREAM=api.internal.corp:3000 \
   -e CSP_HEADER_NAME=Content-Security-Policy \
-  envault-web:local
+  "ghcr.io/aisaac2205/envault-web:${ENVAULT_VERSION}"
 ```
 
 `--maxmemory-policy noeviction` is required so Redis rejects writes instead of silently evicting BullMQ queue keys under memory pressure (see [BullMQ: going to production](https://docs.bullmq.io/guide/going-to-production)). A managed Redis instance (for example, on Railway) is provisioned outside `docker-compose.yml`, so this policy must be set through that provider's own configuration instead.
@@ -102,16 +158,17 @@ Full reference in [environment-variables.md](environment-variables.md). The tabl
 
 > **Redis network**: keep Redis on a private network (the Docker network, or Railway private networking). If it must cross a public network, connect with a `rediss://` `REDIS_URL` or set `REDIS_TLS=true`.
 
-### Web (build-time AND runtime)
+### Web (runtime)
 
-The Web layer is **GitOps-friendly by design**: it reads runtime config from `window.APP_CONFIG`, which is generated by `entrypoint.sh` at container startup from environment variables. **No `.env` file goes into the image.**
+The published Web image holds no per-install value, so one image serves every install. The SPA calls `/api` on its own origin, and nginx proxies that path to `API_UPSTREAM`, which it reads when the container starts. **No `.env` file goes into the image.**
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `VITE_API_URL` | yes | Backend URL (e.g., `https://api.example.com`) |
-| `VITE_APP_BASE_URL` | yes | Public URL of the web (e.g., `https://app.example.com`) |
+| `API_UPSTREAM` | no (default `api:3000`) | `host:port` that nginx proxies `/api/*` to |
+| `CSP_HEADER_NAME` | no (default `Content-Security-Policy`) | Set `Content-Security-Policy-Report-Only` only to debug a violation |
+| `CLIENT_IP_MODE` | no (default `auto`) | `direct` uses the TCP peer address, `railway` trusts the `X-Real-IP` set by Railway's edge; `auto` picks `railway` when `RAILWAY_ENVIRONMENT_ID` is set |
 
-> The `VITE_*` prefix is historical (these were Vite build-time vars). At runtime they are read from the same names as container env vars by `entrypoint.sh`. You do not need to rebuild the image to change them — just restart the container with new env values.
+> `VITE_API_URL` is the only build-time variable. The published image is built with it empty, and its CSP (`connect-src 'self'`) only allows calls to its own origin, so serve the Web and the API from one origin through the Web container. A split origin needs your own build with `VITE_API_URL` set to the API's bare origin, plus a CSP that allows it.
 
 > Auth is handled entirely by the API via Better Auth. The Web does not need any auth-specific env vars — sessions are cookie-based and the browser handles them automatically.
 
@@ -249,7 +306,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/your-org/envault-api:0.1.0
+          image: ghcr.io/aisaac2205/envault-api:X.Y.Z  # pin a release
           ports:
             - containerPort: 3000
           envFrom:

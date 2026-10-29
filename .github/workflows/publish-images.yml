@@ -1,7 +1,7 @@
 name: Publish container images
 
-# Builds the api and web production images for linux/amd64 and linux/arm64 and
-# pushes them to GHCR as X.Y.Z, X.Y and latest.
+# Builds the api and web production images for linux/amd64 and linux/arm64,
+# pushes them to GHCR as X.Y.Z and, once both are pushed, moves X.Y and latest.
 #
 # Normal path: ci.yml calls this workflow right after semantic-release
 # publishes a new version. A tag created with GITHUB_TOKEN never starts another
@@ -34,17 +34,15 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
       sha: ${{ steps.release.outputs.sha }}
-      latest: ${{ steps.release.outputs.latest }}
-      latest-in-minor: ${{ steps.release.outputs.latest-in-minor }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Every branch and tag, to check where the tag points and how it ranks.
+          # Every branch and tag, to check where the tag points.
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate the tag and rank it against the other releases
+      - name: Validate the tag
         id: release
         env:
           INPUT_VERSION: ${{ inputs.version }}
@@ -68,19 +66,12 @@ jobs:
             exit 1
           fi
 
-          # Republishing an older version must not move `latest` (or X.Y) back.
-          releases() { git tag --list "$1" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1; }
-          highest="$(releases 'v*')"
-          highest_in_minor="$(releases "v${version%.*}.*")"
-
           {
             echo "version=$version"
             echo "tag=$tag"
             echo "sha=$sha"
-            echo "latest=$([ "$tag" = "$highest" ] && echo true || echo false)"
-            echo "latest-in-minor=$([ "$tag" = "$highest_in_minor" ] && echo true || echo false)"
           } >> "$GITHUB_OUTPUT"
-          echo "Publishing $tag ($sha). Highest release: $highest. Highest in ${version%.*}: $highest_in_minor."
+          echo "Publishing $tag ($sha)."
 
   publish:
     name: Publish ${{ matrix.image }}
@@ -90,11 +81,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # One publish per image at a time, so two releases close together cannot
-    # finish out of order and leave `latest` on the older one.
-    concurrency:
-      group: publish-images-${{ matrix.image }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -147,8 +133,6 @@ jobs:
           flavor: latest=false
           tags: |
             type=semver,pattern={{version}},value=${{ needs.resolve.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.resolve.outputs.tag }},enable=${{ needs.resolve.outputs.latest-in-minor }}
-            type=raw,value=latest,enable=${{ needs.resolve.outputs.latest }}
           labels: |
             org.opencontainers.image.title=${{ matrix.title }}
             org.opencontainers.image.description=${{ matrix.description }}
@@ -177,3 +161,45 @@ jobs:
           sbom: true
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # Runs only after both images are pushed, one run at a time, and ranks the
+  # release here so a late finisher cannot move X.Y or latest back.
+  promote:
+    name: Move X.Y and latest
+    needs: [resolve, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: publish-images-promote
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point X.Y and latest at this release if it is the highest
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          highest() { git tag --list "$1" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1; }
+          tags=()
+          if [ "v$VERSION" = "$(highest "v${VERSION%.*}.*")" ]; then tags+=("${VERSION%.*}"); fi
+          if [ "v$VERSION" = "$(highest 'v*')" ]; then tags+=(latest); fi
+          [ "${#tags[@]}" -gt 0 ] || { echo "A newer release exists: X.Y and latest stay."; exit 0; }
+          for image in envault-api envault-web; do
+            args=()
+            for tag in "${tags[@]}"; do args+=(--tag "ghcr.io/aisaac2205/$image:$tag"); done
+            # A single source index is copied as is (carbon copy), no rebuild.
+            docker buildx imagetools create "${args[@]}" "ghcr.io/aisaac2205/$image:$VERSION"
+          done

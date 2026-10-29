@@ -122,6 +122,8 @@ VITE_APP_BASE_URL=http://localhost:5173
 
 > Se pasan como `ARG` en el Dockerfile y se queman en el build estático — la SPA no las puede volver a leer en runtime.
 >
+> La imagen publicada `ghcr.io/aisaac2205/envault-web` se construye con `VITE_API_URL` vacía, por lo que la SPA llama a `/api/*` de forma relativa. La CSP de su nginx (`connect-src 'self'`) bloquea cualquier otro origen, así que una instalación con orígenes separados requiere un build propio.
+>
 > El contenedor web también lee `API_UPSTREAM` — a dónde su nginx proxea `/api/*` — pero es un valor de runtime, no uno de build-time de Vite, así que no es parte de `apps/web/.env`. Ver la sección de Docker Compose de abajo y, para Railway, `docs/es/deployment-railway.md`.
 
 ---
@@ -133,10 +135,19 @@ Ambos compose (`docker-compose.yml` y `docker-compose.dev.yml`) leen el mismo `.
 Variables obligatorias para que `docker compose up` no aborte (fail-loud con `${VAR:?...}` en el compose):
 
 ```bash
+# ── Imágenes (opcional) ────────────────────────────────────────
+# Versión de las imágenes publicadas de api y web que ejecuta docker-compose.yml.
+# Por defecto latest. Fije una para que las actualizaciones ocurran solo cuando la cambie.
+ENVAULT_VERSION=1.57.0
+
 # ── Database (obligatorias) ────────────────────────────────────
 DB_NAME=envault_control
 DB_USER=envault_control
 DB_PASSWORD=  # ← REQUERIDA, sin default
+
+# ── Redis (obligatorias) ───────────────────────────────────────
+REDIS_HOST=redis  # el servicio de compose; localhost no lo alcanza
+REDIS_PASSWORD=  # ← REQUERIDA, sin default (Redis arranca con --requirepass)
 
 # URL usada por la API para conectarse al servicio `db` interno
 DATABASE_URL=postgresql://envault_control:CHANGE_ME@db:5432/envault_control

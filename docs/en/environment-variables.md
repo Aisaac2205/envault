@@ -119,6 +119,8 @@ VITE_APP_BASE_URL=http://localhost:5173
 
 > These are passed as `ARG` in the Dockerfile and burned into the static build — the SPA can't read them again at runtime.
 >
+> The published `ghcr.io/aisaac2205/envault-web` image is built with `VITE_API_URL` empty, so the SPA calls a relative `/api/*`. Its nginx CSP (`connect-src 'self'`) blocks any other origin, so a split-origin setup needs a custom build.
+>
 > The web container also reads `API_UPSTREAM` — where its nginx proxies `/api/*` to — but that's a runtime value, not a Vite build-time one, so it isn't part of `apps/web/.env`. See the Docker Compose section below and, for Railway, `docs/en/deployment-railway.md`.
 
 ---
@@ -130,10 +132,19 @@ Both compose files (`docker-compose.yml` and `docker-compose.dev.yml`) read the 
 Mandatory variables for `docker compose up` not to abort (fail-loud with `${VAR:?...}` in the compose):
 
 ```bash
+# ── Images (optional) ──────────────────────────────────────────
+# Release of the published api and web images that docker-compose.yml runs.
+# Defaults to latest; pin one so upgrades only happen when you change it.
+ENVAULT_VERSION=1.57.0
+
 # ── Database (mandatory) ───────────────────────────────────────
 DB_NAME=envault_control
 DB_USER=envault_control
 DB_PASSWORD=  # ← REQUIRED, no default
+
+# ── Redis (mandatory) ──────────────────────────────────────────
+REDIS_HOST=redis  # the compose service; localhost does not reach it
+REDIS_PASSWORD=  # ← REQUIRED, no default (Redis starts with --requirepass)
 
 # URL used by the API to connect to the internal `db` service
 DATABASE_URL=postgresql://envault_control:CHANGE_ME@db:5432/envault_control
