@@ -99,7 +99,7 @@ export function RetentionDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-xl">
+        <DialogContent>
           <DialogHeader>
             <div className="flex items-center gap-2">
               <DialogTitle className="text-base font-semibold text-text-primary">

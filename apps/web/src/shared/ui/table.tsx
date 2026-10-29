@@ -94,6 +94,9 @@ interface TableScrollRegionProps extends React.HTMLAttributes<HTMLDivElement> {
  * aria-labelledby) that joins the tab order only while its content overflows,
  * so keyboard users can scroll it (WCAG 2.1.1) without a useless tab stop.
  * The focus outline is inset because the wrapper usually clips its overflow.
+ * It is positioned so that it contains the visually hidden (absolute) text of
+ * its table: a hidden header in the last column would otherwise sit past the
+ * scroller's edge, outside it, and widen the whole page.
  */
 function TableScrollRegion({ scrollRef, className, ...props }: TableScrollRegionProps) {
   const ownRef = useRef<HTMLDivElement>(null);
@@ -104,7 +107,7 @@ function TableScrollRegion({ scrollRef, className, ...props }: TableScrollRegion
       ref={ref}
       role="region"
       tabIndex={overflowing ? 0 : undefined}
-      className={cn("focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", className)}
+      className={cn("relative focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", className)}
       {...props}
     />
   );

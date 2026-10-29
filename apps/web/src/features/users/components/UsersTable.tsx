@@ -62,7 +62,7 @@ export function UsersTable({ users, loading, filtered = false }: UsersTableProps
       accessor: (u) => <RoleBadge role={u.role} t={t} />,
     },
     {
-      header: t('column.createdAt'),
+      header: t('column.created'),
       accessor: (u) => (
         <span className="text-sm text-muted-foreground">
           {formatDate(u.createdAt)}

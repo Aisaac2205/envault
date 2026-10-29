@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useId, useState, useMemo } from "react";
 import { HardDrive, Database, Radio, Clock, SlidersHorizontal } from "lucide-react";
 import { formatDateTimeShort as formatDate } from "@/lib/format";
 import { useTranslation } from "react-i18next";
@@ -7,9 +7,11 @@ import { Card, CardContent } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { Badge } from "@/shared/ui/badge";
+import { TableScrollRegion } from "@/shared/ui/table";
 import { Stagger, StaggerItem } from "@/shared/ui/motion/Stagger";
 import { useStorageOverview } from "../hooks/useMaintenance";
 import { useConnections } from "@/features/connections/hooks/useConnections";
+import { EngineName } from "@/shared/components/EngineIcon";
 import { RetentionDialog } from "./RetentionDialog";
 
 function countOldDumps(connections: { oldest: string | null }[]): number {
@@ -25,6 +27,7 @@ interface ConnectionRowData {
   slug: string;
   name: string;
   environment?: string;
+  dbType?: string;
   count: number;
   sizeMb: number;
   oldest: string | null;
@@ -34,6 +37,7 @@ export function StoragePanel() {
   const { t } = useTranslation("cleanup");
   const { data, isLoading, isError, error } = useStorageOverview();
   const { data: connections = [] } = useConnections();
+  const captionId = useId();
 
   const [selectedConnection, setSelectedConnection] = useState<{
     slug: string;
@@ -56,6 +60,7 @@ export function StoragePanel() {
           slug: conn.slug,
           name: conn.name,
           environment: conn.environment,
+          dbType: conn.dbType,
           count: usage?.count ?? 0,
           sizeMb: usage?.sizeMb ?? 0,
           oldest: usage?.oldest ?? null,
@@ -172,9 +177,9 @@ export function StoragePanel() {
         ) : (
           <Card variant="outlined" className="overflow-hidden">
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              <TableScrollRegion aria-labelledby={captionId} className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <caption className="sr-only">
+                  <caption id={captionId} className="sr-only">
                     {t("table.caption")}
                   </caption>
                   <thead>
@@ -203,26 +208,30 @@ export function StoragePanel() {
                         className="transition-colors duration-150 hover:bg-muted/30"
                       >
                         <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-text-primary">
-                              {conn.name}
-                            </span>
-                            {conn.environment && (
-                              <Badge
-                                variant={
-                                  conn.environment.toLowerCase() === "prod"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                                className="text-[10px] uppercase tracking-wider"
-                              >
-                                {conn.environment}
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="font-mono text-[11px] text-muted-foreground">
-                            {conn.slug}
-                          </span>
+                          <EngineName dbType={conn.dbType}>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-text-primary">
+                                  {conn.name}
+                                </span>
+                                {conn.environment && (
+                                  <Badge
+                                    variant={
+                                      conn.environment.toLowerCase() === "prod"
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                    className="text-[10px] uppercase tracking-wider"
+                                  >
+                                    {conn.environment}
+                                  </Badge>
+                                )}
+                              </div>
+                              <span className="font-mono text-[11px] text-muted-foreground">
+                                {conn.slug}
+                              </span>
+                            </div>
+                          </EngineName>
                         </td>
                         <td className="px-5 py-3.5 text-right text-xs font-medium tabular-nums text-text-secondary">
                           {conn.count}
@@ -255,7 +264,7 @@ export function StoragePanel() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScrollRegion>
             </CardContent>
           </Card>
         )}

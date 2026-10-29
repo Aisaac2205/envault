@@ -8,6 +8,7 @@ import { DumpActions } from "./DumpActions";
 import { formatSize } from "@/shared/lib/format";
 import { formatDateTimeShort as formatDate, formatEnvironment } from "@/lib/format";
 import cloudflareSvg from "@/shared/assets/Cloudflare.svg";
+import { EngineName } from "@/shared/components/EngineIcon";
 
 function formatHumanErrorMessage(
   rawError: string,
@@ -62,12 +63,14 @@ export function DumpsTable({
     {
       header: t('column.connection'),
       accessor: (job) => (
-        <p
-          className="truncate font-medium text-sm @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]"
-          title={job.connectionName}
-        >
-          {job.connectionName}
-        </p>
+        <EngineName dbType={job.dbType}>
+          <p
+            className="min-w-0 truncate font-medium text-sm @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]"
+            title={job.connectionName}
+          >
+            {job.connectionName}
+          </p>
+        </EngineName>
       ),
       className: "w-[20%]",
       headerClassName: "w-[20%]",

@@ -124,14 +124,17 @@ export default function Dumps() {
         <PageHeader
           title="Dumps"
           actions={
-            // On a phone the picker takes the room the button leaves it.
-            <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+            // On a phone the picker takes the room the button leaves it, and
+            // the button moves under it once the picker would get narrower than
+            // its placeholder (13.5rem); then it spans the line.
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto sm:flex-nowrap">
               <Select
                 value={selectedConnectionId}
                 onValueChange={setSelectedConnectionId}
                 disabled={isCreatingBackup || connections.length === 0}
               >
-                <SelectTrigger className="flex-1 sm:w-[200px] sm:flex-none lg:w-[280px]">
+                {/* Radix drops the className given to Select.Value, so the trigger truncates it. */}
+                <SelectTrigger className="flex-[1_1_13.5rem] sm:w-[13.5rem] sm:flex-none lg:w-[280px] *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate">
                   <SelectValue
                     placeholder={
                       connections.length === 0
@@ -158,7 +161,7 @@ export default function Dumps() {
               <Button
                 onClick={handleOpenConfirm}
                 disabled={isCreatingBackup || !selectedConnectionId}
-                className="shrink-0"
+                className="shrink-0 max-sm:grow"
               >
                 {isCreatingBackup ? t('action.creating') : t('action.newBackup')}
               </Button>

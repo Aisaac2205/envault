@@ -7,8 +7,8 @@ import type { Cronjob } from "../../types";
 vi.mock("@/features/connections/hooks/useConnections", () => ({
   useConnections: () => ({
     data: [
-      { id: "conn-1", name: "Prod DB", environment: "prod" },
-      { id: "conn-2", name: "Dev DB", environment: "dev" },
+      { id: "conn-1", name: "Prod DB", environment: "prod", dbType: "postgres" },
+      { id: "conn-2", name: "Dev DB", environment: "dev", dbType: "mysql" },
       { id: "conn-3", name: "QA DB", environment: "qa" },
     ],
     isLoading: false,
@@ -128,6 +128,22 @@ describe("CronjobsTable", () => {
     );
     expect(container.textContent).not.toContain("*/7");
     expect(container.querySelector(".font-mono")).toBeNull();
+  });
+
+  it("leads each connection name with the official logo of its engine", () => {
+    render(<CronjobsTable {...defaultProps} />);
+
+    const postgres = screen.getByRole("img", { name: "PostgreSQL" });
+    expect(postgres.closest("td")).toBe(screen.getByText("Prod DB").closest("td"));
+    expect(screen.getByRole("img", { name: "MySQL" }).closest("td")).toBe(screen.getByText("Dev DB").closest("td"));
+  });
+
+  it("keeps the connection name alone when its engine is unknown", () => {
+    const cronjobs = [{ ...mockCronjobs[0], connectionId: "conn-3", connectionName: "QA DB" }];
+    render(<CronjobsTable {...defaultProps} cronjobs={cronjobs} />);
+
+    expect(screen.getByText("QA DB")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
   it("renders empty state when no cronjobs", () => {
