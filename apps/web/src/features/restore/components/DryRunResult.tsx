@@ -6,7 +6,7 @@ import { formatNumber } from "@/lib/format";
 import postgresSvg from "@/shared/assets/PostgresSQL.svg";
 import mysqlSvg from "@/shared/assets/MySQL.svg";
 import { Check, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 const DB_LOGOS: Record<string, string> = {
   postgres: postgresSvg as string,
@@ -56,6 +56,7 @@ export function DryRunResult({
   const { t } = useTranslation("restore");
   const { source, target, diff } = result;
   const [excludedTables, setExcludedTables] = useState<Set<string>>(new Set());
+  const captionId = useId();
 
   function toggleTable(name: string) {
     setExcludedTables((prev) => {
@@ -80,7 +81,7 @@ export function DryRunResult({
         <ConnectionCard conn={result.targetConnection} label={t("dryRun.targetLabel")} />
       </div>
 
-      <div className="flex gap-4 text-sm">
+      <div className="flex flex-col gap-3 text-sm sm:flex-row sm:gap-4">
         <div className="flex-1 rounded-lg bg-muted/40 px-3 py-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("dryRun.sourceLabel")}</p>
           <p className="font-mono font-semibold">
@@ -95,12 +96,22 @@ export function DryRunResult({
         </div>
       </div>
 
-      <div className="max-h-[60dvh] overflow-auto rounded-xl bg-card shadow-sm">
+      {/* Named, focusable scroll region so keyboard users can scroll the table
+          on narrow screens (Roselli, "Under-Engineered Responsive Tables"). */}
+      <div
+        role="region"
+        aria-labelledby={captionId}
+        tabIndex={0}
+        className="max-h-[60dvh] overflow-auto rounded-xl bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <table className="w-full text-sm">
+          <caption id={captionId} className="sr-only">
+            {t("dryRun.comparisonRegion")}
+          </caption>
           <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
             <tr>
               <th className="w-10 px-3 py-2.5"></th>
-              <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <th className="min-w-40 px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t("dryRun.columnTable")}
               </th>
               <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -131,7 +142,7 @@ export function DryRunResult({
                     )}
                   </button>
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-3 py-2.5 [overflow-wrap:anywhere]">
                   <span className="mr-1.5 text-xs text-emerald-600">+</span>{name}
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono text-xs">
@@ -160,7 +171,7 @@ export function DryRunResult({
                       )}
                     </button>
                   </td>
-                  <td className="px-3 py-2.5">{row.name}</td>
+                  <td className="px-3 py-2.5 [overflow-wrap:anywhere]">{row.name}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs">
                     {formatNumber(row.sourceRows)}
                   </td>
@@ -189,7 +200,7 @@ export function DryRunResult({
                     )}
                   </button>
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-3 py-2.5 [overflow-wrap:anywhere]">
                   <span className="mr-1.5 text-xs text-red-500">−</span>{name}
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground">-</td>
@@ -203,13 +214,13 @@ export function DryRunResult({
         </table>
       </div>
 
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs text-muted-foreground">
           {excludedTables.size > 0
             ? t("dryRun.excludedCount", { count: excludedTables.size })
             : t("dryRun.allTables")}
         </span>
-        <div className="flex gap-3">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
           <Button onClick={onCancel} disabled={isLoading} variant="ghost" size="sm">
             {t("cancel")}
           </Button>
@@ -236,6 +247,7 @@ function TargetOnlyView({
   isLoading: boolean;
 }) {
   const { t } = useTranslation("restore");
+  const captionId = useId();
 
   return (
     <div className="space-y-4">
@@ -249,8 +261,16 @@ function TargetOnlyView({
         </span>
       </p>
 
-      <div className="max-h-[60dvh] overflow-auto rounded-xl bg-card shadow-sm">
+      <div
+        role="region"
+        aria-labelledby={captionId}
+        tabIndex={0}
+        className="max-h-[60dvh] overflow-auto rounded-xl bg-card shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <table className="w-full text-sm">
+          <caption id={captionId} className="sr-only">
+            {t("dryRun.currentTarget")}
+          </caption>
           <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm">
             <tr>
               <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -264,7 +284,7 @@ function TargetOnlyView({
           <tbody>
             {target.tables.map((table) => (
               <tr key={table.name} className="border-t border-border/20 hover:bg-muted/40">
-                <td className="px-3 py-2.5">{table.name}</td>
+                <td className="px-3 py-2.5 [overflow-wrap:anywhere]">{table.name}</td>
                 <td className="px-3 py-2.5 text-right font-mono text-xs">
                   {formatNumber(table.estimatedRows)}
                 </td>
@@ -274,7 +294,7 @@ function TargetOnlyView({
         </table>
       </div>
 
-      <div className="flex gap-3 pt-2 justify-end">
+      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end sm:gap-3">
         <Button onClick={onCancel} disabled={isLoading} variant="ghost" size="sm">
           {t("cancel")}
         </Button>

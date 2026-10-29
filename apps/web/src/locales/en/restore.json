@@ -68,6 +68,7 @@
   "dryRun.statusDrop": "Dropped",
   "dryRun.noManifest": "Manifest unavailable",
   "dryRun.currentTarget": "Current target",
+  "dryRun.comparisonRegion": "Table comparison",
   "dryRun.estimatedRows": "Estimated rows",
   "dryRun.excludeAria": "Exclude table {{name}}",
   "dryRun.excludedCount": "{{count}} table excluded",

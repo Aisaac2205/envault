@@ -68,6 +68,7 @@
   "dryRun.statusDrop": "Eliminada",
   "dryRun.noManifest": "Manifiesto no disponible",
   "dryRun.currentTarget": "Destino actual",
+  "dryRun.comparisonRegion": "Comparación de tablas",
   "dryRun.estimatedRows": "Filas estimadas",
   "dryRun.excludeAria": "Excluir tabla {{name}}",
   "dryRun.excludedCount": "{{count}} tabla excluida",

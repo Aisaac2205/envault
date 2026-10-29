@@ -165,10 +165,10 @@ export default function Restore() {
       )}
 
       {(state === "idle" || (state === "running" && !dryRunResult)) && (
-        <div className="grid gap-6 lg:grid-cols-5 lg:items-stretch">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5 lg:items-stretch">
           <div className="lg:col-span-2">
             <Card className="h-full rounded-xl shadow-sm">
-              <CardContent className="flex h-full flex-col p-6">
+              <CardContent className="flex h-full flex-col p-4 sm:p-6">
                 <RestoreForm
                   sourceBackupId={sourceBackupIdFromNav}
                   dbType={dbTypeFromNav}
@@ -189,7 +189,7 @@ export default function Restore() {
 
           <div className="lg:col-span-3">
             <Card className="h-full rounded-xl shadow-sm">
-              <CardContent className="flex h-full flex-col p-6">
+              <CardContent className="flex h-full flex-col p-4 sm:p-6">
                 <RestoreHistory
                   jobs={restoreHistory}
                   connections={connections}
@@ -201,10 +201,10 @@ export default function Restore() {
       )}
 
       {(state === "dry-run" || (state === "running" && !!dryRunResult)) && dryRunResult && (
-        <div ref={dryRunResultRef} className="flex min-h-[calc(100vh-12rem)] flex-col items-center justify-center scroll-mt-6">
+        <div ref={dryRunResultRef} className="flex flex-col items-center scroll-mt-6 sm:min-h-[calc(100vh-12rem)] sm:justify-center">
           <div className="w-full max-w-6xl">
             <Card className="rounded-xl shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-300">
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <DryRunResult
                   result={dryRunResult}
                   onConfirm={handleConfirm}
@@ -234,7 +234,7 @@ export default function Restore() {
       {state === "done" && (
         <div className="mx-auto max-w-2xl">
           <Card className="rounded-xl shadow-sm">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="space-y-4">
                 {finalStatus === "completed" ? (
                   <Alert className="rounded-xl border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400">
@@ -247,7 +247,7 @@ export default function Restore() {
                     <AlertDescription>{t('result.failure')}</AlertDescription>
                   </Alert>
                 )}
-                <div className="flex gap-3">
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
                   {finalStatus === "failed" && (
                     <Button onClick={handleRetry} variant="ghost" className="text-red-500 hover:bg-red-500/10 hover:text-red-600">
                       {t('action.retry')}
