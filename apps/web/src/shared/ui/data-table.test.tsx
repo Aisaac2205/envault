@@ -123,6 +123,18 @@ describe('DataTable scroll region', () => {
     expect(region).not.toContainElement(nav);
     expect(nav.parentElement).toHaveClass('flex-wrap', 'min-w-0', '@container/pagination');
   });
+
+  it('positions the region, so visually hidden header text scrolls with the table instead of widening the page', () => {
+    const withHiddenHeader: Column<SampleRow>[] = [
+      ...columns,
+      { header: <span className="sr-only">Acciones</span>, accessor: () => null },
+    ];
+    render(<DataTable columns={withHiddenHeader} data={data} caption="Usuarios" />);
+
+    const region = screen.getByRole('region', { name: 'Usuarios' });
+    expect(region).toHaveClass('relative', 'overflow-x-auto');
+    expect(region).toContainElement(screen.getByText('Acciones'));
+  });
 });
 
 describe('DataTable stacked layout', () => {

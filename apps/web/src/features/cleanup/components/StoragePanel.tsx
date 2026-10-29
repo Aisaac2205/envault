@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useId, useState, useMemo } from "react";
 import { HardDrive, Database, Radio, Clock, SlidersHorizontal } from "lucide-react";
 import { formatDateTimeShort as formatDate } from "@/lib/format";
 import { useTranslation } from "react-i18next";
@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/empty-state";
 import { Badge } from "@/shared/ui/badge";
+import { TableScrollRegion } from "@/shared/ui/table";
 import { Stagger, StaggerItem } from "@/shared/ui/motion/Stagger";
 import { useStorageOverview } from "../hooks/useMaintenance";
 import { useConnections } from "@/features/connections/hooks/useConnections";
@@ -36,6 +37,7 @@ export function StoragePanel() {
   const { t } = useTranslation("cleanup");
   const { data, isLoading, isError, error } = useStorageOverview();
   const { data: connections = [] } = useConnections();
+  const captionId = useId();
 
   const [selectedConnection, setSelectedConnection] = useState<{
     slug: string;
@@ -175,9 +177,9 @@ export function StoragePanel() {
         ) : (
           <Card variant="outlined" className="overflow-hidden">
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
+              <TableScrollRegion aria-labelledby={captionId} className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <caption className="sr-only">
+                  <caption id={captionId} className="sr-only">
                     {t("table.caption")}
                   </caption>
                   <thead>
@@ -262,7 +264,7 @@ export function StoragePanel() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScrollRegion>
             </CardContent>
           </Card>
         )}

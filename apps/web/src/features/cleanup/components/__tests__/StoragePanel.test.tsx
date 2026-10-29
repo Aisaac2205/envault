@@ -54,3 +54,13 @@ describe("StoragePanel engine logos", () => {
     expect(within(rowOf("legacy")).queryByRole("img")).not.toBeInTheDocument();
   });
 });
+
+describe("StoragePanel table on phones", () => {
+  it("scrolls in a named, positioned region, so the hidden actions header never widens the page", () => {
+    renderPanel();
+
+    const region = screen.getByRole("region", { name: "Uso de almacenamiento por conexión" });
+    expect(region).toHaveClass("relative", "overflow-x-auto");
+    expect(region).toContainElement(screen.getByText("Acciones"));
+  });
+});
