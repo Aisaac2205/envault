@@ -1,6 +1,16 @@
 import type { Dictionary } from '../types';
 
 export const es: Dictionary = {
+  hero: {
+    title: 'Respaldos programados para PostgreSQL y MySQL',
+    subtitle:
+      'EnVault es una herramienta gratuita y autoalojada para respaldar PostgreSQL y MySQL, con copias programadas en tu propio bucket de Cloudflare R2. Lleva esos datos reales a tus bases de desarrollo y QA sin arriesgar la de producción.',
+    installCta: 'Instalar con Docker',
+    docsCta: 'Ver documentación',
+    sampleDataBadge: 'Datos de ejemplo',
+    screenshotAlt:
+      'Panel de EnVault Management con la tasa de éxito, los respaldos de la semana, cuánto tardó cada uno y la última restauración',
+  },
   features: {
     title: 'Copias de seguridad que simplemente funcionan, sin que tengas que estar encima',
     subtitle:

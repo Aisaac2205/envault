@@ -5,6 +5,15 @@
 
 export type Locale = 'es' | 'en';
 
+export interface HeroTranslations {
+  title: string;
+  subtitle: string;
+  installCta: string;
+  docsCta: string;
+  sampleDataBadge: string;
+  screenshotAlt: string;
+}
+
 export interface FeaturesTranslations {
   title: string;
   subtitle: string;
@@ -65,6 +74,7 @@ export interface GithubStarTranslations {
 }
 
 export interface Dictionary {
+  hero: HeroTranslations;
   features: FeaturesTranslations;
   docs: DocumentationTranslations;
   footer: FooterTranslations;

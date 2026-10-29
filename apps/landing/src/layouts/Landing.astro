@@ -2,8 +2,7 @@
 import { getImage } from "astro:assets";
 import "../styles/global.css";
 import type { Locale } from "../features/i18n/types";
-import dashboardEs from "../assets/dashboard/dash-es.png";
-import dashboardEn from "../assets/dashboard/dash-en.png";
+import { getDashboardScreenshots } from "../features/hero/screenshots";
 
 interface Props {
   title?: string;
@@ -29,7 +28,7 @@ const siteUrl = site.toString().replace(/\/$/, "");
 // Social preview: a 1200x630 crop from the top of the localized dashboard capture,
 // so it follows the screenshot whenever it changes. Crawlers need an absolute URL.
 const socialImage = await getImage({
-  src: isEn ? dashboardEn : dashboardEs,
+  src: getDashboardScreenshots(locale).desktop,
   width: 1200,
   height: 630,
   fit: "cover",
@@ -120,11 +119,6 @@ const socialImageAlt = isEn
     >
       {isEn ? "Skip to main content" : "Saltar al contenido principal"}
     </a>
-
-    <!-- Screen reader & search engine headline -->
-    <h1 class="sr-only">
-      {isEn ? "EnVault Management · Centralized Database Control & Automated Dumps" : "EnVault Management · Control Centralizado de Bases de Datos y Copias de Seguridad Automatizadas"}
-    </h1>
 
     <div class="relative min-h-screen flex flex-col justify-between">
       <slot />
