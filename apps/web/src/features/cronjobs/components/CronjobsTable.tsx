@@ -7,10 +7,9 @@ import { Button } from "@/shared/ui/button";
 import { ConnectionLabel } from "@/shared/components/ConnectionLabel";
 import { EngineName } from "@/shared/components/EngineIcon";
 import { useConnections } from "@/features/connections/hooks/useConnections";
-import { DataTable, type Column } from "@/shared/ui/data-table";
+import { ClampText, DataTable, RowActionsMenu, type Column } from "@/shared/ui/data-table";
 import { EmptyState } from "@/shared/ui/empty-state";
-import { ToggleLeft, ToggleRight, Ellipsis, Clock } from "lucide-react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { ToggleLeft, ToggleRight, Clock } from "lucide-react";
 
 interface CronjobsTableProps {
   cronjobs: Cronjob[];
@@ -39,13 +38,34 @@ export default function CronjobsTable({
 
   // Narrower than 42rem each cronjob becomes a card: the name with its switch
   // and actions menu, then the connection and its environment, then the
-  // schedule, the next run and the last status as labelled lines.
+  // schedule, the next run and the last status as labelled lines. From 42rem
+  // the columns are fixed: the name takes the rest, with the connection and
+  // its environment as its second line instead of two columns.
   const columns: Column<Cronjob>[] = [
     {
       header: t('column.name'),
-      accessor: (cronjob) => (
-        <span className="font-medium @max-2xl/table:[overflow-wrap:anywhere]">{cronjob.name}</span>
-      ),
+      accessor: (cronjob) => {
+        const connection = resolveConnection(cronjob.connectionId);
+        const env = connection?.environment;
+        return (
+          // In a card the wrapper steps aside: the name is the card's title.
+          <div className="flex min-w-0 flex-col gap-0.5 @max-2xl/table:contents">
+            <ClampText text={cronjob.name} className="font-medium @max-2xl/table:[overflow-wrap:anywhere]" />
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground @max-2xl/table:hidden">
+              <EngineName className="min-w-0 gap-1.5" dbType={connection?.dbType}>
+                <ConnectionLabel id={cronjob.connectionId} name={cronjob.connectionName} />
+              </EngineName>
+              {env ? (
+                <span className="shrink-0">
+                  <span aria-hidden="true">· </span>
+                  {formatEnvironment(env)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        );
+      },
+      align: "left",
       stack: "title",
     },
     {
@@ -62,6 +82,7 @@ export default function CronjobsTable({
         </EngineName>
       ),
       stack: "meta",
+      stackOnly: true,
     },
     {
       header: t('column.environment'),
@@ -76,21 +97,26 @@ export default function CronjobsTable({
         );
       },
       stack: "meta",
+      stackOnly: true,
     },
     {
       header: t('column.schedule'),
       accessor: (cronjob) => (
-        <span className="text-xs">{describeSchedule(cronjob.schedule, t)}</span>
+        <ClampText text={describeSchedule(cronjob.schedule, t)} className="text-xs" />
       ),
+      width: "w-32",
+      align: "left",
       stack: "field",
     },
     {
       header: t('column.nextRun'),
       accessor: (cronjob) => (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
+        <span className="text-xs text-muted-foreground whitespace-nowrap @2xl/table:tabular-nums">
           {formatDate(cronjob.nextRunAt)}
         </span>
       ),
+      width: "w-42",
+      align: "left",
       stack: "field",
     },
     {
@@ -101,6 +127,8 @@ export default function CronjobsTable({
         ) : (
           <span className="text-xs text-muted-foreground">-</span>
         ),
+      width: "w-32",
+      align: "left",
       stack: "field",
     },
     {
@@ -128,65 +156,36 @@ export default function CronjobsTable({
           </button>
         );
       },
+      width: "w-18",
+      align: "left",
       stack: "actions",
     },
     {
-      header: t('column.actions'),
+      // A menu-only column is too narrow for its name, which stays for screen readers.
+      header: <span className="@max-4xl/table:sr-only">{t('column.actions')}</span>,
       accessor: (cronjob) => (
-        <>
-          {/* Wide table: the full button row */}
-          <div className="hidden @2xl/table:flex items-center justify-center gap-2 whitespace-nowrap">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onEdit(cronjob)}
-            >
-              {t('action.edit')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onDelete(cronjob.id)}
-            >
-              {t('action.delete')}
-            </Button>
-          </div>
-
-          {/* Narrow table: dropdown menu */}
-          <div className="@2xl/table:hidden flex items-center justify-center">
-            <DropdownMenuPrimitive.Root>
-              <DropdownMenuPrimitive.Trigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={t('column.actions')}
-                >
-                  <Ellipsis className="h-4 w-4" />
-                </button>
-              </DropdownMenuPrimitive.Trigger>
-              <DropdownMenuPrimitive.Portal>
-                <DropdownMenuPrimitive.Content
-                  className="z-50 min-w-[8rem] rounded-md border bg-background p-1 shadow-md"
-                  align="end"
-                >
-                  <DropdownMenuPrimitive.Item
-                    className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent"
-                    onSelect={() => onEdit(cronjob)}
-                  >
-                    {t('action.edit')}
-                  </DropdownMenuPrimitive.Item>
-                  <DropdownMenuPrimitive.Item
-                    className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent"
-                    onSelect={() => onDelete(cronjob.id)}
-                  >
-                    {t('action.delete')}
-                  </DropdownMenuPrimitive.Item>
-                </DropdownMenuPrimitive.Content>
-              </DropdownMenuPrimitive.Portal>
-            </DropdownMenuPrimitive.Root>
-          </div>
-        </>
+        // Every action in the menu; Edit is also a button once the table has the room.
+        <div className="flex items-center justify-center gap-1 @2xl/table:justify-start">
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden @4xl/table:inline-flex"
+            onClick={() => onEdit(cronjob)}
+          >
+            {t('action.edit')}
+          </Button>
+          <RowActionsMenu
+            label={t('action.actionsAria', { name: cronjob.name })}
+            actions={[
+              { label: t('action.edit'), onSelect: () => onEdit(cronjob) },
+              { label: t('action.delete'), onSelect: () => onDelete(cronjob.id), destructive: true },
+            ]}
+            className="size-11 @2xl/table:size-8"
+          />
+        </div>
       ),
+      width: "w-14 @4xl/table:w-32",
+      align: "left",
       stack: "actions",
     },
   ];
@@ -198,6 +197,7 @@ export default function CronjobsTable({
       loading={isLoading}
       caption={t('nav.cronjobs', { ns: 'common' })}
       narrowLayout="stack"
+      layout="fixed"
       emptyMessage={t('empty.title')}
       emptyContent={
         <EmptyState

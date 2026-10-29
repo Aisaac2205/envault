@@ -10,7 +10,8 @@ import {
 import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { ChevronRight, Inbox } from "lucide-react";
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { ChevronRight, Ellipsis, Inbox } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -155,6 +156,85 @@ export function ClampText({ text, className }: { text: string; className?: strin
     <span className={cn("min-w-0", className, CLAMP)} title={text}>
       {text}
     </span>
+  );
+}
+
+export interface RowAction {
+  label: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  /** Listed last, after a separator, in the destructive colour. It keeps its own confirmation. */
+  destructive?: boolean;
+}
+
+const MENU_ITEM =
+  "flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+
+/**
+ * The overflow menu of a row: every action of the row, safe ones first and
+ * destructive ones apart. Its trigger is named after the row, since a page of
+ * identical "Actions" buttons tells a screen reader nothing. 32px by default;
+ * stacked rows pass a 44px size.
+ */
+export function RowActionsMenu({
+  label,
+  actions,
+  className,
+}: {
+  /** Accessible name of the trigger, such as "Acciones de orders-db". */
+  label: string;
+  actions: RowAction[];
+  className?: string;
+}) {
+  const safe = actions.filter((action) => !action.destructive);
+  const destructive = actions.filter((action) => action.destructive);
+
+  return (
+    <DropdownMenuPrimitive.Root>
+      <DropdownMenuPrimitive.Trigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className={cn(
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted data-[state=open]:text-foreground",
+            className,
+          )}
+        >
+          <Ellipsis className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </DropdownMenuPrimitive.Trigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          className="z-50 min-w-[10rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          align="end"
+          sideOffset={4}
+        >
+          {safe.map((action) => (
+            <DropdownMenuPrimitive.Item
+              key={action.label}
+              className={cn(MENU_ITEM, "hover:bg-accent focus:bg-accent")}
+              disabled={action.disabled}
+              onSelect={action.onSelect}
+            >
+              {action.label}
+            </DropdownMenuPrimitive.Item>
+          ))}
+          {safe.length > 0 && destructive.length > 0 ? (
+            <DropdownMenuPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
+          ) : null}
+          {destructive.map((action) => (
+            <DropdownMenuPrimitive.Item
+              key={action.label}
+              className={cn(MENU_ITEM, "text-destructive hover:bg-destructive/10 focus:bg-destructive/10 focus:text-destructive")}
+              disabled={action.disabled}
+              onSelect={action.onSelect}
+            >
+              {action.label}
+            </DropdownMenuPrimitive.Item>
+          ))}
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
   );
 }
 

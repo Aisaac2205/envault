@@ -19,6 +19,7 @@
   "action.test": "Probar conexión",
   "action.testing": "Probando...",
   "action.actions": "Acciones",
+  "action.actionsAria": "Acciones de {{name}}",
   "empty.title": "No hay conexiones",
   "empty.description": "Crea tu primera conexión para empezar a gestionar bases de datos.",
   "empty.filtered.title": "No hay conexiones configuradas",

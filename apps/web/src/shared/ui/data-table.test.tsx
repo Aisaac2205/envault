@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { ClampText, DataTable, type Column } from './data-table';
+import { ClampText, DataTable, RowActionsMenu, type Column } from './data-table';
 
 interface SampleRow {
   id: number;
@@ -407,5 +408,53 @@ describe('ClampText', () => {
     const text = screen.getByText(long);
     expect(text).toHaveAttribute('title', long);
     expect(text).toHaveClass('text-xs', '@2xl/table:line-clamp-2', '@2xl/table:whitespace-normal', '@2xl/table:[overflow-wrap:anywhere]');
+  });
+});
+
+describe('RowActionsMenu', () => {
+  function renderMenu(onDelete = vi.fn(), onTest = vi.fn()) {
+    render(
+      <RowActionsMenu
+        label="Acciones de orders-db"
+        actions={[
+          { label: 'Eliminar', onSelect: onDelete, destructive: true },
+          { label: 'Probar conexión', onSelect: onTest },
+          { label: 'Editar', onSelect: vi.fn(), disabled: true },
+        ]}
+      />,
+    );
+    return { onDelete, onTest };
+  }
+
+  it('names the trigger after its row, with a visible focus ring and a 32px target', () => {
+    renderMenu();
+
+    const trigger = screen.getByRole('button', { name: 'Acciones de orders-db' });
+    expect(trigger).toHaveClass('size-8', 'focus-visible:ring-2');
+  });
+
+  it('lists the safe actions first and keeps the destructive ones apart, in the destructive colour', async () => {
+    const user = userEvent.setup();
+    const { onDelete } = renderMenu();
+
+    await user.click(screen.getByRole('button', { name: 'Acciones de orders-db' }));
+    const menu = await screen.findByRole('menu');
+    const items = within(menu).getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Probar conexión', 'Editar', 'Eliminar']);
+    expect(within(menu).getByRole('separator')).toBeInTheDocument();
+    expect(items[2]).toHaveClass('text-destructive');
+    expect(items[1]).toHaveAttribute('data-disabled');
+
+    await user.click(items[2]);
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws no separator when there is nothing destructive', async () => {
+    const user = userEvent.setup();
+    render(<RowActionsMenu label="Acciones" actions={[{ label: 'Editar', onSelect: vi.fn() }]} />);
+
+    await user.click(screen.getByRole('button', { name: 'Acciones' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByRole('separator')).toBeNull();
   });
 });

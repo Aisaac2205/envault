@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import CronjobsTable from "../CronjobsTable";
 import type { Cronjob } from "../../types";
 
@@ -57,8 +58,9 @@ describe("CronjobsTable", () => {
   it("renders environment as clean formatted text for each row", () => {
     render(<CronjobsTable {...defaultProps} />);
 
-    expect(screen.getByText("Producción")).toBeInTheDocument();
-    expect(screen.getByText("Desarrollo")).toBeInTheDocument();
+    // Once in the card's meta line and once in the table's second line.
+    expect(screen.getAllByText("Producción")).toHaveLength(2);
+    expect(screen.getAllByText("Desarrollo")).toHaveLength(2);
   });
 
   it("renders hyphen for unknown connection", () => {
@@ -69,6 +71,7 @@ describe("CronjobsTable", () => {
       },
     ];
     render(<CronjobsTable {...defaultProps} cronjobs={cronjobs} />);
+    // The card says so; the table's second line just leaves the environment out.
     expect(screen.getByText("-")).toBeInTheDocument();
   });
 
@@ -82,8 +85,8 @@ describe("CronjobsTable", () => {
   it("removes showEnv from ConnectionLabel usage", () => {
     render(<CronjobsTable {...defaultProps} />);
     // Connection names should still render
-    expect(screen.getByText("Prod DB")).toBeInTheDocument();
-    expect(screen.getByText("Dev DB")).toBeInTheDocument();
+    expect(screen.getAllByText("Prod DB")).toHaveLength(2);
+    expect(screen.getAllByText("Dev DB")).toHaveLength(2);
   });
 
   it("renders Entorno column in table header", () => {
@@ -133,19 +136,24 @@ describe("CronjobsTable", () => {
     expect(container.querySelector(".font-mono")).toBeNull();
   });
 
-  it("leads each connection name with the official logo of its engine", () => {
+  it("leads each connection name with the official logo of its engine, in both layouts", () => {
     render(<CronjobsTable {...defaultProps} />);
 
-    const postgres = screen.getByRole("img", { name: "PostgreSQL" });
-    expect(postgres.closest("td")).toBe(screen.getByText("Prod DB").closest("td"));
-    expect(screen.getByRole("img", { name: "MySQL" }).closest("td")).toBe(screen.getByText("Dev DB").closest("td"));
+    for (const [engine, name] of [
+      ["PostgreSQL", "Prod DB"],
+      ["MySQL", "Dev DB"],
+    ]) {
+      const logoCells = screen.getAllByRole("img", { name: engine }).map((img) => img.closest("td"));
+      const nameCells = screen.getAllByText(name).map((el) => el.closest("td"));
+      expect(logoCells).toEqual(nameCells);
+    }
   });
 
   it("keeps the connection name alone when its engine is unknown", () => {
     const cronjobs = [{ ...mockCronjobs[0], connectionId: "conn-3", connectionName: "QA DB" }];
     render(<CronjobsTable {...defaultProps} cronjobs={cronjobs} />);
 
-    expect(screen.getByText("QA DB")).toBeInTheDocument();
+    expect(screen.getAllByText("QA DB")).toHaveLength(2);
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
@@ -160,12 +168,18 @@ describe("CronjobsTable", () => {
     render(<CronjobsTable {...defaultProps} />);
     const row = screen.getByText("Daily Backup").closest("tr") as HTMLElement;
     const cellOf = (text: string) => within(row).getByText(text).closest("td");
+    // The table repeats the connection and environment under the name; the card keeps its meta cells.
+    const metaCellOf = (text: string) =>
+      within(row)
+        .getAllByText(text)
+        .map((el) => el.closest("td"))
+        .find((td) => td?.classList.contains("@max-2xl/table:order-5"));
 
     expect(cellOf("Daily Backup")).toHaveClass("@max-2xl/table:order-1");
-    expect(cellOf("Prod DB")).toHaveClass("@max-2xl/table:order-5");
-    expect(cellOf("Producción")).toHaveClass("@max-2xl/table:order-5");
+    expect(metaCellOf("Prod DB")).toBeDefined();
+    expect(metaCellOf("Producción")).toBeDefined();
     expect(within(row).getByRole("switch").closest("td")).toHaveClass("@max-2xl/table:order-3", "relative", "z-10");
-    expect(within(row).getByRole("button", { name: "Acciones" }).closest("td")).toHaveClass("@max-2xl/table:order-3");
+    expect(within(row).getByRole("button", { name: "Acciones de Daily Backup" }).closest("td")).toHaveClass("@max-2xl/table:order-3");
     for (const [text, label] of [
       ["Completado", "Último estado"],
       ["Todos los días a las 02:00", "Programación"],
@@ -181,15 +195,78 @@ describe("CronjobsTable", () => {
     const row = screen.getByText("Daily Backup").closest("tr") as HTMLElement;
 
     expect(within(row).getByRole("switch")).toHaveClass("@max-2xl/table:size-11");
-    expect(within(row).getByRole("button", { name: "Acciones" })).toHaveClass("size-11");
+    expect(within(row).getByRole("button", { name: "Acciones de Daily Backup" })).toHaveClass("size-11", "@2xl/table:size-8");
   });
 
-  it("picks the button row or the menu by the room the table has, not the viewport", () => {
-    render(<CronjobsTable {...defaultProps} />);
+  it("shows Edit as a button only once the table has the room, and every action in the menu", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    render(<CronjobsTable {...defaultProps} onDelete={onDelete} />);
     const row = screen.getByText("Daily Backup").closest("tr") as HTMLElement;
 
-    expect(within(row).getByRole("button", { name: "Editar" }).parentElement).toHaveClass("hidden", "@2xl/table:flex");
-    expect(within(row).getByRole("button", { name: "Acciones" }).parentElement).toHaveClass("@2xl/table:hidden");
+    expect(within(row).getByRole("button", { name: "Editar" })).toHaveClass("hidden", "@4xl/table:inline-flex");
+    expect(within(row).queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+    // A menu-only column is too narrow for its header, which stays for screen readers.
+    expect(within(screen.getByRole("columnheader", { name: "Acciones" })).getByText("Acciones")).toHaveClass("@max-4xl/table:sr-only");
+
+    await user.click(within(row).getByRole("button", { name: "Acciones de Daily Backup" }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Editar", "Eliminar"]);
+    expect(within(menu).getByRole("separator")).toBeInTheDocument();
+    const remove = within(menu).getByRole("menuitem", { name: "Eliminar" });
+    expect(remove).toHaveClass("text-destructive");
+    await user.click(remove);
+    expect(onDelete).toHaveBeenCalledWith("cj-1");
+  });
+
+  it("fixes every column but the name, which takes the rest of the width", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveClass("table-fixed");
+    // Name, schedule, next run, last status, active and actions: connection and environment ride under the name.
+    expect(Array.from(table.querySelectorAll("colgroup > col")).map((col) => col.className)).toEqual([
+      "",
+      "w-32",
+      "w-42",
+      "w-32",
+      "w-18",
+      "w-14 @4xl/table:w-32",
+    ]);
+    for (const name of ["Conexión", "Entorno"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveClass("@2xl/table:hidden");
+    }
+  });
+
+  it("shows the engine, the connection and the environment as the name's muted second line", () => {
+    render(<CronjobsTable {...defaultProps} />);
+    const row = screen.getByText("Daily Backup").closest("tr") as HTMLElement;
+    const nameCell = within(row).getByText("Daily Backup").closest("td") as HTMLElement;
+
+    const secondLine = within(nameCell).getByText("Prod DB").closest(".\\@max-2xl\\/table\\:hidden") as HTMLElement;
+    expect(secondLine).toHaveClass("text-muted-foreground");
+    expect(within(secondLine).getByRole("img", { name: "PostgreSQL" })).toBeInTheDocument();
+    expect(within(secondLine).getByText("Producción")).toBeInTheDocument();
+  });
+
+  it("clamps a long name and schedule to two lines, whole in their titles", () => {
+    const longName = "Respaldo diario de contabilidad general (madrugada)";
+    render(<CronjobsTable {...defaultProps} cronjobs={[{ ...mockCronjobs[0], name: longName }]} />);
+
+    expect(screen.getByText(longName)).toHaveAttribute("title", longName);
+    expect(screen.getByText(longName)).toHaveClass("@2xl/table:line-clamp-2");
+    expect(screen.getByText("Todos los días a las 02:00")).toHaveAttribute("title", "Todos los días a las 02:00");
+  });
+
+  it("keeps the next run on one line and aligns every column left", () => {
+    render(<CronjobsTable {...defaultProps} />);
+
+    expect(screen.getByText("Próxima ejecución", { selector: "th" })).toHaveClass("[&:not(:first-child)]:text-left");
+    for (const name of ["Nombre", "Programación", "Último estado", "Activo", "Acciones"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveClass("[&:not(:first-child)]:text-left");
+    }
+    const nextRun = screen.getAllByText((_, el) => el?.tagName === "SPAN" && /\d{2}\/\d{2}\/\d{4}/.test(el.textContent ?? "") && el.children.length === 0)[0];
+    expect(nextRun).toHaveClass("whitespace-nowrap");
   });
 
   it("renders empty state when no cronjobs", () => {

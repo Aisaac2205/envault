@@ -19,6 +19,7 @@
   "action.test": "Test connection",
   "action.testing": "Testing...",
   "action.actions": "Actions",
+  "action.actionsAria": "Actions for {{name}}",
   "empty.title": "No connections",
   "empty.description": "Create your first connection to start managing databases.",
   "empty.filtered.title": "No connections configured",
