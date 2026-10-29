@@ -62,6 +62,24 @@ describe('Pagination', () => {
     expect(inactiveLink).not.toHaveAttribute('aria-current');
   });
 
+  it('draws the active page number in the foreground color of its surface', () => {
+    render(
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationLink isActive>1</PaginationLink>
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>,
+    );
+
+    const activeLink = screen.getByText('1');
+    // `accent` is a surface color; on `accent-soft` it hides the number in both themes.
+    expect(activeLink).toHaveClass('bg-accent-soft', 'text-accent-foreground', 'ring-1', 'ring-border');
+    expect(activeLink).not.toHaveClass('text-accent');
+    expect(activeLink).not.toHaveClass('ring-accent/20');
+  });
+
   it('calls onClick when page link is clicked', () => {
     const handler: Mock<(...args: never[]) => void> = vi.fn();
 

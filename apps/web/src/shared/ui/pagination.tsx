@@ -13,7 +13,7 @@ const paginationLinkVariants = cva(
   {
     variants: {
       active: {
-        true: "bg-accent-soft text-accent relative",
+        true: "bg-accent-soft text-accent-foreground relative",
         false: "hover:bg-muted",
       },
     },
@@ -114,7 +114,7 @@ function PaginationLink({
       className={cn(
         paginationLinkVariants({ active: isActive }),
         "min-w-11 h-11 px-2 sm:min-w-9 sm:h-9",
-        isActive && "ring-1 ring-accent/20",
+        isActive && "ring-1 ring-border",
         className,
       )}
       {...props}
