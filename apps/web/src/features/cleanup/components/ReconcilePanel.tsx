@@ -165,7 +165,8 @@ export function ReconcilePanel() {
           </ul>
         )}
 
-        <div className="flex items-center justify-between gap-3 pt-2">
+        {/* On a phone the status takes its own line and the button the full width, as in the panel beside it. */}
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <p
             aria-live="polite"
             role="status"
