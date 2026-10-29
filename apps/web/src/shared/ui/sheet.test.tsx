@@ -79,4 +79,30 @@ describe('Sheet', () => {
 
     expect(screen.getByText('Left content')).toBeInTheDocument();
   });
+
+  // motion animates opacity on the same elements and commits the final inline style
+  // when it finishes; a CSS opacity transition there restarts on that commit (WebKit
+  // fades the overlay out and in again: the page blinks). jsdom cannot show the
+  // blink, so this pins the class contract: motion alone owns opacity.
+  it('leaves the opacity of the open overlay and panel to motion, with no CSS transition', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <Sheet>
+        <SheetTrigger>Open</SheetTrigger>
+        <SheetContent side="left">Panel</SheetContent>
+      </Sheet>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]') as HTMLElement;
+    const content = document.querySelector('[data-slot="sheet-content"]') as HTMLElement;
+    for (const element of [overlay, content]) {
+      expect(element).toBeInTheDocument();
+      expect(element).toHaveAttribute('data-state', 'open');
+      expect(element.className).not.toMatch(/(^|\s)transition(-opacity)?(\s|$)/);
+      expect(element.className).not.toMatch(/opacity-0/);
+    }
+  });
 });

@@ -38,11 +38,14 @@ function SheetOverlay({
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
   const reducedMotion = useReducedMotion();
 
+  // motion alone owns opacity here and on the content: a CSS opacity transition on
+  // the same element restarts when motion commits its final style, and WebKit fades
+  // the overlay out and in again, which blinks the whole page.
   return (
     <DialogPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 transition-opacity data-[state=closed]:opacity-0",
+        "fixed inset-0 z-50 bg-black/50",
         className
       )}
       {...props}
@@ -107,7 +110,7 @@ function SheetContent({
       <DialogPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed z-50 flex flex-col bg-background shadow-lg outline-none transition-opacity data-[state=closed]:opacity-0",
+          "fixed z-50 flex flex-col bg-background shadow-lg outline-none",
           side === "right" &&
             "inset-y-0 right-0 h-full w-3/4 max-w-sm border-l",
           side === "left" &&
