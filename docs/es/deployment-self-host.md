@@ -40,7 +40,7 @@ El Web responde en `http://localhost:5173` y reenvía las peticiones a `/api` ha
 
 Para actualizar, defina `ENVAULT_VERSION` con la nueva versión y ejecute los mismos dos comandos, `docker compose pull` y `docker compose up -d`. Las migraciones se ejecutan cuando arranca la nueva API (vea la [sección 8](#8-comportamiento-de-migración)).
 
-Ejecute siempre `docker compose pull` antes de `up`. Ese comando falla cuando una imagen no se puede descargar (una versión mal escrita o la falta de red), mientras que `up` por sí solo recurre a construir esa imagen con el código fuente de la carpeta actual.
+`docker compose up -d` consulta el registro en cada arranque (`pull_policy: always`), por lo que también toma una etiqueta que cambió, como `latest`. Si la descarga falla (una versión mal escrita o la falta de red), el comando se detiene con un error. El archivo de la raíz no tiene bloque de build, así que nunca construye la carpeta actual en su lugar.
 
 ### Construir las imágenes usted mismo
 
@@ -62,7 +62,7 @@ docker build -t envault-web:local -f apps/web/Dockerfile .
 
 Ambos Dockerfiles esperan la raíz del monorepo como contexto de build porque leen `pnpm-workspace.yaml` y `pnpm-lock.yaml`.
 
-La imagen de la API instala los clientes de PostgreSQL 14 a 18 uno junto a otro para poder respaldar y restaurar cualquiera de esas versiones major. La lista se cambia con el build arg `POSTGRES_CLIENT_VERSIONS` (separada por espacios), por ejemplo `docker build --build-arg POSTGRES_CLIENT_VERSIONS="16 17 18" -f apps/api/Dockerfile .`; para el build de Compose, agrégala en `build.args` del service `api` en `docker-compose.yml`.
+La imagen de la API instala los clientes de PostgreSQL 14 a 18 uno junto a otro para poder respaldar y restaurar cualquiera de esas versiones major. La lista se cambia con el build arg `POSTGRES_CLIENT_VERSIONS` (separada por espacios), por ejemplo `docker build --build-arg POSTGRES_CLIENT_VERSIONS="16 17 18" -f apps/api/Dockerfile .`; para el build de Compose, agrégala en `build.args` del service `api` en `docker-compose.build.yml`.
 
 ### Despliegue Individual de Contenedores
 

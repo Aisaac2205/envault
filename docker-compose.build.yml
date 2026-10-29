@@ -12,7 +12,20 @@ services:
   api:
     image: envault-management-api:local
     pull_policy: build
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: production
+      # The image installs the PostgreSQL clients 14 to 18 side by side (ARG
+      # POSTGRES_CLIENT_VERSIONS in apps/api/Dockerfile). For another list,
+      # uncomment and adjust (space separated):
+      # args:
+      #   POSTGRES_CLIENT_VERSIONS: "16 17 18"
 
   web:
     image: envault-management-web:local
     pull_policy: build
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: production

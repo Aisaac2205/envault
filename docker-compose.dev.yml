@@ -20,6 +20,8 @@ services:
     image: envault-management-api:dev
     pull_policy: build
     build:
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: dev
     volumes:
       - ./apps/api/src:/app/apps/api/src
@@ -39,6 +41,8 @@ services:
     image: envault-management-web:dev
     pull_policy: build
     build:
+      context: .
+      dockerfile: apps/web/Dockerfile
       target: dev
     env_file: .env
     environment:

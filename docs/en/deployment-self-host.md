@@ -40,7 +40,7 @@ The Web answers on `http://localhost:5173` and proxies `/api` to the API, which 
 
 To upgrade, set `ENVAULT_VERSION` to the new release and run the same two commands, `docker compose pull` and `docker compose up -d`. Migrations run when the new API starts (see [§8](#8-migration-behavior)).
 
-Always run `docker compose pull` before `up`. It fails when an image cannot be pulled (a mistyped version, no network), while `up` alone falls back to building that image from the source in the current folder.
+`docker compose up -d` checks the registry on every start (`pull_policy: always`), so it also picks up a moved tag such as `latest`. A failed pull (a mistyped version, no network) stops it with an error: the root file has no build block, so it never builds the current folder instead.
 
 ### Building the images yourself
 
@@ -62,7 +62,7 @@ docker build -t envault-web:local -f apps/web/Dockerfile .
 
 Both Dockerfiles expect the monorepo root as the build context because they read `pnpm-workspace.yaml` and `pnpm-lock.yaml`.
 
-The API image installs the PostgreSQL clients 14 to 18 side by side so it can dump and restore any of those server majors. Change the list with the `POSTGRES_CLIENT_VERSIONS` build arg (space-separated), for example `docker build --build-arg POSTGRES_CLIENT_VERSIONS="16 17 18" -f apps/api/Dockerfile .`; for the Compose build, add it under `build.args` of the `api` service in `docker-compose.yml`.
+The API image installs the PostgreSQL clients 14 to 18 side by side so it can dump and restore any of those server majors. Change the list with the `POSTGRES_CLIENT_VERSIONS` build arg (space-separated), for example `docker build --build-arg POSTGRES_CLIENT_VERSIONS="16 17 18" -f apps/api/Dockerfile .`; for the Compose build, add it under `build.args` of the `api` service in `docker-compose.build.yml`.
 
 ### Individual Container Deployment
 
