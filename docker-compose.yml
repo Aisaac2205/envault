@@ -1,9 +1,11 @@
 # Runs the images published to GHCR on every release. Pin a release with
-# ENVAULT_VERSION in .env (for example 1.57.0); unset, it follows `latest`.
+# ENVAULT_VERSION in .env (for example 1.57.0); unset, it uses `latest`.
 #   docker compose up -d
 #
-# `pull_policy: always` checks the registry on every `up`, so a moved tag such
-# as `latest` is picked up, and a failed pull stops `up` with an error. There is
+# `pull_policy: missing` pulls an image only when it is not on the host, so a
+# restart never changes the running version. Upgrade on purpose: change
+# ENVAULT_VERSION (or run `docker compose pull`), then `docker compose up -d`.
+# A failed pull stops `up` with an error. There is
 # no build block here on purpose: with one, a failed pull would quietly build
 # this checkout under the published name. The overlays carry the build recipe
 # and their own local image names:
@@ -14,7 +16,7 @@
 services:
   api:
     image: ghcr.io/aisaac2205/envault-api:${ENVAULT_VERSION:-latest}
-    pull_policy: always
+    pull_policy: missing
     env_file: .env
     depends_on:
       db:
@@ -36,7 +38,7 @@ services:
 
   web:
     image: ghcr.io/aisaac2205/envault-web:${ENVAULT_VERSION:-latest}
-    pull_policy: always
+    pull_policy: missing
     environment:
       # Sigue el PORT real de la API en vez de asumir 3000 si alguien
       # lo cambia en .env — ver Dockerfile ENV API_UPSTREAM default.

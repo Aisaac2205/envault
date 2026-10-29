@@ -31,16 +31,39 @@ El `docker-compose.yml` de la raíz ejecuta la API, el Web, PostgreSQL y Redis a
 ```bash
 cp .env.example .env
 # Complete .env con los secretos y las contraseñas, REDIS_HOST=redis, el almacenamiento R2
-# y ENVAULT_VERSION (por ejemplo 1.57.0; con latest sigue cada versión).
+# y ENVAULT_VERSION (una versión como 1.57.0; se recomienda fijarla).
 docker compose pull
 docker compose up -d
 ```
 
 El Web responde en `http://localhost:5173` y reenvía las peticiones a `/api` hacia la API, que permanece en la red interna. Consulte [environment-variables.md](environment-variables.md#docker-compose-env-en-la-raíz) para ver todos los valores.
 
-Para actualizar, defina `ENVAULT_VERSION` con la nueva versión y ejecute los mismos dos comandos, `docker compose pull` y `docker compose up -d`. Las migraciones se ejecutan cuando arranca la nueva API (vea la [sección 8](#8-comportamiento-de-migración)).
+`docker compose up -d` descarga una imagen solo cuando todavía no está en el host (`pull_policy: missing`), así que un reinicio nunca cambia la versión en ejecución, tampoco con `latest`. Si la descarga falla (una versión mal escrita o la falta de red), el comando se detiene con un error. El archivo de la raíz no tiene bloque de build, así que nunca construye la carpeta actual en su lugar.
 
-`docker compose up -d` consulta el registro en cada arranque (`pull_policy: always`), por lo que también toma una etiqueta que cambió, como `latest`. Si la descarga falla (una versión mal escrita o la falta de red), el comando se detiene con un error. El archivo de la raíz no tiene bloque de build, así que nunca construye la carpeta actual en su lugar.
+### Actualizar y volver a una versión anterior
+
+Las actualizaciones son explícitas. La nueva API ejecuta sus migraciones al arrancar y nada las revierte al volver a una versión anterior (vea la [sección 8](#8-comportamiento-de-migración)), por eso conviene respaldar antes la base de control.
+
+```bash
+# Con latest, anote primero la versión en ejecución porque la necesitará para volver atrás.
+docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' ghcr.io/aisaac2205/envault-api:latest
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -F c' > envault-before-upgrade.dump
+# Defina en .env la nueva versión en ENVAULT_VERSION (con latest, omita este paso).
+docker compose pull
+docker compose up -d
+```
+
+Para volver atrás, detenga la API, restaure ese respaldo en una base de control vacía e inicie la versión anterior.
+
+```bash
+docker compose stop api
+docker compose exec -T db sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < envault-before-upgrade.dump
+# Defina en .env la versión anterior en ENVAULT_VERSION.
+docker compose up -d
+```
+
+La restauración pierde lo que cambió después de la actualización (conexiones, historial de respaldos y registros de auditoría). Los archivos de respaldo que ya están en R2 se conservan.
 
 ### Construir las imágenes usted mismo
 

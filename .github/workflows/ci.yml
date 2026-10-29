@@ -187,8 +187,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm exec semantic-release --ci
 
+      # Also after a late semantic-release failure: the tag may already be pushed.
       - name: Detect the released version
         id: released
+        if: ${{ !cancelled() && steps.tags-before.outcome == 'success' }}
         env:
           TAGS_BEFORE: ${{ steps.tags-before.outputs.tags }}
         run: |
@@ -215,7 +217,8 @@ jobs:
   publish-images:
     name: Publish container images
     needs: [release]
-    if: needs.release.outputs.published == 'true'
+    # Runs after a release job that failed late with its tag pushed.
+    if: ${{ !cancelled() && needs.release.outputs.published == 'true' }}
     permissions:
       contents: read
       packages: write

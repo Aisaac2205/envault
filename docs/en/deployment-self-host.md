@@ -31,16 +31,39 @@ The root `docker-compose.yml` runs the API, the Web, PostgreSQL and Redis from t
 ```bash
 cp .env.example .env
 # Fill in .env: the secrets and passwords, REDIS_HOST=redis, the R2 storage,
-# and ENVAULT_VERSION (for example 1.57.0; `latest` follows every release).
+# and ENVAULT_VERSION (a release such as 1.57.0; pinning one is recommended).
 docker compose pull
 docker compose up -d
 ```
 
 The Web answers on `http://localhost:5173` and proxies `/api` to the API, which stays on the internal network. See [environment-variables.md](environment-variables.md#docker-compose-env-at-the-root) for every value.
 
-To upgrade, set `ENVAULT_VERSION` to the new release and run the same two commands, `docker compose pull` and `docker compose up -d`. Migrations run when the new API starts (see [§8](#8-migration-behavior)).
+`docker compose up -d` pulls an image only when it is not on the host yet (`pull_policy: missing`), so a restart never changes the running version, `latest` included. A failed pull (a mistyped version, no network) stops it with an error: the root file has no build block, so it never builds the current folder instead.
 
-`docker compose up -d` checks the registry on every start (`pull_policy: always`), so it also picks up a moved tag such as `latest`. A failed pull (a mistyped version, no network) stops it with an error: the root file has no build block, so it never builds the current folder instead.
+### Upgrading and rolling back
+
+Upgrades are explicit. The new API runs its migrations when it starts and nothing reverts them on a downgrade (see [§8](#8-migration-behavior)), so back up the control database first:
+
+```bash
+# With `latest`, note the running release first: you need it to roll back.
+docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.version" }}' ghcr.io/aisaac2205/envault-api:latest
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -F c' > envault-before-upgrade.dump
+# Set ENVAULT_VERSION to the new release in .env (with `latest`, skip this).
+docker compose pull
+docker compose up -d
+```
+
+To roll back, stop the API, restore that backup into an empty control database, and start the previous release:
+
+```bash
+docker compose stop api
+docker compose exec -T db sh -c 'dropdb -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < envault-before-upgrade.dump
+# Set ENVAULT_VERSION to the previous release in .env.
+docker compose up -d
+```
+
+The restore loses what changed after the upgrade (connections, backup history, audit entries). Backup files already in R2 stay there.
 
 ### Building the images yourself
 
