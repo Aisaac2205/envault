@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useId, useMemo, useState, useRef } from "react";
 import { Badge } from "@/shared/ui/badge";
 import { StatusBadge } from "@/shared/ui/status-badge";
 import { EmptyState } from "@/shared/ui/empty-state";
@@ -13,7 +13,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableScrollRegion,
 } from "@/shared/ui/table";
+import { StackFieldLabel, stackedTableClasses as stacked } from "@/shared/ui/data-table";
+import { cn } from "@/shared/lib/cn";
 import {
   Popover,
   PopoverContent,
@@ -114,6 +117,7 @@ export function RestoreHistory({
   const [statusOpen, setStatusOpen] = useState(false);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
 
   const MAX_HISTORY_ITEMS = 18;
 
@@ -139,11 +143,11 @@ export function RestoreHistory({
 
   return (
     <div className="flex min-h-0 h-full flex-col">
-      {/* Header with filters */}
-      <div className="mb-4 flex items-center justify-between">
+      {/* Header with filters; on a narrow pane the filters wrap below the title */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
           <HistoryIcon className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">{t('history.title')}</h3>
+          <h3 id={headingId} className="text-sm font-semibold">{t('history.title')}</h3>
           {filteredJobs.length > 0 && (
             <span className="text-xs text-muted-foreground">
               ({displayedJobs.length}
@@ -154,7 +158,7 @@ export function RestoreHistory({
             </span>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Popover open={envOpen} onOpenChange={setEnvOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2 rounded-lg">
@@ -215,13 +219,20 @@ export function RestoreHistory({
         </div>
       </div>
 
-      {/* Table with stable header and zero-CLS empty state */}
-      <div
-        ref={tableRef}
-        className="min-h-0 flex-1 overflow-auto rounded-lg border border-border"
+      {/*
+        Table with stable header and zero-CLS empty state. It keeps its own
+        pane (full height, sticky header), which DataTable does not offer, and
+        reuses DataTable's scroll region and stacked rows: below 42rem of pane
+        width each job is a card with the connection, its status, then the
+        start and the duration, then the environment.
+      */}
+      <TableScrollRegion
+        scrollRef={tableRef}
+        aria-labelledby={headingId}
+        className={cn("min-h-0 flex-1 overflow-auto rounded-lg border border-border", stacked.container)}
       >
-        <Table>
-          <TableHeader className="sticky top-0 z-10 bg-background">
+        <Table aria-labelledby={headingId} className={stacked.table}>
+          <TableHeader className={cn("sticky top-0 z-10 bg-background", stacked.header)}>
             <TableRow className="hover:bg-transparent">
               <TableHead className="py-3">{t('column.connection')}</TableHead>
               <TableHead className="py-3">{t('column.date')}</TableHead>
@@ -230,10 +241,10 @@ export function RestoreHistory({
               <TableHead className="py-3 text-right">{t('column.duration')}</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className={stacked.body}>
             {displayedJobs.length === 0 ? (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className="h-64 text-center align-middle">
+              <TableRow className={cn("hover:bg-transparent", stacked.block)}>
+                <TableCell colSpan={5} className={cn("h-64 text-center align-middle", stacked.block)}>
                   <EmptyState
                     icon={<HistoryIcon className="size-6 text-muted-foreground/60" />}
                     title={t('empty.noRestores')}
@@ -245,31 +256,36 @@ export function RestoreHistory({
             ) : displayedJobs.map((job) => {
                 const info = job.targetConnectionId ? connectionMap.get(job.targetConnectionId) : undefined;
                 return (
-                  <TableRow key={job.id} className="hover:bg-muted/40">
-                    <TableCell className="py-3 max-w-[180px]">
+                  <TableRow key={job.id} className={cn("hover:bg-muted/40", stacked.row)}>
+                    <TableCell className={cn("py-3 max-w-[180px]", stacked.cell("title"), "@max-2xl/table:max-w-none")}>
                       {info ? (
                         <div className="flex items-center gap-2">
                           {DB_LOGOS[info.dbType] && (
                             <img src={DB_LOGOS[info.dbType]} alt={info.dbType} className="h-4 w-4 shrink-0" />
                           )}
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium" title={info.name}>{info.name}</p>
-                            <p className="truncate text-[11px] text-muted-foreground" title={info.database}>{info.database}</p>
+                            <p className="truncate text-sm font-medium @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]" title={info.name}>{info.name}</p>
+                            <p className="truncate text-[11px] text-muted-foreground @max-2xl/table:whitespace-normal @max-2xl/table:[overflow-wrap:anywhere]" title={info.database}>{info.database}</p>
                           </div>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
-                      {job.startedAt ? formatDateTimeShort(job.startedAt) : "-"}
+                    <TableCell className={cn("whitespace-nowrap py-3 text-xs text-muted-foreground", stacked.cell("meta"))}>
+                      {job.startedAt ? (
+                        <time dateTime={job.startedAt}>{formatDateTimeShort(job.startedAt)}</time>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
-                    <TableCell className="py-3">
+                    <TableCell className={cn("py-3", stacked.cell("field"))}>
+                      <StackFieldLabel>{t('column.environment')}</StackFieldLabel>
                       <Badge variant="outline" className="rounded-full text-xs font-normal">
                         {job.targetEnvironment ?? "-"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="py-3">
+                    <TableCell className={cn("py-3", stacked.cell("badge"))}>
                       <div className="flex items-center gap-1.5">
                         <StatusBadge status={job.status} />
                         {(job.status === "running" || job.status === "pending") && (
@@ -277,7 +293,8 @@ export function RestoreHistory({
                             variant="ghost"
                             size="sm"
                             onClick={() => setJobToCancel(job)}
-                            className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            // A 24px mark with a 44px hit area in the stacked card.
+                            className="relative h-6 w-6 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive @max-2xl/table:before:absolute @max-2xl/table:before:-inset-2.5"
                             aria-label={t("confirm.cancelJob.confirm")}
                             title={t("confirm.cancelJob.confirm")}
                           >
@@ -286,7 +303,12 @@ export function RestoreHistory({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap py-3 text-right text-xs text-muted-foreground">
+                    <TableCell
+                      className={cn(
+                        "whitespace-nowrap py-3 text-right text-xs text-muted-foreground @max-2xl/table:tabular-nums",
+                        stacked.cell("meta", { afterMeta: true }),
+                      )}
+                    >
                       {job.startedAt
                         ? formatDuration(
                             job.startedAt,
@@ -299,7 +321,7 @@ export function RestoreHistory({
               })}
             </TableBody>
           </Table>
-        </div>
+        </TableScrollRegion>
 
       {/* Cancel Restore Confirmation Dialog */}
       <Dialog open={!!jobToCancel} onOpenChange={(open) => !open && setJobToCancel(null)}>
