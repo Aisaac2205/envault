@@ -33,8 +33,8 @@ export function ConnectionsStats({
   const mysql = byType["mysql"] ?? 0;
 
   return (
-    <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <StaggerItem>
+    <Stagger className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StaggerItem className="h-full">
         <StatCard
           label={t('stats.total')}
           value={total}
@@ -43,7 +43,7 @@ export function ConnectionsStats({
           variant="outlined"
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           label={t('stats.active')}
           value={active}
@@ -52,7 +52,7 @@ export function ConnectionsStats({
           variant="outlined"
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           label={t('stats.byEnvironment')}
           value={
@@ -74,7 +74,7 @@ export function ConnectionsStats({
           variant="outlined"
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           label={t('stats.byType')}
           value={

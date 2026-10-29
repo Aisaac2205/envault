@@ -26,8 +26,8 @@ export function UsersStats({ users, loading = false }: UsersStatsProps) {
   }, [users, now]);
 
   return (
-    <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <StaggerItem>
+    <Stagger className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t("stats.totalUsers")}
@@ -36,7 +36,7 @@ export function UsersStats({ users, loading = false }: UsersStatsProps) {
           loading={loading}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t("stats.admins")}
@@ -45,7 +45,7 @@ export function UsersStats({ users, loading = false }: UsersStatsProps) {
           loading={loading}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t("stats.active")}
@@ -54,7 +54,7 @@ export function UsersStats({ users, loading = false }: UsersStatsProps) {
           loading={loading}
         />
       </StaggerItem>
-      <StaggerItem>
+      <StaggerItem className="h-full">
         <StatCard
           variant="outlined"
           label={t("stats.recent")}
