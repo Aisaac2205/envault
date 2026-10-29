@@ -32,6 +32,7 @@
   "label.records": "registros",
   "label.none": "-",
   "label.more": "+{{count}} más",
+  "label.dataTable": "Tabla de datos",
   "time.now": "Ahora",
   "time.tomorrow": "Mañana",
   "time.in": "En",

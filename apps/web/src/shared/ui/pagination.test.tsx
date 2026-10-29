@@ -116,6 +116,40 @@ describe('Pagination', () => {
     // Ellipsis renders the MoreHorizontal icon (hidden from screen readers)
   });
 
+  it('tags page links and the ellipsis so phones keep only the current page', () => {
+    render(
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationLink>1</PaginationLink>
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationEllipsis />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationLink isActive>5</PaginationLink>
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationNext />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>,
+    );
+
+    const list = screen.getByRole('list');
+    expect(list).toHaveClass('flex-wrap');
+    expect(list.querySelectorAll('[data-slot="pagination-ellipsis"]')).toHaveLength(1);
+
+    const pages = list.querySelectorAll('[data-slot="pagination-link"]');
+    expect(Array.from(pages, (page) => page.textContent)).toEqual(['1', '5']);
+    expect(screen.getByText('5')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByLabelText('Ir a la página anterior')).not.toHaveAttribute('data-slot', 'pagination-link');
+    expect(screen.getByLabelText('Ir a la página siguiente')).not.toHaveAttribute('data-slot', 'pagination-link');
+  });
+
   it('renders with custom labels', () => {
     render(
       <Pagination>
