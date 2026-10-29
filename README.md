@@ -2,209 +2,240 @@
 
 > 🇪🇸 Versión en español: [README.es.md](README.es.md)
 
-Centralized database management platform. Register database connections, run and schedule backups, restore dumps, audit operations and monitor jobs across multiple environments from a single web interface.
+**Real production data in dev and QA, without overwriting the wrong database.**
+
+Scheduled backups to your own Cloudflare R2 bucket, a dry run before you restore, and production blocked as a restore target.
+
+EnVault is a self-hosted, [Fair Source](#license) web app for PostgreSQL and MySQL. It backs up your production databases to Cloudflare R2 and restores those dumps into your development and QA databases. Connections labeled PROD can be backed up but are refused as restore targets.
+
+![EnVault services: envault-web, envault-api, PostgreSQL, Redis and BullMQ](docs/assets/architecture-preview.png)
+
+![Restoring a PROD backup into a DEV database in EnVault: pick the dump and the target, review the dry run, type the target name to confirm, and follow the restore until it completes](docs/assets/restore-flow.gif)
 
 ---
 
-## Stack
+## Why EnVault
 
-| Layer           | Technology                    | Version |
-| --------------- | ----------------------------- | ------- |
-| Runtime         | Node.js                       | ≥ 22    |
-| Package manager | pnpm workspaces               | ≥ 9     |
-| Language        | TypeScript                    | ^5.8.3  |
-| Backend         | NestJS                        | ^11.0.7 |
-| ORM             | TypeORM                       | ^0.3.20 |
-| Frontend        | React                         | ^19.1.0 |
-| Build tool      | Vite                          | ^6.3.3  |
-| Router          | React Router                  | ^7.5.0  |
-| Auth            | Better Auth (native, cookie sessions) | -  |
-| Storage         | Cloudflare R2 (S3-compatible) | -       |
-| Control DB      | **PostgreSQL 16+ (required)** | -       |
-| Queues & Jobs   | Redis 7 + BullMQ (^11.0.3)    | -       |
-| Real-time       | Server-Sent Events (SSE)      | -       |
+Loading real data into dev and QA should be routine. On low-cost hosting it often isn't:
+
+- **Platform backups stay inside the platform.** On Railway, for example, volume backups need the Pro plan and [can only be restored into the same project and environment](https://docs.railway.com/volumes/backups), so they can't seed a dev database from production.
+- **Point-in-time recovery is expensive.** Supabase's [PITR add-on](https://supabase.com/docs/guides/platform/backups) starts at about $100 per month on top of the Pro plan.
+- **Accidents happen.** A dump loaded over the wrong database, or a database deleted by mistake, is easy to cause with hand-run `pg_restore` or `mysql` commands.
+
+EnVault gives you one place to take production dumps on a schedule and load them into dev and QA, with guardrails around production.
+
+> Prices and plan limits were checked in October 2026. Check each provider's page for current terms.
 
 ---
 
-## Data Integrity and Verifiable Backups
+## What it does today
 
-EnVault Management enforces strict data integrity invariants to eliminate silent dump corruption, partial restores, and disaster recovery blind spots:
+### Back up production
 
-1. **In-Flight Cryptographic Hashing**
-   Every database dump stream (`pg_dump` or `mysqldump`) computes an unbuffered SHA-256 digest in flight. The digest is persisted in both the control database and the Cloudflare R2 companion manifest v2 (`*.manifest.json`).
-2. **Pre-Restore Digest Verification**
-   Before piping bytes into a target database, EnVault downloads the dump to isolated staging, computes its SHA-256 digest, and validates it against the recorded database digest using `crypto.timingSafeEqual` (preventing timing attacks and object substitution).
-3. **Structural Preflight Check (`pg_restore -l`)**
-   The table of contents (TOC) is validated prior to opening connections to the target database. Truncated or malformed dumps abort before modifying destination state.
-4. **All-or-Nothing Transactions**
-   PostgreSQL restores execute with `--single-transaction`, guaranteeing clean rollback on error. MySQL restores execute via a 4-phase isolated shadow database with atomic table swap. Views, triggers, stored routines and events are restored too; they are recreated right after the swap, so there is a short window in which the swapped tables have no triggers or views. If the swap fails, the previous tables and objects are put back.
-5. **Cold Disaster Recovery**
-   Complete bare-metal runbook and operational sandbox drill scripts ensure platform recoverability from zero. Read [docs/en/disaster-recovery.md](docs/en/disaster-recovery.md).
-6. **Two-Stage Coordinated Purge**
-   The purge process operates in two coordinated stages to prevent orphan files in cloud storage and inconsistent entries in the control database. First, EnVault issues the physical deletion command to the object storage bucket. Once the cloud provider confirms remote object removal, the platform purges the corresponding job record from the control database.
-7. **Non-Destructive Dry-Run Simulation**
-   To validate retention policies before executing irreversible deletions, EnVault supports dry-run simulation mode. This operation computes configured retention rules and reports the exact list of candidate dumps, their IDs, and the total storage volume to be reclaimed, without modifying or deleting any remote objects.
+- Register PostgreSQL and MySQL connections and label each one **PROD**, **QA** or **DEV**. Test a connection before you save it.
+- Back up PROD connections on demand or on a schedule: every 1, 2, 3, 4, 6, 8 or 12 hours, daily, weekly or monthly. Only PROD connections can be backed up.
+- Dumps (`pg_dump` custom format or `mysqldump`) stream straight into a private Cloudflare R2 bucket in 32 MB multipart chunks, without being written to the server's disk first.
+- The API image ships the PostgreSQL client tools for versions 14 to 18 and uses the one that matches each server.
+- Each dump records a SHA-256 digest in its R2 manifest and in its job record.
+- Follow progress live, cancel a running job, and download a dump through a link that expires after 15 minutes.
 
----
+### Refresh dev and QA
 
-## Asynchronous Processing Architecture with Redis and BullMQ
+- Restore any dump into a QA or DEV connection of the same engine.
+- Run an optional dry run first. It compares the dump's tables and estimated row counts with the target's, without changing anything.
+- Before the target is touched, EnVault:
+  - downloads the dump to a staging area, checking free disk space first;
+  - compares the dump's SHA-256 with the recorded digest, when one is available;
+  - refuses restores that can't work, such as a PostgreSQL 17 dump into a PostgreSQL 16 server.
+- PostgreSQL restores run as one transaction (`pg_restore --single-transaction`) after a structural check (`pg_restore -l`).
+- MySQL restores load into a shadow database first, then swap the tables in with one `RENAME TABLE`. Views, triggers, routines and events are recreated right after the swap, so they are missing for a brief moment. If the swap fails, the previous tables are put back.
+- Only one restore runs per target at a time.
 
-EnVault decouples resource-intensive backup and restore operations from HTTP lifecycles using persistent queues powered by BullMQ and Redis 7.
+### Keep storage under control
 
-1. **HTTP Decoupling with 202 Accepted Status**
-   Requests to trigger backups return immediately with an HTTP 202 Accepted status code and a job identifier. The API registers the task in a PENDING state, publishes the job payload to Redis, and leaves execution to background workers. Clients track live execution progress through Server-Sent Events.
+- Set retention rules per connection: keep the last N dumps, delete dumps older than N days, or cap total size. The newest dump is always kept, and a dump used by a running restore is never deleted.
+- Preview every cleanup before it runs: which dumps, why, and how much space it frees.
+- A cleanup deletes the dump and its manifest from R2 first, and removes the database record only after both are gone.
+- Reconcile R2 with the database to find records whose dump is missing and files with no record.
+- See storage use per connection and category.
 
-2. **Per-Connection Concurrency Protection**
-   To safeguard target databases against connection saturation and CPU spikes, EnVault enforces connection-level isolation. Initiating a new backup while an existing job is PENDING or RUNNING on the same target database returns an HTTP 409 Conflict error. BullMQ workers process tasks with a strict concurrency ceiling of two concurrent jobs per worker instance.
+### See what happened
 
-3. **High-Throughput Multipart Streaming to Cloudflare R2**
-   Backup execution pipes native dump streams (`pg_dump` and `mysqldump`) directly into Cloudflare R2 without staging intermediate files on local container disks. The multipart uploader divides data streams into 32MB chunks with an internal queue size of four concurrent parts. This design keeps container memory utilization under 128MB while raising single-backup storage ceilings up to 320GB.
-
-4. **Zero Orphan Parts and Backpressure Management**
-   Stream transformers enforce backpressure buffers to regulate throughput between database pipes and network sockets. When transfers fail or abort signals trigger, EnVault executes explicit multipart abort commands against the Cloudflare R2 API to immediately purge uncommitted chunks and prevent unreferenced storage costs.
-
-5. **Foundation for Asynchronous Restore Queues**
-   The queue architecture extends to disaster recovery workflows. Restore tasks run in isolated worker queues that verify local disk space via staging preflights, validate cryptographic checksums against manifest files, and execute atomic rollbacks upon error.
-
-6. **Two-Stage Coordinated Purging and Non-Destructive Dry Run**
-   Automated retention policies and manual cleanups execute through a coordinated two-stage sequence. The physical dump archive and its manifest metadata are permanently deleted from Cloudflare R2 first, and only upon confirmed deletion is the database record purged from the control database. A non-destructive dry-run simulation calculates candidate files, exact byte totals, and reasons before applying permanent changes.
-
-7. **Storage Capacity and Cloudflare R2 Free Tier**
-   Cloudflare R2 provides a permanent free tier offering 10 GB of monthly storage and zero egress bandwidth fees, making EnVault highly cost-effective for small to medium deployments. Single-object limits reach 5 TB, and EnVault's 32MB multipart chunking supports up to 320 GB per archive within S3's 10,000 part limit.
+- A dashboard with daily backup activity, success rate, durations, connection health, storage per connection and restore status.
+- An append-only audit log of mutating API requests (successful or failed) and of sign-ins, sign-outs and password changes.
+- User management for admins, and a web UI in English and Spanish.
 
 ---
 
-## Requirements (non-negotiable)
+## Who it's for
 
-The **control database** (the one EnVault Management uses to store its own state, including registered connections, audit log, cronjobs, and dump metadata) **MUST be PostgreSQL 16 or higher**. This is hardcoded into the TypeORM configuration ([`apps/api/src/config/database.config.ts`](apps/api/src/config/database.config.ts)) and relies on Postgres-specific features (enum types, JSONB, defaults). Other engines are not supported and there is no plan to support them for the control DB.
+- **Developers and freelancers** who run several apps on low-cost hosting, such as Railway or a VPS, and want realistic data in dev and QA.
+- **Small agencies** that want one place to see every client's backups and restores.
+- **Teams** whose platform backups can't restore production into a different environment.
 
-The **managed databases** (the ones your DevOps users register to back up) currently support PostgreSQL and MySQL. See [docs/en/connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md) and [docs/en/connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md) for connectivity options, SSL handling, and on-prem patterns.
-
----
-
-## Architecture and Visual Reference
-
-EnVault Management runs on any platform that can host Docker containers, Redis 7, and a PostgreSQL 16+ instance (cloud PaaS, on-prem servers, air-gapped clusters, or a local workstation).
-
-![Architecture overview](docs/assets/architecture-preview.png)
-
-| Deployment path | Best for | Guide |
-|-----------------|----------|-------|
-| **PaaS push-deploy** (Railway, Fly.io, Render) | Fast cloud setup, working stack in under an hour | [deployment-railway.md](docs/en/deployment-railway.md) |
-| **Self-host / GitOps** (Docker Compose, Kubernetes + ArgoCD) | On-prem, regulated, air-gapped, or private networks | [deployment-self-host.md](docs/en/deployment-self-host.md) |
+> Companies, freelancers and agencies can use EnVault, including for client work. Offering it as a competing commercial product or service, such as a hosted SaaS, needs permission. See [License](#license).
 
 ---
 
-## Monorepo layout
+## When to use something else
+
+EnVault focuses on one job: moving production data into dev and QA safely. It takes logical dumps (`pg_dump`, `mysqldump`) and does not do point-in-time recovery.
+
+| If you need | Consider |
+| ----------- | -------- |
+| Backups only, with no refresh of dev or QA | Your platform's native backups, or a general backup tool such as [Databasus](https://github.com/databasus/databasus) |
+| Point-in-time recovery or physical backups | [pgBackRest](https://pgbackrest.org) or [WAL-G](https://github.com/wal-g/wal-g) |
+
+---
+
+## Cost example
+
+The author runs EnVault for about **$5 per month**:
+
+| Item | Setup |
+| ---- | ----- |
+| Hosting | Railway Hobby plan: $5 per month, with $5 of usage included |
+| Storage | Cloudflare R2 free tier: 10 GB-month of storage, 1 million Class A operations per month, free egress |
+| Workload | 2 production databases, 48 dumps per day in total |
+
+This is one real setup, not a guarantee. Your cost depends on database size, dump frequency, retention and the providers' current prices.
+
+---
+
+## Quick start
+
+### Requirements
+
+- **To run it:** Docker and Docker Compose, a Cloudflare R2 bucket, and an R2 API token.
+- **To develop it:** Node.js 22 (22.23.4 or later) and pnpm 10.
+- **Control database** (EnVault's own state: connections, audit log, schedules, dump metadata): PostgreSQL 16 or later. Other engines are not supported, and the [TypeORM configuration](apps/api/src/config/database.config.ts) is PostgreSQL-only. The Compose stack provides it, along with Redis 7.
+- **Databases you back up:** PostgreSQL or MySQL. See [connecting to cloud databases](docs/en/connecting-cloud-databases.md) and [connecting to on-premise databases](docs/en/connecting-on-premise-databases.md).
+
+### Configure
+
+```bash
+git clone https://github.com/Aisaac2205/envault
+cd envault
+cp .env.example .env
+```
+
+Fill in every `<placeholder>` in `.env`: R2 credentials, `ENCRYPTION_KEY` (`openssl rand -hex 32`), `DB_PASSWORD`, `BETTER_AUTH_SECRET` and the first admin's `BETTER_AUTH_ADMIN_EMAIL` and `BETTER_AUTH_ADMIN_PASSWORD`. Leave `VITE_API_URL` unset unless the web app and the API run on different origins. See [environment variables](docs/en/environment-variables.md) for the full reference.
+
+### Run everything in Docker
+
+```bash
+docker compose up --build      # same as: pnpm docker:prod
+```
+
+Open `http://localhost:5173` and sign in with the admin email and password from `.env`.
+
+### Run it natively for development
+
+Set the host of `DATABASE_URL` to `localhost` in `.env`, then:
+
+```bash
+pnpm install
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis   # control DB + Redis
+pnpm dev                                                                         # API :3000, web :5173
+```
+
+For hot reload inside containers, use `pnpm docker:dev`, or `pnpm docker:dev:test` to also start test databases (PostgreSQL on `:5434`, MySQL on `:3306`). Details in [local development](docs/en/local-development.md).
+
+### Deploy
+
+| Path | Best for | Guide |
+| ---- | -------- | ----- |
+| PaaS (Railway walkthrough) | A working cloud stack in under an hour | [deployment-railway.md](docs/en/deployment-railway.md) |
+| Self-host (Docker Compose, Kubernetes, Nomad, a VPS) | On-premise, regulated or private networks | [deployment-self-host.md](docs/en/deployment-self-host.md) |
+
+---
+
+## Security at a glance
+
+- **PROD connections are locked.** They can't be edited through the API, and no connection can be reclassified to or from PROD. Deleting one requires its exact name plus the admin's current password; after 5 wrong passwords in 15 minutes, further attempts are refused for a while. A delete only removes EnVault's record and never touches the database itself.
+- **PROD is refused as a restore target** when the restore is requested, when it is admitted to the queue, and again by the worker right before it writes.
+- **EnVault trusts the label.** A DEV or QA connection that points at the same server and database as a PROD one is not detected yet. A physical-target check is on the [roadmap](#roadmap).
+- **Dump integrity is checked when possible.** Each dump's SHA-256 is compared on restore. If neither the job record nor the manifest holds a digest, the restore currently runs without that comparison.
+- **Credentials are encrypted at rest** with AES-256-GCM and never returned by the API.
+- **Access is deny-by-default.** Cookie sessions (`httpOnly`) are checked against the database on every request, and a single permission map enforced by the API decides who may use what. New passwords need at least 12 characters and are refused when common or trivial.
+- **The audit log is append-only.** Database triggers block `UPDATE`, `DELETE` and `TRUNCATE` on it. Admin user-management actions and scheduled runs are not in it yet; scheduled runs are traced in the job history.
+- **Dumps stay private.** The bucket is private, and downloads use presigned links that expire after 15 minutes.
+
+Full details, with code references: [security model](docs/en/security-model.md).
+
+---
+
+## Roadmap
+
+- **Safer restores:** a check that a restore target is not physically the PROD database, projects to group connections, a mandatory dry run, a snapshot of the target before each restore with undo, scheduled restore drills, and refusing a restore when no digest is available.
+- **Account settings** with two-factor authentication and passkeys.
+- **MariaDB** support.
+- **Encrypted dumps.**
+- **Account recovery** by email.
+- **Better environment visibility**, so it's always clear which environment you are working in.
+
+---
+
+## For contributors
+
+### Stack
+
+| Layer           | Technology                                 | Version  |
+| --------------- | ------------------------------------------ | -------- |
+| Runtime         | Node.js                                    | 22 (≥ 22.23.4) |
+| Package manager | pnpm workspaces                            | ≥ 10     |
+| Language        | TypeScript                                 | ^5.9.3   |
+| Backend         | NestJS                                     | ^11.2.8  |
+| ORM             | TypeORM                                    | ^0.3.31  |
+| Frontend        | React                                      | ^19.3.1  |
+| Build tool      | Vite                                       | ^7.3.7   |
+| Router          | React Router                               | ^7.18.4  |
+| Auth            | Better Auth (inside the API, cookie sessions) | 1.7.14 |
+| Storage         | Cloudflare R2 (S3-compatible)              | -        |
+| Control DB      | PostgreSQL 16+ (required)                  | -        |
+| Queues and jobs | Redis 7 + BullMQ                           | ^6.3.16  |
+| Real-time       | Server-Sent Events (SSE)                   | -        |
+
+### Monorepo layout
 
 ```
-vaultly-control/
-│
+envault/
 ├── apps/
-│   ├── api/                     # NestJS — Modular Monolith  :3000
-│   └── web/                     # React + Vite — Vertical Slice  :5173 / :80
-│
+│   ├── api/                   # NestJS, modular monolith        :3000
+│   ├── web/                   # React + Vite, vertical slices   :5173 (dev) / :80 (container)
+│   └── landing/               # Marketing site (proprietary, see License)
+├── e2e/                       # Playwright end-to-end suite
+├── scripts/                   # Restore drill and security check scripts
 ├── docs/
-│   ├── en/                      # Technical documentation (English)
-│   └── es/                      # Versión en español
-│
-├── docker-compose.yml      # Docker stack (CI or self-hosted servers)
-├── docker-compose.dev.yml  # Dev overrides (hot reload, optional 'test' profile)
-│
-├── .env                    # Active variables (do not commit)
-├── .env.example            # Template — copy to .env
-│
+│   ├── assets/                # Images used by the docs
+│   ├── en/                    # Technical documentation (English)
+│   └── es/                    # Technical documentation (Spanish)
+├── docker-compose.yml         # Production-like stack
+├── docker-compose.dev.yml     # Dev overrides (hot reload, optional 'test' profile)
+├── docker-compose.e2e.yml     # E2E stack overrides
+├── .env.example               # Template: copy to .env (never commit .env)
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
 └── package.json
 ```
 
-The monorepo uses **pnpm workspaces** without Turborepo or Nx. Active workspace: `apps/*`.
+The monorepo uses **pnpm workspaces** without Turborepo or Nx. Workspaces: `apps/*` and `e2e`.
 
----
-
-## For DevOps — quick links
-
-| What you need                                     | Where to look                                                                      |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Run locally from scratch                          | [docs/en/local-development.md](docs/en/local-development.md)                             |
-| Deploy to Railway (fast PaaS path)                        | [docs/en/deployment-railway.md](docs/en/deployment-railway.md)                     |
-| Deploy to your own infra (K8s, Nomad, Docker, etc.) | [docs/en/deployment-self-host.md](docs/en/deployment-self-host.md)                     |
-| Connect to managed cloud DBs (Neon / RDS / Azure) | [docs/en/connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md)           |
-| Connect to on-premise DBs (SSH tunnels, VPN)      | [docs/en/connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md) |
-| Day-to-day operations / runbook                   | [docs/en/devops-runbook.md](docs/en/devops-runbook.md)                                   |
-| Troubleshooting                                   | [docs/en/troubleshooting.md](docs/en/troubleshooting.md)                                 |
-| Where the project is headed (driver+transport)    | [docs/en/architecture-roadmap.md](docs/en/architecture-roadmap.md)                       |
-
-> The "For DevOps" docs above are part of an in-progress documentation push. Items marked as `STATUS: PROPOSED` describe target architecture, not current behavior — always cross-check with the source if you are about to act on them.
-
----
-
-## Getting started
-
-### Prerequisites
-
-- Node.js ≥ 22
-- pnpm ≥ 9 (`npm install -g pnpm`)
-- Docker + Docker Compose
-- **PostgreSQL 16+** available locally (the `pnpm docker:db` script provides one)
-
-### Install
-
-```bash
-git clone https://github.com/Aisaac2205/envault
-cd envault
-pnpm install
-```
-
-### Configure environment
-
-```bash
-cp apps/api/.env.example apps/api/.env
-cp apps/web/.env.example apps/web/.env
-# Edit both with real values
-```
-
-See [docs/en/environment-variables.md](docs/en/environment-variables.md) for the full reference.
-
-> **Better Auth** runs inside the API. Set `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `BETTER_AUTH_ADMIN_EMAIL`, and `BETTER_AUTH_ADMIN_PASSWORD` in `apps/api/.env`.
-
-### Start the local database
-
-```bash
-pnpm docker:db
-```
-
-### Run in development mode
-
-```bash
-pnpm dev
-```
-
-API on `http://localhost:3000` · Frontend on `http://localhost:5173`.
-
-### Run everything in Docker
-
-```bash
-pnpm docker:dev          # api + web + db with hot reload
-pnpm docker:dev:test     # idem + db-test-pg (:5434) + db-test-mysql (:3306)
-pnpm docker:prod         # end-to-end production build
-```
-
----
-
-## Scripts
+### Scripts
 
 | Command                | Description                                         |
 | ---------------------- | --------------------------------------------------- |
-| `pnpm dev`             | API + Web in watch/hot-reload mode (native Node.js) |
+| `pnpm dev`             | API + web in watch/hot-reload mode (native Node.js) |
 | `pnpm build`           | Builds every app for production                     |
-| `pnpm test`            | Runs every workspace's tests                        |
+| `pnpm test`            | Runs every workspace's unit tests                   |
+| `pnpm test:coverage`   | Unit tests with coverage                            |
+| `pnpm test:e2e`        | Playwright end-to-end suite                         |
 | `pnpm lint`            | Lints every workspace                               |
 | `pnpm typecheck`       | Type-checks without emitting files                  |
 | `pnpm docker:dev`      | Full stack in Docker with hot reload                |
-| `pnpm docker:dev:test` | Idem + testing DBs (PostgreSQL :5434, MySQL :3306)  |
-| `pnpm docker:db`       | Control DB only (when you run api/web natively)     |
+| `pnpm docker:dev:test` | Same, plus test DBs (PostgreSQL :5434, MySQL :3306) |
+| `pnpm docker:db`       | Control DB only (PostgreSQL, without Redis)         |
+| `pnpm docker:db:test`  | Control DB plus the test DBs                        |
 | `pnpm docker:prod`     | End-to-end production build                         |
 
 Per workspace:
@@ -214,54 +245,71 @@ pnpm --filter @vaultly-control/api dev
 pnpm --filter @vaultly-control/web build
 ```
 
----
+### Quick links for DevOps
 
-## Documentation
+| What you need                                       | Where to look                                                                            |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Run locally from scratch                            | [docs/en/local-development.md](docs/en/local-development.md)                             |
+| Deploy to Railway (fast PaaS path)                  | [docs/en/deployment-railway.md](docs/en/deployment-railway.md)                           |
+| Deploy to your own infra (K8s, Nomad, Docker, etc.) | [docs/en/deployment-self-host.md](docs/en/deployment-self-host.md)                       |
+| Connect to managed cloud DBs (Neon / RDS / Azure)   | [docs/en/connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md)           |
+| Connect to on-premise DBs (SSH tunnels, VPN)        | [docs/en/connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md) |
+| Day-to-day operations / runbook                     | [docs/en/devops-runbook.md](docs/en/devops-runbook.md)                                   |
+| Rebuild after a disaster                            | [docs/en/disaster-recovery.md](docs/en/disaster-recovery.md)                             |
+| Troubleshooting                                     | [docs/en/troubleshooting.md](docs/en/troubleshooting.md)                                 |
+| Where the project is headed (driver+transport)      | [docs/en/architecture-roadmap.md](docs/en/architecture-roadmap.md)                       |
 
-### Getting started
+> Docs marked `STATUS: PROPOSED` describe target architecture, not current behavior. Cross-check with the source before you act on them.
 
-| Doc                                                 | Content                                             |
-| --------------------------------------------------- | --------------------------------------------------- |
-| [local-development.md](docs/en/local-development.md)     | Local setup: Node.js vs Docker, commands, debugging       |
-| [deployment-railway.md](docs/en/deployment-railway.md)   | Railway walkthrough: services, variables, env setup       |
+### Documentation
+
+#### Getting started
+
+| Doc                                                        | Content                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------- |
+| [local-development.md](docs/en/local-development.md)       | Local setup: Node.js vs Docker, commands, debugging      |
+| [deployment-railway.md](docs/en/deployment-railway.md)     | Railway walkthrough: services, variables, env setup      |
 | [deployment-self-host.md](docs/en/deployment-self-host.md) | Platform-agnostic deployment contract for K8s/Nomad/etc. |
 
-### How it works (domain)
+#### How it works (domain)
 
-| Doc                                                             | Content                                                      |
-| --------------------------------------------------------------- | ------------------------------------------------------------ |
+| Doc                                                                | Content                                                      |
+| ------------------------------------------------------------------ | ------------------------------------------------------------ |
 | [flow-database-management.md](docs/en/flow-database-management.md) | Connections: environments, per-engine permissions, lifecycle |
 | [scheduler-architecture.md](docs/en/scheduler-architecture.md)     | Cronjobs, SchedulerRegistry, single-replica trade-off        |
 | [security-model.md](docs/en/security-model.md)                     | PROD invariants, audit, authorization (with code references) |
 
-### Operations (DevOps)
+#### Operations (DevOps)
 
-| Doc                                                                                      | Content                                              |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| [connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md)                   | Managed DB setup: Neon, RDS, Supabase, Azure, GCP    |
-| [connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md)         | On-prem patterns: self-host, VPN, SSH tunnel         |
-| [devops-runbook.md](docs/en/devops-runbook.md)                                           | Pre-prod checklist, monitoring, rotations, incidents |
-| [troubleshooting.md](docs/en/troubleshooting.md)                                         | Symptom → cause → fix index                          |
+| Doc                                                                              | Content                                              |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| [connecting-cloud-databases.md](docs/en/connecting-cloud-databases.md)           | Managed DB setup: Neon, RDS, Supabase, Azure, GCP    |
+| [connecting-on-premise-databases.md](docs/en/connecting-on-premise-databases.md) | On-prem patterns: self-host, VPN, SSH tunnel         |
+| [devops-runbook.md](docs/en/devops-runbook.md)                                   | Pre-prod checklist, monitoring, rotations, incidents |
+| [disaster-recovery.md](docs/en/disaster-recovery.md)                             | Cold rebuild, recovery scenarios, drills             |
+| [troubleshooting.md](docs/en/troubleshooting.md)                                 | Symptom → cause → fix index                          |
 
-### Technical architecture
+#### Technical architecture
 
-| Doc                                                              | Content                                            |
-| ---------------------------------------------------------------- | -------------------------------------------------- |
-| [architecture.md](docs/en/architecture.md)                       | API modules, web structure, SSE                    |
-| [infrastructure.md](docs/en/infrastructure.md)                   | Local Docker Compose, testing credentials          |
-| [architecture-roadmap.md](docs/en/architecture-roadmap.md)       | Proposed driver+transport design (NOT implemented) |
+| Doc                                                        | Content                                            |
+| ---------------------------------------------------------- | -------------------------------------------------- |
+| [architecture.md](docs/en/architecture.md)                 | API modules, web structure, SSE                    |
+| [infrastructure.md](docs/en/infrastructure.md)             | Local Docker Compose, testing credentials          |
+| [architecture-roadmap.md](docs/en/architecture-roadmap.md) | Proposed driver+transport design (NOT implemented) |
 
-### Reference
+#### Reference
 
-| Doc                                                       | Content                                   |
-| --------------------------------------------------------- | ----------------------------------------- |
+| Doc                                                          | Content                                   |
+| ------------------------------------------------------------ | ----------------------------------------- |
 | [environment-variables.md](docs/en/environment-variables.md) | Every variable with types and defaults    |
 | [database-migrations.md](docs/en/database-migrations.md)     | TypeORM migrations: generate, run, revert |
+| [e2e-testing.md](docs/en/e2e-testing.md)                     | Playwright end-to-end suite               |
+| [testing-coverage.md](docs/en/testing-coverage.md)           | Unit test coverage                        |
 | [conventions.md](docs/en/conventions.md)                     | Naming, imports, commits, TypeScript      |
 
 ---
 
 ## License
 
-* **Core Platform (`apps/api`, `apps/web`)**: Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md) — free to use and self-host for any noncommercial purpose. Commercial use, resale, or distribution requires a separate commercial license from the copyright holder.
-* **Landing Page & Brand (`apps/landing`, EnVault name/logos)**: **All Rights Reserved**. Strictly proprietary; no reproduction, cloning, or public hosting permitted. See [`apps/landing/LICENSE.md`](apps/landing/LICENSE.md).
+- **Core platform (`apps/api`, `apps/web`, `e2e` and the root workspace)**: licensed under the [Functional Source License 1.1, Apache 2.0 Future License (FSL-1.1-ALv2)](LICENSE.md), a Fair Source license. You can use, modify and self-host it, including inside a company and for client work. You cannot offer it, or a substantially similar product or service, to others as a commercial product or service (such as a hosted SaaS) without permission. Each version becomes available under the Apache License 2.0 two years after its release.
+- **Landing page and brand (`apps/landing`, EnVault name and logos)**: **All Rights Reserved**. Strictly proprietary; no reproduction, cloning or public hosting permitted. See [`apps/landing/LICENSE.md`](apps/landing/LICENSE.md).
