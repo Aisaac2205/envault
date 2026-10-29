@@ -2,7 +2,7 @@
   "name": "@vaultly-control/e2e",
   "version": "0.0.0",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "FSL-1.1-ALv2",
   "scripts": {
     "test:e2e": "playwright test",
     "test:e2e:evidence": "playwright test --config playwright.evidence.config.ts",

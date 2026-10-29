@@ -2,7 +2,7 @@
   "name": "@vaultly-control/web",
   "version": "0.0.1",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -2,7 +2,7 @@
   "name": "vaultly-control",
   "version": "0.0.0",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "FSL-1.1-ALv2",
   "packageManager": "pnpm@10.30.0",
   "engines": {
     "node": ">=22.23.4 <23",
