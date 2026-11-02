@@ -58,6 +58,18 @@ export class ConnectionsRepository {
     return query.getOne();
   }
 
+  /** Active PROD connections of an engine, with the credentials to reach them. */
+  findActiveProd(dbType: DbTypeEnum): Promise<ConnectionEntity[]> {
+    return this.repository.find({
+      where: { environment: Environment.PROD, dbType, isActive: true },
+    });
+  }
+
+  /** Written outside `update()`: a PROD connection is immutable for the API, and this is not an edit by a user. */
+  async saveServerFingerprint(id: string, serverFingerprint: string): Promise<void> {
+    await this.repository.update({ id }, { serverFingerprint });
+  }
+
   findBySlug(slug: string): Promise<ConnectionEntity | null> {
     return this.repository.findOne({ where: { slug, isActive: true } });
   }

@@ -8,6 +8,7 @@ import { R2Service } from '../backup/r2.service';
 import { RestoreStrategy } from '../backup/interfaces/restore-strategy.interface';
 import { RestoreRollbackError } from '../backup/strategies/mysql-schema-objects';
 import { ConnectionsService } from '../connections/connections.service';
+import { ServerFingerprintService } from '../connections/server-fingerprint.service';
 import { Environment } from '../../database/enums/environment.enum';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { JobStatus } from '../../database/enums/job-status.enum';
@@ -87,6 +88,7 @@ describe('RestoreService finalizer', () => {
           },
         },
         { provide: ConnectionsService, useValue: { findById: async () => target } },
+        { provide: ServerFingerprintService, useValue: { assertNotProduction: async () => undefined } },
         {
           provide: SseService,
           useValue: {
@@ -177,6 +179,7 @@ describe('RestoreService finalizer', () => {
           },
         },
         { provide: ConnectionsService, useValue: { findById: async () => target } },
+        { provide: ServerFingerprintService, useValue: { assertNotProduction: async () => undefined } },
         { provide: SseService, useValue: { complete: () => undefined, emit: () => undefined } },
         {
           provide: 'RESTORE_STRATEGIES',
@@ -296,6 +299,7 @@ describe('RestoreService engine compatibility by sourceBackupId', () => {
         { provide: R2Service, useValue: { download: jest.fn().mockResolvedValue(Readable.from('dump')) } },
         { provide: BackupService, useValue: backupService },
         { provide: ConnectionsService, useValue: connectionsService },
+        { provide: ServerFingerprintService, useValue: { assertNotProduction: async () => undefined } },
         { provide: SseService, useValue: sseService },
         {
           provide: 'RESTORE_STRATEGIES',
@@ -563,6 +567,7 @@ describe('RestoreService executeRestoreAsync lease renewal heartbeat', () => {
             findById: jest.fn().mockResolvedValue(target),
           },
         },
+        { provide: ServerFingerprintService, useValue: { assertNotProduction: async () => undefined } },
         {
           provide: SseService,
           useValue: {
@@ -651,9 +656,11 @@ describe('RestoreService queue and cancelRestore', () => {
   let mockBackupService: {
     getBackupById: jest.Mock;
   };
+  let mockFingerprints: { assertNotProduction: jest.Mock };
   let service: RestoreService;
 
   beforeEach(async () => {
+    mockFingerprints = { assertNotProduction: jest.fn().mockResolvedValue(undefined) };
     mockRestoreRepository = {
       create: jest.fn(),
       findById: jest.fn(),
@@ -733,6 +740,7 @@ describe('RestoreService queue and cancelRestore', () => {
         },
         { provide: BackupService, useValue: mockBackupService },
         { provide: ConnectionsService, useValue: mockConnectionsService },
+        { provide: ServerFingerprintService, useValue: mockFingerprints },
         { provide: SseService, useValue: mockSseService },
         { provide: getQueueToken(RESTORE_QUEUE_NAME), useValue: mockQueue },
         {
@@ -769,6 +777,29 @@ describe('RestoreService queue and cancelRestore', () => {
         attempts: 1,
       }),
     );
+  });
+
+  it('createRestore refuses a target that is a PROD database behind another address', async () => {
+    mockFingerprints.assertNotProduction.mockRejectedValue(
+      new ForbiddenException('El destino es la misma base de datos que la conexión de producción "Orders PROD".'),
+    );
+
+    await expect(
+      service.createRestore({ targetConnectionId, sourceBackupId: 'backup-1', isDryRun: false }, testUser),
+    ).rejects.toThrow(/Orders PROD/);
+
+    expect(mockRestoreRepository.tryCreateWithLease).not.toHaveBeenCalled();
+    expect(mockQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('createRestore refuses it for a dry run as well', async () => {
+    mockFingerprints.assertNotProduction.mockRejectedValue(new ForbiddenException('prod'));
+
+    await expect(
+      service.createRestore({ targetConnectionId, sourceBackupId: 'backup-1', isDryRun: true }, testUser),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(mockRestoreRepository.create).not.toHaveBeenCalled();
   });
 
   it('cancelRestore throws NotFoundException when job does not exist', async () => {
@@ -858,6 +889,7 @@ describe('RestoreService deadline of the whole restore', () => {
       execute?: jest.Mock;
       backup?: Record<string, unknown>;
       startIfLeaseActive?: jest.Mock;
+      assertNotProduction?: jest.Mock;
     } = {},
   ) {
     const restoreRepository = {
@@ -914,6 +946,10 @@ describe('RestoreService deadline of the whole restore', () => {
           },
         },
         { provide: ConnectionsService, useValue: { findById: jest.fn().mockResolvedValue(target) } },
+        {
+          provide: ServerFingerprintService,
+          useValue: { assertNotProduction: options.assertNotProduction ?? (async () => undefined) },
+        },
         { provide: SseService, useValue: sse },
         {
           provide: ConfigService,
@@ -953,6 +989,23 @@ describe('RestoreService deadline of the whole restore', () => {
   });
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('does not restore when the target turns out to be a PROD database at execution time', async () => {
+    const assertNotProduction = jest
+      .fn()
+      .mockRejectedValue(new ForbiddenException('El destino es la misma base de datos que la conexión de producción "Orders PROD".'));
+    const t = await build({ assertNotProduction });
+
+    await t.run();
+
+    expect(assertNotProduction).toHaveBeenCalledWith(target);
+    expect(t.execute).not.toHaveBeenCalled();
+    expect(t.restoreRepository.updateStatus).toHaveBeenCalledWith(
+      jobId,
+      JobStatus.FAILED,
+      expect.objectContaining({ errorMessage: expect.stringContaining('Orders PROD') }),
+    );
   });
 
   it('ends a restore stuck in the download at RESTORE_TIMEOUT_MS, with the deadline message, and cleans up', async () => {

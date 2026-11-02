@@ -6,12 +6,18 @@ import { ConnectionDeletionService } from './connection-deletion.service';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsService } from './connections.service';
 import { ConnectionsRepository } from './connections.repository';
+import { ServerFingerprintService } from './server-fingerprint.service';
 
 @Module({
   // AuthModule provides PasswordConfirmation, the step-up check of a PROD delete.
   imports: [TypeOrmModule.forFeature([ConnectionEntity]), AuthModule],
   controllers: [ConnectionsController],
-  providers: [ConnectionsService, ConnectionDeletionService, ConnectionsRepository],
-  exports: [ConnectionsService],
+  providers: [
+    ConnectionsService,
+    ConnectionDeletionService,
+    ConnectionsRepository,
+    ServerFingerprintService,
+  ],
+  exports: [ConnectionsService, ServerFingerprintService],
 })
 export class ConnectionsModule {}

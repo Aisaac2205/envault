@@ -13,6 +13,7 @@ import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { TestRawConnectionDto } from './dto/test-raw-connection.dto';
 import { ConnectionsRepository } from './connections.repository';
+import { ServerFingerprintService } from './server-fingerprint.service';
 import { ConnectionTestResult } from './interfaces/connection-test-result.interface';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { Environment } from '../../database/enums/environment.enum';
@@ -49,6 +50,7 @@ export class ConnectionsService {
 
   constructor(
     private readonly repository: ConnectionsRepository,
+    private readonly fingerprints: ServerFingerprintService,
   ) {}
 
   async findAll(environment?: string) {
@@ -108,7 +110,15 @@ export class ConnectionsService {
       database: dto.database,
     });
     const slug = await this.generateUniqueSlug(dto.name);
-    return this.mapTargetConflict(() => this.repository.create({ ...dto, slug }));
+    // Only PROD needs it: it is what a restore compares its target against. An
+    // unreachable server leaves it empty, and the first restore fills it in.
+    const serverFingerprint =
+      dto.environment === Environment.PROD
+        ? await this.fingerprints.read({ ...dto, dbType: dto.dbType ?? DbTypeEnum.POSTGRES })
+        : undefined;
+    return this.mapTargetConflict(() =>
+      this.repository.create({ ...dto, slug, serverFingerprint }),
+    );
   }
 
   /**

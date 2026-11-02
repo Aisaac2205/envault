@@ -25,6 +25,7 @@ import { ConnectionDeletionService } from './connection-deletion.service';
 import { ConnectionsController } from './connections.controller';
 import { ConnectionsRepository } from './connections.repository';
 import { ConnectionsService } from './connections.service';
+import { ServerFingerprintService } from './server-fingerprint.service';
 
 // The probes below never reach a database server.
 // A real EventEmitter, like the pg Client: emitting 'error' with no listener throws.
@@ -140,6 +141,7 @@ describe('ConnectionsController responses', () => {
         ConnectionsService,
         ConnectionDeletionService,
         ConnectionsRepository,
+        ServerFingerprintService,
         { provide: getRepositoryToken(ConnectionEntity), useValue: connectionRepo },
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: getRepositoryToken(AuditLogEntity), useValue: { save: auditSave } },
