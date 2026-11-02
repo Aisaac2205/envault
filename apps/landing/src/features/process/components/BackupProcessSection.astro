@@ -1,0 +1,389 @@
+---
+import { getDictionary } from '../../i18n/get-dictionary';
+import type { Locale } from '../../i18n/types';
+
+interface Props {
+  locale?: Locale;
+}
+
+const { locale = 'es' } = Astro.props;
+const dict = getDictionary(locale);
+const p = dict.backupProcess;
+const isEn = locale === 'en';
+---
+
+<section id="process" class="py-24 px-6 max-w-7xl mx-auto scroll-mt-20" aria-labelledby="process-heading">
+  {/* Section Header */}
+  <div class="text-center max-w-3xl mx-auto mb-20">
+    <h2 id="process-heading" class="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-white mb-4 font-sans">
+      {p.title}
+    </h2>
+    <p class="text-base sm:text-lg text-zinc-400 leading-relaxed font-sans">
+      {p.subtitle}
+    </p>
+  </div>
+
+  <div class="space-y-12 sm:space-y-16">
+    {/* Paso 1: Conexión */}
+    <div class="rounded-2xl border border-white/10 bg-zinc-950/60 p-6 sm:p-8 md:p-10 backdrop-blur-sm transition-colors hover:border-white/20">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        {/* Left column: Text */}
+        <div class="lg:col-span-5 space-y-4">
+          <div class="inline-flex items-center rounded-md bg-white/5 border border-white/10 px-2.5 py-1 text-xs font-semibold text-zinc-200 font-sans">
+            {p.step1Badge}
+          </div>
+          <h3 class="text-2xl sm:text-3xl font-semibold text-white tracking-tight font-sans">
+            {p.step1Title}
+          </h3>
+          <p class="text-sm sm:text-base text-zinc-400 leading-relaxed font-sans">
+            {p.step1Desc}
+          </p>
+        </div>
+
+        {/* Right column: ConnectionForm UI Mockup */}
+        <div class="lg:col-span-7">
+          <div class="rounded-xl border border-white/10 bg-zinc-900/90 shadow-2xl p-5 sm:p-6 space-y-5" data-ui>
+            <div class="flex items-center justify-between border-b border-white/10 pb-3">
+              <span class="text-xs font-semibold text-zinc-300 font-sans">
+                {isEn ? 'Add database for backup' : 'Agregar base de datos'}
+              </span>
+              <span class="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
+                <svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                {isEn ? 'Connection verified' : 'Conexión verificada'}
+              </span>
+            </div>
+
+            {/* DB Type switcher */}
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-zinc-400 font-sans">
+                {isEn ? 'Engine' : 'Motor'}
+              </label>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="flex items-center justify-center gap-2.5 rounded-lg border-2 border-[#bfe70a] bg-zinc-800/80 px-3 py-2 text-sm font-semibold text-white shadow-sm">
+                  <img src="/tech-icons/postgresql.svg" alt="PostgreSQL" class="size-5 shrink-0" />
+                  <span>PostgreSQL</span>
+                </div>
+                <div class="flex items-center justify-center gap-2.5 rounded-lg border border-white/10 bg-zinc-900/40 px-3 py-2 text-sm font-semibold text-zinc-400">
+                  <img src="/tech-icons/mysql.svg" alt="MySQL" class="size-5 shrink-0 opacity-70" />
+                  <span>MySQL</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Form Fields */}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-zinc-400">{isEn ? 'Name' : 'Nombre'}</label>
+                <div class="w-full rounded-md border border-white/10 bg-zinc-950/80 px-3 py-2 text-xs font-mono text-zinc-200">
+                  prod-customer-db
+                </div>
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-zinc-400">{isEn ? 'Environment' : 'Entorno'}</label>
+                <div class="flex items-center justify-between w-full rounded-md border border-white/10 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-200">
+                  <span class="font-semibold text-amber-400">PROD</span>
+                  <span class="text-[10px] text-zinc-500">{isEn ? 'Immutable' : 'Inmutable'}</span>
+                </div>
+              </div>
+              <div class="space-y-1 sm:col-span-2">
+                <div class="grid grid-cols-3 gap-2">
+                  <div class="col-span-2 space-y-1">
+                    <label class="text-xs font-medium text-zinc-400">Host</label>
+                    <div class="w-full rounded-md border border-white/10 bg-zinc-950/80 px-3 py-2 text-xs font-mono text-zinc-200 truncate">
+                      db.internal.production.net
+                    </div>
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-xs font-medium text-zinc-400">{isEn ? 'Port' : 'Puerto'}</label>
+                    <div class="w-full rounded-md border border-white/10 bg-zinc-950/80 px-3 py-2 text-xs font-mono text-zinc-200 text-center">
+                      5432
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div class="pt-2 flex items-center justify-between text-xs border-t border-white/5">
+              <div class="text-[11px] text-zinc-400 flex items-center gap-1.5 font-mono">
+                <span class="size-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>28 ms {isEn ? 'latency' : 'latencia'}</span>
+              </div>
+              <button type="button" class="px-3 py-1.5 rounded-md bg-white/10 text-white font-medium hover:bg-white/15 transition-colors">
+                {isEn ? 'Test credentials' : 'Probar credenciales'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Paso 2: Programación */}
+    <div class="rounded-2xl border border-white/10 bg-zinc-950/60 p-6 sm:p-8 md:p-10 backdrop-blur-sm transition-colors hover:border-white/20">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        {/* Left column: Text */}
+        <div class="lg:col-span-5 space-y-4">
+          <div class="inline-flex items-center rounded-md bg-white/5 border border-white/10 px-2.5 py-1 text-xs font-semibold text-zinc-200 font-sans">
+            {p.step2Badge}
+          </div>
+          <h3 class="text-2xl sm:text-3xl font-semibold text-white tracking-tight font-sans">
+            {p.step2Title}
+          </h3>
+          <p class="text-sm sm:text-base text-zinc-400 leading-relaxed font-sans">
+            {p.step2Desc}
+          </p>
+        </div>
+
+        {/* Right column: CronjobForm UI Mockup */}
+        <div class="lg:col-span-7">
+          <div class="rounded-xl border border-white/10 bg-zinc-900/90 shadow-2xl p-5 sm:p-6 space-y-5" data-ui>
+            <div class="flex items-center justify-between border-b border-white/10 pb-3">
+              <span class="text-xs font-semibold text-zinc-300 font-sans">
+                {isEn ? 'Schedule periodic backup' : 'Configurar respaldo periódico'}
+              </span>
+              <span class="inline-flex items-center gap-1 rounded bg-[#bfe70a]/10 px-2 py-0.5 text-[11px] font-medium text-[#bfe70a] border border-[#bfe70a]/20">
+                BullMQ Distributed
+              </span>
+            </div>
+
+            <div class="space-y-4">
+              <div class="space-y-1">
+                <label class="text-xs font-medium text-zinc-400">{isEn ? 'Target connection' : 'Conexión destino'}</label>
+                <div class="flex items-center justify-between w-full rounded-md border border-white/10 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-200">
+                  <span class="font-mono font-medium">prod-customer-db</span>
+                  <span class="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">PROD</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-zinc-400">{isEn ? 'Frequency' : 'Frecuencia'}</label>
+                  <div class="w-full rounded-md border border-[#bfe70a]/40 bg-zinc-950/80 px-3 py-2 text-xs text-white font-medium flex items-center justify-between">
+                    <span>{isEn ? 'Daily (every night)' : 'Diario (cada noche)'}</span>
+                    <svg class="size-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </div>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-zinc-400">{isEn ? 'Execution Time' : 'Hora de ejecución'}</label>
+                  <div class="w-full rounded-md border border-white/10 bg-zinc-950/80 px-3 py-2 text-xs font-mono text-zinc-200 text-center">
+                    02:00 UTC
+                  </div>
+                </div>
+              </div>
+
+              {/* Schedule summary callout */}
+              <div class="rounded-lg border border-white/5 bg-zinc-950/60 p-3.5 text-xs text-zinc-300 space-y-1">
+                <div class="flex items-center gap-1.5 font-medium text-[#bfe70a]">
+                  <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span>{isEn ? 'Active Schedule' : 'Programación activa'}</span>
+                </div>
+                <p class="text-zinc-400 leading-relaxed text-[11px]">
+                  {isEn ? 'Runs every night at 02:00 UTC. Distributed lock prevents duplicate executions across multiple API nodes.' : 'Se ejecuta cada noche a las 02:00 UTC. El candado distribuido evita duplicados entre nodos.'}
+                </p>
+              </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+              <button type="button" class="px-4 py-2 rounded-md bg-[#bfe70a] text-zinc-950 font-semibold text-xs hover:bg-[#d4ff1a] transition-colors">
+                {isEn ? 'Save schedule' : 'Guardar programación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Paso 3: Almacenamiento en R2 */}
+    <div class="rounded-2xl border border-white/10 bg-zinc-950/60 p-6 sm:p-8 md:p-10 backdrop-blur-sm transition-colors hover:border-white/20">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        {/* Left column: Text */}
+        <div class="lg:col-span-5 space-y-4">
+          <div class="inline-flex items-center rounded-md bg-white/5 border border-white/10 px-2.5 py-1 text-xs font-semibold text-zinc-200 font-sans">
+            {p.step3Badge}
+          </div>
+          <h3 class="text-2xl sm:text-3xl font-semibold text-white tracking-tight font-sans">
+            {p.step3Title}
+          </h3>
+          <p class="text-sm sm:text-base text-zinc-400 leading-relaxed font-sans">
+            {p.step3Desc}
+          </p>
+        </div>
+
+        {/* Right column: R2 Storage UI Mockup */}
+        <div class="lg:col-span-7">
+          <div class="rounded-xl border border-white/10 bg-zinc-900/90 shadow-2xl p-5 sm:p-6 space-y-5" data-ui>
+            <div class="flex items-center justify-between border-b border-white/10 pb-3">
+              <div class="flex items-center gap-2">
+                <img src="/tech-icons/cloudflare.svg" alt="Cloudflare" class="size-4 shrink-0" />
+                <span class="text-xs font-semibold text-zinc-300 font-sans">
+                  Cloudflare R2 Bucket
+                </span>
+              </div>
+              <span class="text-[11px] font-mono text-zinc-500">
+                0 bytes disk write
+              </span>
+            </div>
+
+            {/* Pipeline visual */}
+            <div class="rounded-lg border border-dashed border-white/10 bg-zinc-950/60 p-3 sm:p-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 text-xs">
+              <div class="flex items-center gap-2 shrink-0">
+                <img src="/tech-icons/postgresql.svg" alt="Postgres" class="size-4" />
+                <span class="font-mono text-zinc-300">pg_dump stdout</span>
+              </div>
+
+              <div class="flex items-center gap-2 text-zinc-500 text-[11px] px-2 flex-1 justify-center min-w-[140px]">
+                <div class="h-px flex-1 bg-gradient-to-r from-white/10 via-emerald-500/30 to-emerald-500/50"></div>
+                <div class="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] text-emerald-400 shrink-0 select-none">
+                  <span class="size-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>TLS 1.3 stream</span>
+                </div>
+                <div class="flex items-center flex-1">
+                  <div class="h-px flex-1 bg-gradient-to-r from-emerald-500/50 via-white/10 to-transparent"></div>
+                  <svg class="size-3 text-emerald-400/80 -ml-1 shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z" clip-rule="evenodd" />
+                  </svg>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 shrink-0">
+                <img src="/tech-icons/cloudflare.svg" alt="R2" class="size-4" />
+                <span class="font-mono text-zinc-300">R2 Multipart</span>
+              </div>
+            </div>
+
+            {/* Snapshot entry */}
+            <div class="rounded-lg border border-white/10 bg-zinc-950/80 p-4 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="size-2 rounded-full bg-emerald-400"></span>
+                  <span class="font-mono text-xs text-white truncate">
+                    prod-customer-db-2026-10-29T02-00-00.dump
+                  </span>
+                </div>
+                <span class="inline-flex rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
+                  {isEn ? 'Completed' : 'Completado'}
+                </span>
+              </div>
+
+              <div class="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 text-[11px] text-zinc-400 font-sans">
+                <div>
+                  <span class="block text-zinc-500">{isEn ? 'Size' : 'Tamaño'}</span>
+                  <span class="font-mono text-zinc-200">142.7 MB</span>
+                </div>
+                <div>
+                  <span class="block text-zinc-500">{isEn ? 'Retention' : 'Retención'}</span>
+                  <span class="text-zinc-200">{isEn ? '30 days' : '30 días'}</span>
+                </div>
+                <div>
+                  <span class="block text-zinc-500">{isEn ? 'Auto-purge' : 'Autopurga'}</span>
+                  <span class="text-emerald-400 font-medium">{isEn ? 'Active' : 'Activa'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Paso 4: Restauración con Dry Run */}
+    <div class="rounded-2xl border border-white/10 bg-zinc-950/60 p-6 sm:p-8 md:p-10 backdrop-blur-sm transition-colors hover:border-white/20">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        {/* Left column: Text */}
+        <div class="lg:col-span-5 space-y-4">
+          <div class="inline-flex items-center rounded-md bg-white/5 border border-white/10 px-2.5 py-1 text-xs font-semibold text-zinc-200 font-sans">
+            {p.step4Badge}
+          </div>
+          <h3 class="text-2xl sm:text-3xl font-semibold text-white tracking-tight font-sans">
+            {p.step4Title}
+          </h3>
+          <p class="text-sm sm:text-base text-zinc-400 leading-relaxed font-sans">
+            {p.step4Desc}
+          </p>
+        </div>
+
+        {/* Right column: DryRunResult UI Mockup */}
+        <div class="lg:col-span-7">
+          <div class="rounded-xl border border-white/10 bg-zinc-900/90 shadow-2xl p-5 sm:p-6 space-y-5" data-ui>
+            <div class="flex items-center justify-between border-b border-white/10 pb-3">
+              <span class="text-xs font-semibold text-zinc-300 font-sans">
+                {isEn ? 'Safe restore simulation (Dry Run)' : 'Simulación de restauración segura (Dry Run)'}
+              </span>
+              <span class="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400 border border-amber-500/20">
+                PROD Guard Active
+              </span>
+            </div>
+
+            {/* Source & Target Comparison badges */}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="flex items-center justify-between rounded-lg bg-zinc-950/80 border border-white/10 px-3 py-2 text-xs">
+                <div>
+                  <span class="text-xs font-medium text-zinc-400 block font-sans">{isEn ? 'Source snapshot' : 'Respaldo origen'}</span>
+                  <span class="font-mono text-zinc-200 font-semibold">prod-customer-db</span>
+                </div>
+                <span class="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">PROD</span>
+              </div>
+              <div class="flex items-center justify-between rounded-lg bg-zinc-950/80 border border-white/10 px-3 py-2 text-xs">
+                <div>
+                  <span class="text-xs font-medium text-zinc-400 block font-sans">{isEn ? 'Target database' : 'Base destino'}</span>
+                  <span class="font-mono text-zinc-200 font-semibold">dev-staging-db</span>
+                </div>
+                <span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">DEV</span>
+              </div>
+            </div>
+
+            {/* Schema diff table */}
+            <div class="rounded-lg border border-white/10 bg-zinc-950/70 overflow-hidden text-xs">
+              <div class="grid grid-cols-12 bg-white/5 px-3 py-2 font-medium text-zinc-400 text-xs font-sans">
+                <span class="col-span-5">{isEn ? 'Table' : 'Tabla'}</span>
+                <span class="col-span-3 text-right">{isEn ? 'Source rows' : 'Origen'}</span>
+                <span class="col-span-4 text-right">{isEn ? 'Diff' : 'Diferencia'}</span>
+              </div>
+              <div class="divide-y divide-white/5 font-mono text-[11px]">
+                <div class="grid grid-cols-12 px-3 py-2 items-center text-zinc-300">
+                  <span class="col-span-5 flex items-center gap-1.5">
+                    <span class="size-1.5 rounded-full bg-emerald-400"></span>
+                    users
+                  </span>
+                  <span class="col-span-3 text-right text-zinc-400">45,210</span>
+                  <span class="col-span-4 text-right text-emerald-400 font-semibold">+13,110</span>
+                </div>
+                <div class="grid grid-cols-12 px-3 py-2 items-center text-zinc-300">
+                  <span class="col-span-5 flex items-center gap-1.5">
+                    <span class="size-1.5 rounded-full bg-emerald-400"></span>
+                    orders
+                  </span>
+                  <span class="col-span-3 text-right text-zinc-400">128,940</span>
+                  <span class="col-span-4 text-right text-emerald-400 font-semibold">+33,940</span>
+                </div>
+                <div class="grid grid-cols-12 px-3 py-2 items-center text-zinc-500 line-through">
+                  <span class="col-span-5 flex items-center gap-1.5 text-zinc-500">
+                    <span class="size-1.5 rounded-full bg-zinc-600"></span>
+                    audit_logs
+                  </span>
+                  <span class="col-span-3 text-right">850,200</span>
+                  <span class="col-span-4 text-right text-zinc-500">{isEn ? 'Excluded' : 'Excluida'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div class="pt-2 flex items-center justify-between border-t border-white/5">
+              <span class="text-[11px] text-zinc-400 flex items-center gap-1">
+                <svg class="size-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                {isEn ? 'Production overwrite blocked' : 'Sobrescritura en PROD bloqueada'}
+              </span>
+              <div class="flex gap-2">
+                <button type="button" class="px-3 py-1.5 rounded-md border border-white/10 text-xs text-zinc-300 font-medium hover:bg-white/5 transition-colors">
+                  {isEn ? 'Cancel' : 'Cancelar'}
+                </button>
+                <button type="button" class="px-3 py-1.5 rounded-md bg-[#bfe70a] text-zinc-950 text-xs font-semibold hover:bg-[#d4ff1a] transition-colors">
+                  {isEn ? 'Restore in DEV' : 'Restaurar en DEV'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

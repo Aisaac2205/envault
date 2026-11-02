@@ -2,8 +2,9 @@
 import Landing from "../../layouts/Landing.astro";
 import SiteHeader from "../../features/navigation/components/SiteHeader.astro";
 import HeroSection from "../../features/hero/components/HeroSection.astro";
+import BackupProcessSection from "../../features/process/components/BackupProcessSection.astro";
 import FeaturesGrid from "../../features/features-grid/components/FeaturesGrid.astro";
-import { DocumentationSection } from "../../features/documentation/components/DocumentationSection";
+import { InstallSection } from "../../features/install/components/InstallSection";
 import CtaBanner from "../../features/navigation/components/CtaBanner.astro";
 import Footer from "../../features/navigation/components/Footer.astro";
 import { getDictionary } from "../../features/i18n/get-dictionary";
@@ -22,8 +23,11 @@ const dict = getDictionary(locale);
     {/* Real Core Capabilities & Bento Grid */}
     <FeaturesGrid locale={locale} />
 
-    {/* Interactive Documentation Section with Docker & API Snippets */}
-    <DocumentationSection client:visible t={dict.docs} locale={locale} />
+    {/* 4-Step Backup Process: How to back up PostgreSQL and MySQL */}
+    <BackupProcessSection locale={locale} />
+
+    {/* Interactive Install Section: How to install (Linux, Windows, Docker, Compose) */}
+    <InstallSection client:visible t={dict.install} locale={locale} />
 
     {/* Bottom Call to Action */}
     <CtaBanner locale={locale} />

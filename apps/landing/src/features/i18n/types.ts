@@ -14,6 +14,37 @@ export interface HeroTranslations {
   screenshotAlt: string;
 }
 
+export interface BackupProcessTranslations {
+  badge: string;
+  title: string;
+  subtitle: string;
+  step1Badge: string;
+  step1Title: string;
+  step1Desc: string;
+  step2Badge: string;
+  step2Title: string;
+  step2Desc: string;
+  step3Badge: string;
+  step3Title: string;
+  step3Desc: string;
+  step4Badge: string;
+  step4Title: string;
+  step4Desc: string;
+}
+
+export interface InstallSectionTranslations {
+  badge: string;
+  title: string;
+  subtitle: string;
+  tabLinux: string;
+  tabWindows: string;
+  tabDocker: string;
+  tabCompose: string;
+  copyCode: string;
+  copied: string;
+  docsLink: string;
+}
+
 export interface FeaturesTranslations {
   title: string;
   subtitle: string;
@@ -26,6 +57,8 @@ export interface FeaturesTranslations {
   feature5Title: string;
   feature5Desc: string;
   cardIngestionSpeedLabel: string;
+  licenseTitle?: string;
+  licenseDesc?: string;
 }
 
 export interface DocumentationTranslations {
@@ -75,7 +108,9 @@ export interface GithubStarTranslations {
 
 export interface Dictionary {
   hero: HeroTranslations;
+  backupProcess: BackupProcessTranslations;
   features: FeaturesTranslations;
+  install: InstallSectionTranslations;
   docs: DocumentationTranslations;
   footer: FooterTranslations;
   githubStar: GithubStarTranslations;
