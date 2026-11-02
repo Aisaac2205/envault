@@ -10,6 +10,7 @@ import { ConnectionsService } from '../connections/connections.service';
 import { ManualRetentionSettingEntity } from '../../database/entities/manual-retention-setting.entity';
 import { ConnectionRetentionPolicyEntity } from '../../database/entities/connection-retention-policy.entity';
 import { BackupCategory } from '../../database/enums/backup-category.enum';
+import { JobStatus } from '../../database/enums/job-status.enum';
 import { RETENTION_JOB_NAME, RETENTION_QUEUE_NAME } from './maintenance.constants';
 import { EnrichedR2Object } from '../backup/interfaces/enriched-r2-object.interface';
 
@@ -173,6 +174,53 @@ describe('MaintenanceService', () => {
       expect(c3.isProtected).toBe(false);
       expect(c3.jobId).toBe('job-3');
     });
+
+    it.each([JobStatus.PENDING, JobStatus.RUNNING])(
+      'protects the dump a %s restore will read',
+      async (status) => {
+        mockBackupService.listEnrichedDumps.mockResolvedValue([
+          {
+            // The newest dump is kept by the floor, so the queued one is a real candidate.
+            key: 'main-db/manual/newest.dump',
+            size: 1024 * 1024,
+            lastModified: new Date(),
+            etag: 'etag-n',
+            connectionId: 'conn-1',
+            connectionSlug: 'main-db',
+            connectionName: 'Main Database',
+            dbType: 'postgres',
+            category: BackupCategory.MANUAL,
+            timestamp: '2026-11-01T18:00:00Z',
+          },
+          {
+            key: 'main-db/manual/queued.dump',
+            size: 1024 * 1024,
+            lastModified: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+            etag: 'etag-q',
+            connectionId: 'conn-1',
+            connectionSlug: 'main-db',
+            connectionName: 'Main Database',
+            dbType: 'postgres',
+            category: BackupCategory.MANUAL,
+            timestamp: '2026-08-01T18:00:00Z',
+          },
+        ]);
+        mockRestoreRepository.findByStatus.mockImplementation(async (s: JobStatus) =>
+          s === status ? [{ r2Key: 'main-db/manual/queued.dump' }] : [],
+        );
+        mockBackupRepository.findByFileKeys.mockResolvedValue([]);
+
+        const preview = await service.previewCleanup({
+          connectionSlug: 'main-db',
+          category: BackupCategory.MANUAL,
+          maxAgeDays: 30,
+        });
+
+        expect(preview.count).toBe(0);
+        const queued = preview.candidates.find((c) => c.fileKey === 'main-db/manual/queued.dump');
+        expect(queued?.reason).toBe('protected_active_restore');
+      },
+    );
 
     it('returns empty preview when no dumps exist', async () => {
       mockBackupService.listEnrichedDumps.mockResolvedValue([]);
