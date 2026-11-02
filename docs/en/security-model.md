@@ -27,7 +27,7 @@ if (existing.environment === Environment.PROD) {
 
 The reason: a PROD connection is the source of truth. Modifying it from the app opens the door for a user with API permissions to point the backup job at a rogue host and exfiltrate dumps, or to flip it to QA and restore over production.
 
-**One connection per physical target.** Two active connections cannot point at the same database: the tuple `(dbType, host, port, database)` is unique among active connections, with the host compared trimmed and case-insensitive. Creating or editing a connection onto a taken target answers `409`. The rule is enforced by a partial unique index (`UQ_connections_physical_target`), so a concurrent request cannot slip past the check. The reason: if a PROD database could also be registered under a QA label, the PROD checks (immutability, delete confirmation, restore refusal) would be bypassed by picking the QA entry. The migration refuses to run while duplicates exist and lists them; resolve them by hand, because choosing which environment label survives is not something the migration can decide. The index compares the host string only, so two different hostnames that resolve to the same server (DNS aliases, poolers) are not detected.
+**One connection per physical target.** Two active connections cannot point at the same database: the tuple `(dbType, host, port, database)` is unique among active connections, with the host compared trimmed and case-insensitive. Creating or editing a connection onto a taken target answers `409`. The rule is enforced by a partial unique index (`UQ_connections_physical_target`), so a concurrent request cannot slip past the check. The reason: if a PROD database could also be registered under a QA label, the PROD checks (immutability, delete confirmation, restore refusal) would be bypassed by picking the QA entry. The migration refuses to run while duplicates exist and lists them; resolve them by hand, because choosing which environment label survives is not something the migration can decide. The index compares the host string only, so two different hostnames that resolve to the same server (DNS aliases, poolers) are not caught by the index; the server fingerprint in 1.3 covers them.
 
 **PROD-only cronjobs.** Cronjobs, and the schedule endpoint of a connection, accept PROD connections only and answer `400` otherwise. A scheduled retention run deletes dumps, so it is never pointed at a lower environment. Retention also keeps the source dump of any restore that is `pending` or `running`, not just `running`.
 
@@ -60,6 +60,14 @@ if (targetEnvironment === Environment.PROD) {
 ```
 
 This is **the most critical rule**. Restoring over PROD would destroy live data.
+
+**Server fingerprint.** The environment label and the address of a connection are typed by a person; the server tells the truth. So besides the label, a restore is refused (`403`) when its target is the same database as a PROD connection, even when it is reached through another host name, a pooler or a proxy.
+
+- **What it is.** The identifier the server itself reports plus the database name: `postgres:<system_identifier>/<database>` (`pg_control_system()`) or `mysql:<server_uuid>/<database>` (`@@server_uuid`). A different database on the same server as PROD is still allowed.
+- **When it is read.** When a PROD connection is created, and stored. For PROD connections created before the fingerprint existed, it is read and stored the first time a restore needs it.
+- **When it is compared.** When the restore is created (a dry run too) and again right before it runs, because a host name can point somewhere else since the request.
+- **When it cannot be read.** With a PROD fingerprint to compare against, a target that cannot be identified (no connection, or no permission on `pg_control_system()`) is refused: not knowing is not a reason to go ahead. A PROD connection that cannot be read is skipped, and a warning is logged.
+- **Limits.** A replica or a clone with a different server identifier is not recognized as PROD, and a clone of the data directory shares its identifier. This check does not replace controlling which servers the EnVault network can reach.
 
 > **Historical note:** A `NoProdRestoreGuard` used to exist at the controller level. It was removed because it inspected `body.targetEnvironment`, but the DTO has `targetConnectionId` (a UUID). The guard never found the field and always let requests through — fake protection. The real protection lives, and always lived, in the service, where the connection is resolved and its environment is read from DB. See `docs/scheduler-architecture.md` for the equivalent pattern.
 
