@@ -35,6 +35,35 @@ test.describe('restore requests', () => {
     });
   }
 
+  for (const dbType of ['postgres', 'mysql'] as const) {
+    test(`refuses the production ${dbType} database reached through another host name`, async ({
+      restoreTarget,
+      createConnection,
+      adminApi,
+    }) => {
+      const { database, connection: prod } = await restoreTarget(dbType, 'prod');
+      // A trailing dot is the same host for DNS and a different string for the
+      // unique index on the target, so only the server's own identity can tell.
+      const { connection: alias } = await createConnection({
+        ...database.settings,
+        host: `${database.settings.host}.`,
+        environment: 'qa',
+      });
+
+      // The source is unknown on purpose: it would answer 404, but only after
+      // the target is accepted. A 403 naming the PROD connection proves it was not.
+      for (const isDryRun of [true, false]) {
+        const refused = await expectErrorEnvelope(
+          await adminApi.post('restores', {
+            data: { sourceBackupId: UNKNOWN_ID, targetConnectionId: alias.id, isDryRun },
+          }),
+          403,
+        );
+        expect(refused.error.message).toContain(prod.name);
+      }
+    });
+  }
+
   test('refuses a backup of one engine for a target of the other', async ({
     backedUp,
     createConnection,
