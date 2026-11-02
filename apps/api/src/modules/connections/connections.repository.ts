@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { ConnectionEntity } from '../../database/entities/connection.entity';
+import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { Environment } from '../../database/enums/environment.enum';
 
 type RestoreSafeMutation = ConnectionEntity | 'missing' | 'leased';
@@ -36,6 +37,25 @@ export class ConnectionsRepository {
       where: { id, isActive: true },
       select: ConnectionsRepository.WITHOUT_PASSWORD,
     });
+  }
+
+  /** Active connection on the same physical target; host compared trimmed and case-insensitive. */
+  findActiveByTarget(
+    target: { dbType: DbTypeEnum; host: string; port: number; database: string },
+    excludeId?: string,
+  ): Promise<ConnectionEntity | null> {
+    const query = this.repository
+      .createQueryBuilder('c')
+      .select(['c.id', 'c.name'])
+      .where('c.isActive = true')
+      .andWhere('c.dbType = :dbType', { dbType: target.dbType })
+      .andWhere('lower(trim(c.host)) = lower(trim(:host))', { host: target.host })
+      .andWhere('c.port = :port', { port: target.port })
+      .andWhere('c.database = :database', { database: target.database });
+    if (excludeId !== undefined) {
+      query.andWhere('c.id <> :excludeId::uuid', { excludeId });
+    }
+    return query.getOne();
   }
 
   findBySlug(slug: string): Promise<ConnectionEntity | null> {

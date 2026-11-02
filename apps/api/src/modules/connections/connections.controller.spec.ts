@@ -105,7 +105,15 @@ describe('ConnectionsController responses', () => {
   beforeAll(async () => {
     // TypeORM's save() resolves the object it was given, completed with the
     // generated columns; the fakes below do the same.
+    // The target-uniqueness lookup: no other connection owns the target.
+    const noClash = {
+      select: () => noClash,
+      where: () => noClash,
+      andWhere: () => noClash,
+      getOne: async () => null,
+    };
     const connectionRepo = {
+      createQueryBuilder: jest.fn(() => noClash),
       find: jest.fn(async () => [loadedEntity()]),
       findOne: jest.fn(async () => loadedEntity()),
       create: jest.fn((data: Partial<ConnectionEntity>) =>
