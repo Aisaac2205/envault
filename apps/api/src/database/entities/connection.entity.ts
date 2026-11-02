@@ -50,6 +50,15 @@ export class ConnectionEntity {
   @Exclude()
   password!: string;
 
+  /**
+   * Which database server this connection really reaches, as the server
+   * reports it (see ServerFingerprintService). Read for PROD connections only,
+   * so a restore can tell when another address points at the same database.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  @Exclude()
+  serverFingerprint!: string | null;
+
   @Column({ default: true })
   isActive!: boolean;
 

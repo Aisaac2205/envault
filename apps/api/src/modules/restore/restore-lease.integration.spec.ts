@@ -13,6 +13,7 @@ import { RestoreJobEntity } from '../../database/entities/restore-job.entity';
 import { CreateRestoreLeases1778716800018 } from '../../database/migrations/1778716800018-create-restore-leases';
 import { ConnectionsRepository } from '../connections/connections.repository';
 import { ConnectionsService } from '../connections/connections.service';
+import { ServerFingerprintService } from '../connections/server-fingerprint.service';
 import { BackupService } from '../backup/backup.service';
 import { R2Service } from '../backup/r2.service';
 import { RestoreStrategy } from '../backup/interfaces/restore-strategy.interface';
@@ -111,6 +112,7 @@ integration('restore lease PostgreSQL integration', () => {
         database varchar NOT NULL,
         username varchar NOT NULL,
         password varchar NOT NULL,
+        "serverFingerprint" varchar,
         "isActive" boolean NOT NULL DEFAULT true,
         "createdAt" timestamp NOT NULL DEFAULT now(),
         "updatedAt" timestamp NOT NULL DEFAULT now()
@@ -144,6 +146,7 @@ integration('restore lease PostgreSQL integration', () => {
         { provide: R2Service, useValue: {} },
         { provide: BackupService, useValue: {} },
         { provide: ConnectionsService, useValue: {} },
+        { provide: ServerFingerprintService, useValue: { assertNotProduction: async () => undefined } },
         {
           provide: RestoreStagingService,
           useValue: {
@@ -329,11 +332,13 @@ integration('restore lease PostgreSQL integration', () => {
        VALUES ($1, 'Target', 'target-two', 'dev', 'postgres', 'localhost', 5432, 'target', 'user', $2)`,
       [targetTwo, encrypt('secret')],
     );
+    const secondRepository = new ConnectionsRepository(
+      secondDataSource.getRepository(ConnectionEntity),
+      secondDataSource,
+    );
     const secondConnectionsService = new ConnectionsService(
-      new ConnectionsRepository(
-        secondDataSource.getRepository(ConnectionEntity),
-        secondDataSource,
-      ),
+      secondRepository,
+      new ServerFingerprintService(secondRepository),
     );
     const [admission, mutation] = await Promise.allSettled([
       firstRestoreRepository.tryCreateWithLease({

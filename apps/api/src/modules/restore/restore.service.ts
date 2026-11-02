@@ -28,6 +28,7 @@ import { RESTORE_QUEUE_NAME } from './restore.constants';
 import { R2Service } from '../backup/r2.service';
 import { BackupService } from '../backup/backup.service';
 import { ConnectionsService } from '../connections/connections.service';
+import { ServerFingerprintService } from '../connections/server-fingerprint.service';
 import { AuthUser } from '../../auth/decorators/current-user.decorator';
 import { sanitizeMessage } from '../../common/sanitization/sanitize-message';
 import { Environment } from '../../database/enums/environment.enum';
@@ -89,6 +90,7 @@ export class RestoreService implements OnApplicationBootstrap {
     private readonly r2Service: R2Service,
     private readonly backupService: BackupService,
     private readonly connectionsService: ConnectionsService,
+    private readonly serverFingerprintService: ServerFingerprintService,
     private readonly sseService: SseService,
     @Inject('RESTORE_STRATEGIES')
     private readonly restoreStrategies: Map<DbTypeEnum, RestoreStrategy>,
@@ -163,6 +165,8 @@ export class RestoreService implements OnApplicationBootstrap {
         `No se permiten restauraciones en producción. Conexión "${targetConnection.name}" es "prod".`,
       );
     }
+    // The label says it is not PROD; the server says whether the database is.
+    await this.serverFingerprintService.assertNotProduction(targetConnection);
 
     const isR2Restore = !!dto.r2Key;
     const fileKey = await this.resolveSourceFileKey(dto, targetConnection);
@@ -411,6 +415,8 @@ export class RestoreService implements OnApplicationBootstrap {
       if (targetConnection.environment === Environment.PROD) {
         throw new ForbiddenException('La conexión destino fue cambiada a producción.');
       }
+      // Asked again here: a host name can point somewhere else since the request.
+      await this.serverFingerprintService.assertNotProduction(targetConnection);
       if (!await this.restoreExecutionOwnershipService.hasActiveLease(
         ownership,
         jobId,

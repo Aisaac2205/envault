@@ -9,6 +9,7 @@ import {
   RestoreStrategy,
 } from '../backup/interfaces/restore-strategy.interface';
 import { ConnectionsService } from '../connections/connections.service';
+import { ServerFingerprintService } from '../connections/server-fingerprint.service';
 import { Environment } from '../../database/enums/environment.enum';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { JobStatus } from '../../database/enums/job-status.enum';
@@ -100,6 +101,7 @@ describe('RestoreService request-time compatibility', () => {
           },
         },
         { provide: ConnectionsService, useValue: connectionsService },
+        { provide: ServerFingerprintService, useValue: { assertNotProduction: async () => undefined } },
         {
           provide: SseService,
           useValue: { register: jest.fn(), emit: jest.fn(), complete: jest.fn() },

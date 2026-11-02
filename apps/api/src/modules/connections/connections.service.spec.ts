@@ -4,9 +4,11 @@ import { ConnectionsService } from './connections.service';
 import { ConnectionsRepository } from './connections.repository';
 import { DbTypeEnum } from '../../database/enums/db-type.enum';
 import { Environment } from '../../database/enums/environment.enum';
+import { ServerFingerprintService } from './server-fingerprint.service';
 
 describe('ConnectionsService physical target uniqueness', () => {
   let service: ConnectionsService;
+  let fingerprints: { read: jest.Mock };
   let repository: {
     findAllSlugs: jest.Mock;
     findActiveByTarget: jest.Mock;
@@ -49,7 +51,40 @@ describe('ConnectionsService physical target uniqueness', () => {
       create: jest.fn(async (data) => ({ id: 'new', ...data })),
       update: jest.fn(async (id, data) => ({ ...existing, ...data, id })),
     };
-    service = new ConnectionsService(repository as unknown as ConnectionsRepository);
+    fingerprints = { read: jest.fn().mockResolvedValue('postgres:111/orders') };
+    service = new ConnectionsService(
+      repository as unknown as ConnectionsRepository,
+      fingerprints as unknown as ServerFingerprintService,
+    );
+  });
+
+  describe('server fingerprint', () => {
+    it('is read and stored when a PROD connection is created', async () => {
+      await service.create({ ...createDto, environment: Environment.PROD });
+
+      expect(fingerprints.read).toHaveBeenCalledWith(
+        expect.objectContaining({ host: createDto.host, database: 'orders', dbType: DbTypeEnum.POSTGRES }),
+      );
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ serverFingerprint: 'postgres:111/orders' }),
+      );
+    });
+
+    it('does not make the PROD connection fail when the server cannot be asked', async () => {
+      fingerprints.read.mockResolvedValue(null);
+
+      await service.create({ ...createDto, environment: Environment.PROD });
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ serverFingerprint: null }),
+      );
+    });
+
+    it('is left alone for connections that are not PROD', async () => {
+      await service.create(createDto);
+
+      expect(fingerprints.read).not.toHaveBeenCalled();
+    });
   });
 
   describe('create', () => {
