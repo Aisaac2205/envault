@@ -1,4 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConnectionEntity } from '../../database/entities/connection.entity';
 import { Client } from 'pg';
 import { createConnection as createMysqlConnection } from 'mysql2/promise';
 import { CreateConnectionDto } from './dto/create-connection.dto';
@@ -12,6 +20,14 @@ import { resolveUniqueSlug, slugify } from '../../common/utils/slugify';
 import { sanitizeMessage } from '../../common/sanitization/sanitize-message';
 
 const CONNECTION_TEST_TIMEOUT_MS = 5_000;
+const PG_UNIQUE_VIOLATION = '23505';
+
+export interface PhysicalTarget {
+  dbType: DbTypeEnum;
+  host: string;
+  port: number;
+  database: string;
+}
 
 interface ConnectionParams {
   host: string;
@@ -85,8 +101,48 @@ export class ConnectionsService {
   }
 
   async create(dto: CreateConnectionDto) {
+    await this.assertTargetFree({
+      dbType: dto.dbType ?? DbTypeEnum.POSTGRES,
+      host: dto.host,
+      port: dto.port,
+      database: dto.database,
+    });
     const slug = await this.generateUniqueSlug(dto.name);
-    return this.repository.create({ ...dto, slug });
+    return this.mapTargetConflict(() => this.repository.create({ ...dto, slug }));
+  }
+
+  /**
+   * One physical database, one connection. Two connections on the same target
+   * would let a PROD database be addressed through a QA label. The partial
+   * unique index is the guarantee; this check gives the readable 409.
+   */
+  private async assertTargetFree(target: PhysicalTarget, excludeId?: string): Promise<void> {
+    const normalized = { ...target, host: target.host.trim() };
+    const clash = await (excludeId === undefined
+      ? this.repository.findActiveByTarget(normalized)
+      : this.repository.findActiveByTarget(normalized, excludeId));
+    if (clash) {
+      throw new ConflictException(
+        `Ya existe una conexión activa para ese servidor, puerto y base de datos: "${clash.name}".`,
+      );
+    }
+  }
+
+  /** A concurrent writer can win the race after the check: surface it as 409 too. */
+  private async mapTargetConflict<T>(write: () => Promise<T>): Promise<T> {
+    try {
+      return await write();
+    } catch (error) {
+      const code =
+        (error as { code?: string }).code ??
+        (error as { driverError?: { code?: string } }).driverError?.code;
+      if (code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException(
+          'Ya existe una conexión activa para ese servidor, puerto y base de datos.',
+        );
+      }
+      throw error;
+    }
   }
 
   // Slug is server-managed and immutable per architecture decision: the
@@ -106,7 +162,7 @@ export class ConnectionsService {
    * it, an admin could flip PROD to QA and restore over production. Deleting
    * a PROD connection needs a confirmation instead (ConnectionDeletionService).
    */
-  private async assertNotProd(id: string, dto: UpdateConnectionDto): Promise<void> {
+  private async assertNotProd(id: string, dto: UpdateConnectionDto): Promise<ConnectionEntity> {
     // The environment is all this needs: no reason to decrypt the password.
     const existing = await this.repository.findByIdSafe(id);
     if (!existing) {
@@ -122,11 +178,28 @@ export class ConnectionsService {
         'No se puede reclasificar una conexión como producción. Cree una conexión nueva.',
       );
     }
+    return existing;
   }
 
   async update(id: string, dto: UpdateConnectionDto) {
-    await this.assertNotProd(id, dto);
-    const result = await this.repository.update(id, dto);
+    const existing = await this.assertNotProd(id, dto);
+    const movesTarget =
+      dto.host !== undefined ||
+      dto.port !== undefined ||
+      dto.database !== undefined ||
+      dto.dbType !== undefined;
+    if (movesTarget) {
+      await this.assertTargetFree(
+        {
+          dbType: dto.dbType ?? existing.dbType,
+          host: dto.host ?? existing.host,
+          port: dto.port ?? existing.port,
+          database: dto.database ?? existing.database,
+        },
+        id,
+      );
+    }
+    const result = await this.mapTargetConflict(() => this.repository.update(id, dto));
     if (result === 'missing') {
       throw new NotFoundException(`Conexión con ID "${id}" no encontrada`);
     }

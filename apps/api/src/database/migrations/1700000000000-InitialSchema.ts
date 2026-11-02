@@ -75,6 +75,9 @@ export class InitialSchema1700000000000 implements MigrationInterface {
     await queryRunner.query(
       `CREATE UNIQUE INDEX IF NOT EXISTS "IDX_connections_slug_unique" ON "connections" ("slug")`,
     );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "UQ_connections_physical_target" ON "connections" ("dbType", lower(trim("host")), "port", "database") WHERE "isActive" = true`,
+    );
 
     await queryRunner.query(
       `CREATE TABLE IF NOT EXISTS "manual_retention_settings" ("id" integer NOT NULL DEFAULT 1, "enabled" boolean NOT NULL DEFAULT false, "keepLast" integer, "maxAgeDays" integer, "maxTotalSizeMb" integer, "lastSweepAt" TIMESTAMP, "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_manual_retention_settings" PRIMARY KEY ("id"))`,

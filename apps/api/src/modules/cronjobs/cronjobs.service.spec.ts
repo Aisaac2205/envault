@@ -11,6 +11,7 @@ import { MaintenanceService } from '../maintenance/maintenance.service';
 import { ConnectionsService } from '../connections/connections.service';
 import { CronjobEntity } from '../../database/entities/cronjob.entity';
 import { CronFrequency } from '../../database/enums/cron-frequency.enum';
+import { Environment } from '../../database/enums/environment.enum';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { ScheduleInputDto } from './dto/schedule.dto';
 
@@ -128,9 +129,12 @@ describe('CronjobsService update and toggle', () => {
   const nextFireOf = (expression: string): Date =>
     new CronJob(expression, () => undefined).nextDate().toJSDate();
 
+  let findByIdSafe: jest.Mock;
+
   beforeEach(async () => {
     rows = new Map();
     scheduler = new SchedulerRegistry();
+    findByIdSafe = jest.fn(async (id: string) => ({ id, environment: Environment.PROD }));
     mockRepository = {
       findAll: jest.fn(async () =>
         [...rows.values()].map((row) => Object.assign(new CronjobEntity(), row)),
@@ -176,7 +180,10 @@ describe('CronjobsService update and toggle', () => {
         { provide: SchedulerRegistry, useValue: scheduler },
         { provide: BackupService, useValue: {} },
         { provide: MaintenanceService, useValue: {} },
-        { provide: ConnectionsService, useValue: { findByIds: jest.fn(async () => new Map()) } },
+        {
+          provide: ConnectionsService,
+          useValue: { findByIds: jest.fn(async () => new Map()), findByIdSafe },
+        },
         { provide: getDataSourceToken(), useValue: {} },
       ],
     }).compile();
@@ -188,6 +195,41 @@ describe('CronjobsService update and toggle', () => {
     for (const job of scheduler.getCronJobs().values()) {
       void job.stop();
     }
+  });
+
+  describe('PROD-only connections', () => {
+    const qa = { id: 'conn-qa', environment: Environment.QA };
+
+    it('rejects creating a cronjob on a non-PROD connection', async () => {
+      findByIdSafe.mockResolvedValue(qa);
+      await expect(
+        service.create({ name: 'Nightly', connectionId: 'conn-qa', schedule: { kind: 'daily', time: '02:00' } }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects pointing a cronjob at a non-PROD connection', async () => {
+      seed();
+      findByIdSafe.mockResolvedValue(qa);
+      await expect(service.update('cron-1', { connectionId: 'conn-qa' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(mockRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('does not look the connection up when an update leaves it alone', async () => {
+      seed();
+      await service.update('cron-1', { name: 'Renamed' });
+      expect(findByIdSafe).not.toHaveBeenCalled();
+    });
+
+    it('rejects upserting a schedule on a non-PROD connection', async () => {
+      findByIdSafe.mockResolvedValue(qa);
+      await expect(
+        service.upsertSchedule('conn-qa', '0 2 * * *', 'Nightly', CronFrequency.DAILY),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockRepository.upsertForConnection).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {

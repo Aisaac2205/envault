@@ -720,11 +720,18 @@ export class MaintenanceService {
     return dryRun.items;
   }
 
-  /** File keys that are the source of a RUNNING restore — must never be pruned. */
+  /**
+   * File keys that are the source of a PENDING or RUNNING restore, must never be
+   * pruned. A queued restore reads its dump later: deleting it now would make
+   * the restore fail after the user confirmed it.
+   */
   private async getInUseFileKeys(): Promise<Set<string>> {
-    const running = await this.restoreRepository.findByStatus(JobStatus.RUNNING);
+    const [pending, running] = await Promise.all([
+      this.restoreRepository.findByStatus(JobStatus.PENDING),
+      this.restoreRepository.findByStatus(JobStatus.RUNNING),
+    ]);
     const keys = new Set<string>();
-    for (const job of running) {
+    for (const job of [...pending, ...running]) {
       if (job.r2Key) {
         keys.add(job.r2Key);
       } else if (job.sourceBackupId) {

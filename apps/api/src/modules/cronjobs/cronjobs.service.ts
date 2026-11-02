@@ -20,6 +20,7 @@ import { CronjobEntity } from '../../database/entities/cronjob.entity';
 import { AuthUser } from '../../auth/decorators/current-user.decorator';
 import { JobStatus } from '../../database/enums/job-status.enum';
 import { CronFrequency } from '../../database/enums/cron-frequency.enum';
+import { Environment } from '../../database/enums/environment.enum';
 import { BackupCategory } from '../../database/enums/backup-category.enum';
 import {
   Schedule,
@@ -144,6 +145,7 @@ export class CronjobsService implements OnApplicationBootstrap {
       );
     }
     this.validateCronExpression(data.cronExpression);
+    await this.assertProdConnection(dto.connectionId);
     const cronjob = await this.repository.create(data);
     if (cronjob.isActive) {
       this.registerCronJob(cronjob);
@@ -160,6 +162,9 @@ export class CronjobsService implements OnApplicationBootstrap {
     const data = this.resolveSchedule(dto);
     if (data.cronExpression !== undefined) {
       this.validateCronExpression(data.cronExpression);
+    }
+    if (dto.connectionId !== undefined) {
+      await this.assertProdConnection(dto.connectionId);
     }
     const updated = await this.repository.update(id, data);
     if (!updated) {
@@ -207,6 +212,7 @@ export class CronjobsService implements OnApplicationBootstrap {
     frequency: CronFrequency,
   ): Promise<CronjobEntity & { schedule: Schedule | null }> {
     this.validateCronExpression(cronExpression);
+    await this.assertProdConnection(connectionId);
     const entity = await this.repository.upsertForConnection(connectionId, {
       name,
       cronExpression,
@@ -217,6 +223,17 @@ export class CronjobsService implements OnApplicationBootstrap {
     this.registerCronJob(entity);
     await this.syncNextRunAt(entity);
     return this.withSchedule(entity);
+  }
+
+  // Scheduled backups and retention only make sense for production data, and a
+  // retention run deletes dumps: it must never be pointed at a lower environment.
+  private async assertProdConnection(connectionId: string): Promise<void> {
+    const connection = await this.connectionsService.findByIdSafe(connectionId);
+    if (connection.environment !== Environment.PROD) {
+      throw new BadRequestException(
+        'Los cronjobs solo admiten conexiones de producción.',
+      );
+    }
   }
 
   // The single point where a request's schedule becomes what is stored. A

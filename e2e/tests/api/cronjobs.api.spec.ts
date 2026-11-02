@@ -36,7 +36,8 @@ const test = base.extend<CronjobFixtures>({
     const createdIds: string[] = [];
 
     await use(async (overrides = {}) => {
-      const { connection } = await createConnection();
+      // Cronjobs only accept PROD connections.
+      const { connection } = await createConnection({ environment: 'prod' });
       const response = await adminApi.post('cronjobs', {
         data: {
           name: uniqueName('cron'),
@@ -67,6 +68,21 @@ function expectFutureDate(value: string | null): void {
 }
 
 test.describe('create', () => {
+  test('refuses a cronjob on a connection that is not PROD', async ({ adminApi, createConnection }) => {
+    const { connection } = await createConnection({ environment: 'dev' });
+
+    const response = await adminApi.post('cronjobs', {
+      data: {
+        name: uniqueName('cron'),
+        connectionId: connection.id,
+        cronExpression: JANUARY_FIRST,
+        frequency: 'custom',
+      },
+    });
+
+    expect(response.status()).toBe(400);
+  });
+
   test('creates an active cronjob and schedules its next run', async ({ createCronjob }) => {
     const name = uniqueName('cron');
 
