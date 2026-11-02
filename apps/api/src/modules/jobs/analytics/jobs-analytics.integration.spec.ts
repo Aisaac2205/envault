@@ -157,13 +157,15 @@ integration('jobs analytics PostgreSQL integration', () => {
     await dataSource.query(
       `INSERT INTO connections
          (id, name, slug, environment, "dbType", host, port, database, username, password, "isActive")
-       VALUES ($1, $2, $3, $4, $5, 'localhost', 5432, 'appdb', 'analytics-test', 'not-a-real-secret', $6)`,
+       VALUES ($1, $2, $3, $4, $5, 'localhost', 5432, $6, 'analytics-test', 'not-a-real-secret', $7)`,
       [
         row.id,
         row.name,
         `slug-${row.id}`,
         row.environment ?? Environment.PROD,
         DbTypeEnum.POSTGRES,
+        // One physical target per active connection: each gets its own database.
+        `db-${row.id}`,
         row.isActive ?? true,
       ],
     );
