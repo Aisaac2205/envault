@@ -67,7 +67,8 @@ const test = base.extend<CronjobFixtures>({
     const createdIds: string[] = [];
 
     await use(async (body = {}) => {
-      const { connection } = await createConnection();
+      // Cronjobs only accept PROD connections.
+      const { connection } = await createConnection({ environment: 'prod' });
       const response = await adminApi.post('cronjobs', {
         data: { name: uniqueName('cron'), connectionId: connection.id, ...body },
       });

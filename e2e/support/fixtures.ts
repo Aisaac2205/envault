@@ -2,7 +2,8 @@ import { test as base, expect, type APIRequestContext, type APIResponse } from '
 import { assertOk, deleteConnection, newApiContext, signInOnDirectApi } from './api';
 import { AUTH_STATE_FILE } from './auth-state';
 import { routeAuthToOwnRateLimitBucket } from './browser';
-import { POSTGRES_SOURCE, type SourceDatabase } from './sources';
+import { engines, uniqueDatabaseName } from './databases';
+import { MYSQL_ADMIN, MYSQL_SOURCE, POSTGRES_SOURCE, type SourceDatabase } from './sources';
 import { uniqueEmail, uniqueId, uniqueName } from './unique';
 
 export interface ConnectionInput extends SourceDatabase {
@@ -96,6 +97,7 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
 
   createConnection: async ({ adminApi }, use) => {
     const created: Connection[] = [];
+    const ownDatabases: Array<{ dbType: SourceDatabase['dbType']; database: string }> = [];
 
     await use(async (overrides = {}) => {
       const input: ConnectionInput = {
@@ -104,6 +106,27 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
         environment: 'dev',
         ...overrides,
       };
+      // The API allows one active connection per physical target. Pointing at the
+      // shared source database would make a second connection, in this test or in
+      // a parallel one, answer 409, so it gets an empty database of its own.
+      const shared = [POSTGRES_SOURCE, MYSQL_SOURCE].find(
+        (source) =>
+          input.dbType === source.dbType &&
+          input.host === source.host &&
+          input.port === source.port &&
+          input.database === source.database,
+      );
+      if (shared) {
+        const database = uniqueDatabaseName('conn');
+        await engines[shared.dbType].createDatabase(database);
+        ownDatabases.push({ dbType: shared.dbType, database });
+        input.database = database;
+        // MySQL's `test_user` only owns `testdb`: a database of its own needs root.
+        if (shared.dbType === 'mysql' && input.username === shared.username && input.password === shared.password) {
+          input.username = MYSQL_ADMIN.username;
+          input.password = MYSQL_ADMIN.password;
+        }
+      }
       const response = await adminApi.post('connections', { data: input });
       await assertOk(response, `Creating connection "${input.name}"`);
 
@@ -119,6 +142,9 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
       if (response.status() !== 404) {
         await assertOk(response, `Cleaning up connection ${connection.id}`);
       }
+    }
+    for (const { dbType, database } of ownDatabases) {
+      await engines[dbType].drop(database);
     }
   },
 

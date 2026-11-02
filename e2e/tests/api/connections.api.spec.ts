@@ -67,6 +67,19 @@ test.describe('create', () => {
     expect(second.connection.slug).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
+  test('refuses a second active connection on the same physical target', async ({
+    adminApi,
+    createConnection,
+  }) => {
+    const { input } = await createConnection();
+
+    const response = await adminApi.post('connections', {
+      data: { ...input, name: uniqueName('dup'), host: ` ${input.host.toUpperCase()} ` },
+    });
+
+    expect(response.status()).toBe(409);
+  });
+
   test('never returns the password, as typed or encrypted', async ({ request, createConnection }) => {
     const password = `leak-probe-${uniqueId()}`;
     const { connection, response } = await createConnection({ password });
@@ -177,7 +190,12 @@ test.describe('update', () => {
 
     const updated = await expectSuccessEnvelope<Connection>(
       await request.patch(`connections/${connection.id}`, {
-        data: { dbType: 'mysql', host: MYSQL_SOURCE.host, port: MYSQL_SOURCE.port },
+        data: {
+          dbType: 'mysql',
+          host: MYSQL_SOURCE.host,
+          port: MYSQL_SOURCE.port,
+          database: MYSQL_SOURCE.database,
+        },
       }),
     );
 
