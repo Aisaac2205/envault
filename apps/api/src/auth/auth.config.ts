@@ -6,6 +6,7 @@ import { createAuthAuditHook } from './audit/auth-audit-hook';
 import { toJsonRecord } from './audit/to-json-record';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from './password-policy/password-policy';
 import { createPasswordPolicyHook } from './password-policy/password-policy-hook';
+import { SESSION_IDLE_TIMEOUT_SECONDS, SESSION_REFRESH_INTERVAL_SECONDS } from './session-lifetime';
 
 export const authPool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -57,6 +58,8 @@ export const auth = betterAuth({
     }),
   },
   session: {
+    expiresIn: SESSION_IDLE_TIMEOUT_SECONDS,
+    updateAge: SESSION_REFRESH_INTERVAL_SECONDS,
     // No cookie cache: every request checks the session against the database,
     // so a ban or a revoked session takes effect on the next request instead
     // of up to maxAge later (Better Auth documents this trade-off).

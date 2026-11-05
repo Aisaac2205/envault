@@ -81,6 +81,7 @@ Esta es **la regla más crítica**. Restaurar sobre PROD destruiría datos en vi
 - **Integración**: handler catch-all manual en `/api/auth/*` en `apps/api/src/auth/auth.controller.ts`
 - **Sesión**: basada en cookies (`httpOnly`), gestionada completamente por Better Auth vía un adaptador pg
 - **Validación de sesión**: `auth.api.getSession()` llamado por request por `BetterAuthGuard`. La caché de sesión en cookie está desactivada (`session.cookieCache.enabled: false` en `auth.config.ts`), así que cada request valida la sesión contra la base de datos: un baneo, una sesión revocada o un cambio de rol se aplican en el siguiente request.
+- **Duración de sesión** (OWASP Session Management Cheat Sheet, ASVS V3.3): una sesión expira tras 30 minutos sin actividad (`expiresIn`, renovada cada 5 minutos con `updateAge`) y a las 8 horas de creada aunque esté en uso (`BetterAuthGuard`). En ambos casos el API responde 401 y la web cierra la sesión y lleva al login.
 - **Tablas de DB**: Better Auth gestiona su propio schema (`user`, `session`, `account`, `verification`) vía el adaptador pg.
 - **Frontend**: cliente `better-auth/react` con hook `useSession()`; las cookies las envía el browser automáticamente.
 - **SSE**: las cookies las manda `EventSource` nativamente — no se necesita el hack de token por query param.
