@@ -10,6 +10,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { PUBLIC_KEY } from '../common/authorization/public.decorator';
 import { auth } from './auth.config';
 import { AuthUser } from './decorators/current-user.decorator';
+import { isPastAbsoluteTimeout } from './session-lifetime';
 
 interface AuthenticatedRequest extends Request {
   user?: AuthUser;
@@ -38,7 +39,7 @@ export class BetterAuthGuard implements CanActivate {
       headers: fromNodeHeaders(req.headers),
     });
 
-    if (!session) {
+    if (!session || isPastAbsoluteTimeout(session.session.createdAt)) {
       throw new UnauthorizedException('Session absent or expired');
     }
 

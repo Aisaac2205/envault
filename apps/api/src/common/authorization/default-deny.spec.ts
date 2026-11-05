@@ -58,7 +58,12 @@ const getSession = auth.api.getSession as unknown as jest.Mock;
 
 function signedInAs(role: string | null): void {
   getSession.mockResolvedValue(
-    role ? { user: { id: 'u1', email: 'u@x.test', name: 'U', role } } : null,
+    role
+      ? {
+          user: { id: 'u1', email: 'u@x.test', name: 'U', role },
+          session: { createdAt: new Date() },
+        }
+      : null,
   );
 }
 
